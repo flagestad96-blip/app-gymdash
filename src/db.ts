@@ -27,7 +27,7 @@ let db: SQLite.SQLiteDatabase | null = globalState.db;
 
 export type BackStatus = "green" | "yellow" | "red";
 export type ProgramMode = "normal" | "back";
-export type BodyMetricRow = { date: string; weight_kg: number; note?: string | null };
+export type BodyMetricRow = { date: string; weight_kg: number; note?: string | null; photo_uri?: string | null };
 
 let _inited = globalState.inited;
 
@@ -342,6 +342,30 @@ export async function initDb() {
         note TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS achievements (
+        id TEXT PRIMARY KEY NOT NULL,
+        category TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        requirement_type TEXT NOT NULL,
+        requirement_value REAL NOT NULL,
+        requirement_exercise_id TEXT,
+        tier TEXT NOT NULL,
+        points INTEGER NOT NULL DEFAULT 10,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS user_achievements (
+        id TEXT PRIMARY KEY NOT NULL,
+        achievement_id TEXT NOT NULL,
+        unlocked_at TEXT NOT NULL,
+        workout_id TEXT,
+        set_id TEXT,
+        value_achieved REAL,
+        FOREIGN KEY (achievement_id) REFERENCES achievements(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_sets_workout ON sets(workout_id);
       CREATE INDEX IF NOT EXISTS idx_sets_exercise ON sets(exercise_id);
       CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);
@@ -356,6 +380,8 @@ export async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_exercise_targets_program ON exercise_targets(program_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id);
       CREATE INDEX IF NOT EXISTS idx_pr_records_exercise ON pr_records(exercise_id);
+      CREATE INDEX IF NOT EXISTS idx_user_achievements_achievement ON user_achievements(achievement_id);
+      CREATE INDEX IF NOT EXISTS idx_user_achievements_unlocked ON user_achievements(unlocked_at DESC);
     `);
 
       // Migrations on native
@@ -381,6 +407,9 @@ export async function initDb() {
         db.execSync(`ALTER TABLE sets ADD COLUMN est_total_load_kg REAL;`);
       } catch {}
       try {
+        db.execSync(`ALTER TABLE sets ADD COLUMN notes TEXT;`);
+      } catch {}
+      try {
         db.execSync(`ALTER TABLE workouts ADD COLUMN day_index INTEGER;`);
       } catch {}
       try {
@@ -388,6 +417,9 @@ export async function initDb() {
       } catch {}
       try {
         db.execSync(`ALTER TABLE workouts ADD COLUMN program_id TEXT;`);
+      } catch {}
+      try {
+        db.execSync(`ALTER TABLE workouts ADD COLUMN ended_at TEXT;`);
       } catch {}
       try {
         db.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_program ON workouts(program_id);`);
@@ -464,9 +496,103 @@ export async function initDb() {
         }
       } catch {}
 
+      // Exercise goals table
+      try {
+        db.execSync(`
+          CREATE TABLE IF NOT EXISTS exercise_goals (
+            id TEXT PRIMARY KEY NOT NULL,
+            exercise_id TEXT NOT NULL,
+            goal_type TEXT NOT NULL,
+            target_value REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            achieved_at TEXT,
+            program_id TEXT NOT NULL
+          );
+        `);
+        db.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_goals_exercise ON exercise_goals(exercise_id);`);
+        db.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_goals_program ON exercise_goals(program_id);`);
+      } catch {}
+
+      // Custom exercises table
+      try {
+        db.execSync(`
+          CREATE TABLE IF NOT EXISTS custom_exercises (
+            id TEXT PRIMARY KEY NOT NULL,
+            display_name TEXT NOT NULL,
+            equipment TEXT NOT NULL,
+            tags TEXT NOT NULL,
+            default_increment_kg REAL NOT NULL DEFAULT 2.5,
+            is_bodyweight INTEGER DEFAULT 0,
+            bodyweight_factor REAL,
+            created_at TEXT NOT NULL
+          );
+        `);
+      } catch {}
+
       // One-time repair for split workouts due to day switching
       try {
         runSplitWorkoutRepairOnce();
+      } catch {}
+
+      // Seed achievements
+      try {
+        const { seedAchievements } = await import("./achievements");
+        await seedAchievements({ skipEnsure: true });
+      } catch (error) {
+        console.error("Failed to seed achievements:", error);
+      }
+
+      // Load custom exercises into in-memory cache
+      try {
+        const { loadCustomExercises } = await import("./exerciseLibrary");
+        await loadCustomExercises();
+      } catch {}
+
+      // Auto-progression: add auto_progress column to exercise_targets
+      try {
+        db.execSync(`ALTER TABLE exercise_targets ADD COLUMN auto_progress INTEGER DEFAULT 1`);
+      } catch {}
+
+      // Progression log table
+      try {
+        db.execSync(`
+          CREATE TABLE IF NOT EXISTS progression_log (
+            id TEXT PRIMARY KEY NOT NULL,
+            program_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            old_weight_kg REAL NOT NULL,
+            new_weight_kg REAL NOT NULL,
+            reason TEXT,
+            created_at TEXT NOT NULL,
+            applied INTEGER DEFAULT 0,
+            dismissed INTEGER DEFAULT 0
+          );
+        `);
+        db.execSync(`CREATE INDEX IF NOT EXISTS idx_progression_log_program ON progression_log(program_id, exercise_id);`);
+      } catch {}
+
+      // Tier 4: Progress photos — add photo_uri to body_metrics
+      try {
+        db.execSync(`ALTER TABLE body_metrics ADD COLUMN photo_uri TEXT;`);
+      } catch {}
+
+      // Tier 5: Workout templates table
+      try {
+        db.execSync(`
+          CREATE TABLE IF NOT EXISTS workout_templates (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            exercises_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_used_at TEXT
+          );
+        `);
+      } catch {}
+
+      // Tier 5: Periodization — add periodization_json to programs
+      try {
+        db.execSync(`ALTER TABLE programs ADD COLUMN periodization_json TEXT;`);
       } catch {}
     }
 
@@ -547,13 +673,13 @@ export async function setSettingAsync(key: string, value: string): Promise<void>
   }
 }
 
-export async function upsertBodyMetric(date: string, weightKg: number, note?: string | null): Promise<void> {
+export async function upsertBodyMetric(date: string, weightKg: number, note?: string | null, photoUri?: string | null): Promise<void> {
   await ensureDb();
   const database = getDb();
   await database.runAsync(
-    `INSERT INTO body_metrics(date, weight_kg, note) VALUES(?, ?, ?)
-     ON CONFLICT(date) DO UPDATE SET weight_kg=excluded.weight_kg, note=excluded.note`,
-    [date, weightKg, note ?? null]
+    `INSERT INTO body_metrics(date, weight_kg, note, photo_uri) VALUES(?, ?, ?, ?)
+     ON CONFLICT(date) DO UPDATE SET weight_kg=excluded.weight_kg, note=excluded.note, photo_uri=excluded.photo_uri`,
+    [date, weightKg, note ?? null, photoUri ?? null]
   );
 }
 
@@ -568,13 +694,13 @@ export async function listBodyMetrics(limit?: number): Promise<BodyMetricRow[]> 
   const database = getDb();
   if (limit && Number.isFinite(limit)) {
     const rows = await database.getAllAsync<BodyMetricRow>(
-      `SELECT date, weight_kg, note FROM body_metrics ORDER BY date DESC LIMIT ?`,
+      `SELECT date, weight_kg, note, photo_uri FROM body_metrics ORDER BY date DESC LIMIT ?`,
       [Math.max(1, Math.trunc(limit))]
     );
     return rows ?? [];
   }
   const rows = await database.getAllAsync<BodyMetricRow>(
-    `SELECT date, weight_kg, note FROM body_metrics ORDER BY date DESC`
+    `SELECT date, weight_kg, note, photo_uri FROM body_metrics ORDER BY date DESC`
   );
   return rows ?? [];
 }
@@ -636,4 +762,18 @@ export async function computeBodyweightLoad(
     bodyweight_factor: factor,
     est_total_load_kg: total,
   };
+}
+
+/** Format duration between two ISO timestamps → "45 min" or "1h 12m" */
+export function formatDuration(startedAt: string | null | undefined, endedAt: string | null | undefined): string {
+  if (!startedAt) return "";
+  const start = new Date(startedAt).getTime();
+  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+  if (isNaN(start) || isNaN(end)) return "";
+  const diffMin = Math.round((end - start) / 60000);
+  if (diffMin < 1) return "< 1 min";
+  if (diffMin < 60) return `${diffMin} min`;
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }

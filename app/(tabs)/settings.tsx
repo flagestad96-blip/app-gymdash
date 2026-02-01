@@ -11,37 +11,33 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { theme, setThemeMode, getThemeMode, type ThemeMode as ThemeModeSetting } from "../../src/theme";
+import { useTheme, setThemeMode, getThemeMode, type ThemeMode as ThemeModeSetting } from "../../src/theme";
+import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import ProgramStore from "../../src/programStore";
 import { displayNameFor, resolveExerciseId } from "../../src/exerciseLibrary";
+import { exportFullBackup, importBackup, exportCsv, type ImportMode } from "../../src/backup";
+import { saveBackupFile, shareFile, pickBackupFile } from "../../src/fileSystem";
+import {
+  requestNotificationPermissions,
+  hasNotificationPermissions,
+  scheduleWorkoutReminder,
+  cancelWorkoutReminder,
+  scheduleRestDayCheck,
+  cancelRestDayCheck,
+} from "../../src/notifications";
 import AppLoading from "../../components/AppLoading";
 import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
+import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNotes";
+import { useWeightUnit, type WeightUnit } from "../../src/units";
 
 type ProgramMode = "normal" | "back";
-type ImportMode = "merge" | "fresh";
 type ExerciseHistoryRow = {
   exercise_id: string;
   setCount: number;
   lastDate: string | null;
 };
-type CsvRow = {
-  set_id: string;
-  exercise_id?: string | null;
-  exercise_name: string;
-  weight?: number | null;
-  reps?: number | null;
-  rpe?: number | null;
-  created_at?: string | null;
-  workout_date?: string | null;
-  day_index?: number | null;
-  program_id?: string | null;
-  program_name?: string | null;
-};
-
-const CURRENT_SCHEMA_VERSION = 2;
-const APP_VERSION = "unknown";
 
 function clampInt(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min;
@@ -59,9 +55,35 @@ function isoDateOnly(d = new Date()) {
   return `${y}-${m}-${da}`;
 }
 
+function WeightUnitCard() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  const { unit, setUnit } = useWeightUnit();
+  return (
+    <Card title={t("settings.weightUnit")}>
+      <Text style={{ color: theme.muted, marginBottom: 8 }}>
+        {t("settings.weightUnit.desc")}
+      </Text>
+      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+        {(["kg", "lbs"] as WeightUnit[]).map((u) => (
+          <Chip
+            key={`wu_${u}`}
+            text={t(`settings.weightUnit.${u}`)}
+            active={unit === u}
+            onPress={() => setUnit(u)}
+          />
+        ))}
+      </View>
+    </Card>
+  );
+}
+
 export default function Settings() {
+  const theme = useTheme();
+  const { t, locale } = useI18n();
   const [ready, setReady] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showPatchNotes, setShowPatchNotes] = useState(false);
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
   const [defaultDayIndex, setDefaultDayIndex] = useState<number>(0);
@@ -102,6 +124,12 @@ export default function Settings() {
   const [historySearch, setHistorySearch] = useState("");
   const [historySelection, setHistorySelection] = useState<Record<string, boolean>>({});
   const [dataToolsBusy, setDataToolsBusy] = useState(false);
+
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [restDayEnabled, setRestDayEnabled] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(false);
+  const [reminderNotifId, setReminderNotifId] = useState<string | null>(null);
+  const [restDayNotifId, setRestDayNotifId] = useState<string | null>(null);
 
   async function loadSettings() {
     await ensureDb();
@@ -158,72 +186,130 @@ export default function Settings() {
     loadSettings().then(() => setReady(true));
   }, []);
 
+  useEffect(() => {
+    hasNotificationPermissions().then((granted) => setNotifPermission(granted));
+  }, []);
+
+  async function handleExportToFile() {
+    setBackupBusy(true);
+    try {
+      const json = await exportFullBackup();
+      const uri = await saveBackupFile(json);
+      await shareFile(uri);
+      Alert.alert(t("settings.backupComplete"));
+    } catch (err) {
+      Alert.alert(t("common.error"), t("settings.couldNotExport"));
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function handleImportFromFile() {
+    try {
+      const content = await pickBackupFile();
+      if (!content) return;
+
+      setBackupBusy(true);
+      setImportError(null);
+
+      const result = await importBackup(content, importMode);
+
+      if (!result.success) {
+        const errorMap: Record<string, string> = {
+          invalid_json: t("program.invalidJson"),
+          invalid_format: t("program.invalidFormat"),
+          backup_too_new: t("settings.backupTooNew"),
+          backup_empty: t("settings.backupEmpty"),
+          import_failed: t("settings.importFailed"),
+        };
+        Alert.alert(t("common.error"), errorMap[result.error ?? ""] ?? t("settings.importFailed"));
+        setBackupBusy(false);
+        return;
+      }
+
+      await loadSettings();
+      setBackupBusy(false);
+      Alert.alert(t("settings.importDone"), t("settings.importFileSuccess"), [
+        { text: t("settings.importLater"), style: "cancel" },
+        { text: t("settings.importCleanNow"), onPress: () => openDataTools(true) },
+      ]);
+    } catch {
+      Alert.alert(t("common.error"), t("settings.importFileFailed"));
+      setBackupBusy(false);
+    }
+  }
+
+  async function handleToggleReminder(enabled: boolean) {
+    if (enabled && !notifPermission) {
+      const granted = await requestNotificationPermissions();
+      setNotifPermission(granted);
+      if (!granted) {
+        Alert.alert(t("notifications.permissionRequired"));
+        return;
+      }
+    }
+    setReminderEnabled(enabled);
+    if (enabled) {
+      // Schedule Mon-Fri at 17:00 (weekday 2=Mon through 6=Fri)
+      const id = await scheduleWorkoutReminder(2, 17, 0);
+      setReminderNotifId(id);
+    } else {
+      if (reminderNotifId) {
+        await cancelWorkoutReminder(reminderNotifId);
+        setReminderNotifId(null);
+      }
+    }
+  }
+
+  async function handleToggleRestDay(enabled: boolean) {
+    if (enabled && !notifPermission) {
+      const granted = await requestNotificationPermissions();
+      setNotifPermission(granted);
+      if (!granted) {
+        Alert.alert(t("notifications.permissionRequired"));
+        return;
+      }
+    }
+    setRestDayEnabled(enabled);
+    if (enabled) {
+      const id = await scheduleRestDayCheck();
+      setRestDayNotifId(id);
+    } else {
+      if (restDayNotifId) {
+        await cancelRestDayCheck(restDayNotifId);
+        setRestDayNotifId(null);
+      }
+    }
+  }
+
+  async function handleRequestNotifPermission() {
+    const granted = await requestNotificationPermissions();
+    setNotifPermission(granted);
+    if (granted) {
+      Alert.alert(t("notifications.enabled"));
+    } else {
+      Alert.alert(t("notifications.permissionRequired"));
+    }
+  }
+
   async function copyText(text: string) {
     if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
       await navigator.clipboard.writeText(text);
-      Alert.alert("Kopiert", "JSON kopiert til utklippstavlen.");
+      Alert.alert(t("settings.copied"), t("settings.copiedMsg"));
       return;
     }
-    Alert.alert("Kopier manuelt", "Marker teksten og kopier manuelt.");
+    Alert.alert(t("settings.copyManual"), t("settings.copyManualMsg"));
   }
 
   async function openExport() {
     setBackupBusy(true);
     setImportError(null);
     try {
-      await ensureDb();
-      const db = getDb();
-      const workouts = await db.getAllAsync(
-        `SELECT id, date, program_mode, day_key, back_status, notes, day_index, started_at FROM workouts`
-      );
-      const sets = await db.getAllAsync(
-        `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id FROM sets`
-      );
-      const settings = await db.getAllAsync(`SELECT key, value FROM settings`);
-      const programs = await db.getAllAsync(
-        `SELECT id, name, mode, json, created_at, updated_at FROM programs`
-      );
-      const programDays = await db.getAllAsync(
-        `SELECT id, program_id, day_index, name FROM program_days`
-      );
-      const programDayExercises = await db.getAllAsync(
-        `SELECT id, program_id, day_index, sort_index, type, ex_id, a_id, b_id FROM program_day_exercises`
-      );
-      const programAlternatives = await db.getAllAsync(
-        `SELECT id, program_id, day_index, exercise_id, alt_exercise_id, sort_index FROM program_exercise_alternatives`
-      );
-      const programReplacements = await db.getAllAsync(
-        `SELECT id, program_id, day_index, original_ex_id, replaced_ex_id, updated_at FROM program_replacements`
-      );
-      const exerciseTargets = await db.getAllAsync(
-        `SELECT id, program_id, exercise_id, rep_min, rep_max, increment_kg, updated_at FROM exercise_targets`
-      );
-      const prRecords = await db.getAllAsync(
-        `SELECT exercise_id, type, value, reps, weight, set_id, date, program_id FROM pr_records`
-      );
-
-      const payload = {
-        schemaVersion: CURRENT_SCHEMA_VERSION,
-        exportedAt: new Date().toISOString(),
-        appVersion: APP_VERSION,
-        data: {
-          workouts,
-          sets,
-          settings,
-          programs,
-          program_days: programDays,
-          program_day_exercises: programDayExercises,
-          program_exercise_alternatives: programAlternatives,
-          program_replacements: programReplacements,
-          exercise_targets: exerciseTargets,
-          pr_records: prRecords,
-        },
-      };
-
-      setBackupText(JSON.stringify(payload, null, 2));
+      const json = await exportFullBackup();
+      setBackupText(json);
       setBackupOpen("export");
     } catch (err) {
-      Alert.alert("Feil", "Kunne ikke generere backup.");
+      Alert.alert(t("common.error"), t("settings.couldNotExport"));
     } finally {
       setBackupBusy(false);
     }
@@ -283,7 +369,7 @@ export default function Settings() {
       setShareText(JSON.stringify(payload, null, 2));
       setShareOpen("export");
     } catch {
-      Alert.alert("Feil", "Kunne ikke eksportere program.");
+      Alert.alert(t("common.error"), t("settings.couldNotExportProgram"));
     } finally {
       setShareBusy(false);
     }
@@ -296,19 +382,19 @@ export default function Settings() {
     try {
       parsed = JSON.parse(shareImportText);
     } catch {
-      setShareError("Ugyldig JSON");
+      setShareError(t("program.invalidJson"));
       setShareBusy(false);
       return;
     }
 
     if (!parsed || typeof parsed !== "object") {
-      setShareError("Ugyldig format");
+      setShareError(t("program.invalidFormat"));
       setShareBusy(false);
       return;
     }
 
     if (parsed.schemaVersion !== 1) {
-      setShareError("Ugyldig schemaVersion");
+      setShareError(t("settings.schemaError"));
       setShareBusy(false);
       return;
     }
@@ -316,7 +402,7 @@ export default function Settings() {
     const program = parsed.program && typeof parsed.program === "object" ? parsed.program : null;
     const days = Array.isArray(parsed.days) ? parsed.days : [];
     if (!program || typeof program.name !== "string" || days.length === 0) {
-      setShareError("Mangler programdata");
+      setShareError(t("settings.missingData"));
       setShareBusy(false);
       return;
     }
@@ -400,9 +486,9 @@ export default function Settings() {
       setShareOpen(null);
       setShareImportText("");
       setShareSetActive(true);
-      Alert.alert("Import ferdig", "Program er importert.");
+      Alert.alert(t("settings.importDone"), t("program.importSuccess"));
     } catch {
-      setShareError("Import feilet. Sjekk formatet.");
+      setShareError(t("program.importFailed"));
     } finally {
       setShareBusy(false);
     }
@@ -411,68 +497,11 @@ export default function Settings() {
   async function openCsvExport() {
     setBackupBusy(true);
     try {
-      await ensureDb();
-      const db = getDb();
-      const rows = await db.getAllAsync<CsvRow>(
-        `SELECT s.id as set_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at,
-                w.date as workout_date, w.day_index, w.program_id, p.name as program_name
-         FROM sets s
-         LEFT JOIN workouts w ON s.workout_id = w.id
-         LEFT JOIN programs p ON w.program_id = p.id
-         ORDER BY s.created_at ASC`
-      );
-
-      const header = [
-        "date",
-        "program",
-        "day",
-        "exerciseId",
-        "displayName",
-        "weight",
-        "reps",
-        "rpe",
-        "setType",
-        "warmup",
-        "notes",
-      ];
-
-      const escape = (v: string | number | null | undefined) => {
-        const s = v == null ? "" : String(v);
-        if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-          return `"${s.replace(/"/g, '""')}"`;
-        }
-        return s;
-      };
-
-      const lines = [header.join(",")];
-      for (const r of rows ?? []) {
-        const exId = r.exercise_id ? String(r.exercise_id) : resolveExerciseId(r.exercise_name);
-        const display = exId ? displayNameFor(exId) : r.exercise_name;
-        const day = Number.isFinite(r.day_index) ? Number(r.day_index) + 1 : "";
-        const programLabel = r.program_name ?? r.program_id ?? "";
-        lines.push(
-          [
-            r.workout_date ?? r.created_at?.slice(0, 10) ?? "",
-            programLabel,
-            day,
-            exId ?? "",
-            display,
-            r.weight ?? "",
-            r.reps ?? "",
-            r.rpe ?? "",
-            "",
-            "",
-            "",
-          ]
-            .map(escape)
-            .join(",")
-        );
-      }
-
-      setBackupCsvText(lines.join("\n"));
+      const csv = await exportCsv();
+      setBackupCsvText(csv);
       setBackupOpen("csv");
     } catch {
-      Alert.alert("Feil", "Kunne ikke eksportere CSV.");
+      Alert.alert(t("common.error"), t("settings.couldNotExport"));
     } finally {
       setBackupBusy(false);
     }
@@ -490,33 +519,33 @@ export default function Settings() {
       );
       const count = row?.c ?? 0;
       if (count === 0) {
-        Alert.alert("Health check", "Ingen orphan sets funnet.");
+        Alert.alert(t("settings.healthCheck"), t("settings.noOrphans"));
         return;
       }
 
       Alert.alert(
-        "Health check",
-        `Fant ${count} orphan sets. Vil du rydde?`,
+        t("settings.healthCheck"),
+        t("settings.orphansFound", { n: count }),
         [
-          { text: "Ignorer", style: "cancel" },
+          { text: t("settings.ignore"), style: "cancel" },
           {
-            text: "Slett",
+            text: t("common.delete"),
             style: "destructive",
             onPress: async () => {
               try {
                 await db.execAsync(
                   `DELETE FROM sets WHERE workout_id NOT IN (SELECT id FROM workouts)`
                 );
-                Alert.alert("Ryddet", "Orphan sets slettet.");
+                Alert.alert(t("settings.cleaned"), t("settings.orphansCleaned"));
               } catch {
-                Alert.alert("Feil", "Kunne ikke rydde orphan sets.");
+                Alert.alert(t("common.error"), t("settings.couldNotClean"));
               }
             },
           },
         ]
       );
     } catch {
-      Alert.alert("Feil", "Health check feilet.");
+      Alert.alert(t("common.error"), t("settings.healthCheck"));
     }
   }
 
@@ -539,9 +568,9 @@ export default function Settings() {
       );
       await db.runAsync(`DELETE FROM sets WHERE id = ?`, [setId]);
       await db.runAsync(`DELETE FROM workouts WHERE id = ?`, [workoutId]);
-      Alert.alert("Sanity check", "OK");
+      Alert.alert(t("settings.sanityOk"), t("common.ok"));
     } catch (err) {
-      Alert.alert("Sanity check feilet", String(err));
+      Alert.alert(t("settings.sanityFailed"), String(err));
     }
   }
 
@@ -572,7 +601,7 @@ export default function Settings() {
       setHistoryRows(rows ?? []);
       setHistorySelection(preselectTests ? nextSelection : {});
     } catch {
-      Alert.alert("Feil", "Kunne ikke hente øvelsesliste.");
+      Alert.alert(t("common.error"), t("settings.noExercisesFound"));
     } finally {
       setDataToolsBusy(false);
     }
@@ -595,7 +624,7 @@ export default function Settings() {
   async function deleteSelectedExercises() {
     const ids = Object.keys(historySelection).filter((k) => historySelection[k]);
     if (ids.length === 0) {
-      Alert.alert("Ingen valgt", "Velg én eller flere øvelser først.");
+      Alert.alert(t("settings.noSelection"), t("settings.noSelectionMsg"));
       return;
     }
     try {
@@ -608,12 +637,12 @@ export default function Settings() {
       );
       const count = countRow?.c ?? 0;
       Alert.alert(
-        "Bekreft sletting",
-        `Slette ${count} sett fra ${ids.length} øvelse(r)?`,
+        t("settings.confirmDelete"),
+        t("settings.confirmDeleteMsg", { sets: count, exercises: ids.length }),
         [
-          { text: "Avbryt", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           {
-            text: "Slett",
+            text: t("common.delete"),
             style: "destructive",
             onPress: async () => {
               try {
@@ -633,19 +662,19 @@ export default function Settings() {
                 await db.execAsync("COMMIT");
                 await loadExerciseHistory(false);
                 clearHistorySelection();
-                Alert.alert("Ferdig", "Historikk slettet.");
+                Alert.alert(t("common.done"), t("settings.historyDeleted"));
               } catch {
                 try {
                   await db.execAsync("ROLLBACK");
                 } catch {}
-                Alert.alert("Feil", "Kunne ikke slette historikk.");
+                Alert.alert(t("common.error"), t("settings.couldNotDelete"));
               }
             },
           },
         ]
       );
     } catch {
-      Alert.alert("Feil", "Kunne ikke beregne sletting.");
+      Alert.alert(t("common.error"), t("settings.couldNotDelete"));
     }
   }
 
@@ -660,13 +689,13 @@ export default function Settings() {
       );
       const count = countRow?.c ?? 0;
       if (count === 0) {
-        Alert.alert("Ingen tomme økter", "Fant ingen økter uten sett.");
+        Alert.alert(t("settings.noEmpty"), t("settings.noEmptyMsg"));
         return;
       }
-      Alert.alert("Slett tomme økter?", `Slette ${count} tomme økter?`, [
-        { text: "Avbryt", style: "cancel" },
+      Alert.alert(t("settings.deleteEmpty"), t("settings.deleteEmptyMsg", { n: count }), [
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Slett",
+          text: t("common.delete"),
           style: "destructive",
           onPress: async () => {
             try {
@@ -674,26 +703,26 @@ export default function Settings() {
                 `DELETE FROM workouts
                  WHERE id NOT IN (SELECT DISTINCT workout_id FROM sets WHERE workout_id IS NOT NULL)`
               );
-              Alert.alert("Ferdig", "Tomme økter slettet.");
+              Alert.alert(t("common.done"), t("settings.emptyDeleted"));
             } catch {
-              Alert.alert("Feil", "Kunne ikke slette tomme økter.");
+              Alert.alert(t("common.error"), t("settings.couldNotDeleteEmpty"));
             }
           },
         },
       ]);
     } catch {
-      Alert.alert("Feil", "Kunne ikke sjekke tomme økter.");
+      Alert.alert(t("common.error"), t("settings.couldNotDeleteEmpty"));
     }
   }
 
   async function resetAllData() {
     Alert.alert(
-      "Nullstill alt?",
-      "Dette sletter all lokal data (økter, sett, programmer, targets, PR). Fortsette?",
+      t("settings.resetAll"),
+      t("settings.resetAllMsg"),
       [
-        { text: "Avbryt", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Slett alt",
+          text: t("settings.deleteAll"),
           style: "destructive",
           onPress: async () => {
             try {
@@ -714,13 +743,13 @@ export default function Settings() {
               await ProgramStore.ensurePrograms();
               await loadSettings();
               setDataToolsOpen(false);
-              Alert.alert("Nullstilt", "Alt er slettet. Standardprogram er lagt tilbake.");
+              Alert.alert(t("settings.resetDone"), t("settings.resetDoneMsg"));
             } catch {
               try {
                 const db = getDb();
                 await db.execAsync("ROLLBACK");
               } catch {}
-              Alert.alert("Feil", "Kunne ikke nullstille data.");
+              Alert.alert(t("common.error"), t("settings.couldNotReset"));
             }
           },
         },
@@ -731,208 +760,35 @@ export default function Settings() {
   async function handleImport() {
     setBackupBusy(true);
     setImportError(null);
-    let parsed: any = null;
-    try {
-      parsed = JSON.parse(importText);
-    } catch {
-      setImportError("Ugyldig JSON");
+
+    const result = await importBackup(importText, importMode);
+
+    if (!result.success) {
+      const errorMap: Record<string, string> = {
+        invalid_json: t("program.invalidJson"),
+        invalid_format: t("program.invalidFormat"),
+        backup_too_new: t("settings.backupTooNew"),
+        backup_empty: t("settings.backupEmpty"),
+        import_failed: t("settings.importFailed"),
+      };
+      setImportError(errorMap[result.error ?? ""] ?? t("settings.importFailed"));
       setBackupBusy(false);
       return;
     }
 
-    const rawData =
-      parsed && typeof parsed === "object"
-        ? parsed.data && typeof parsed.data === "object"
-          ? parsed.data
-          : parsed
-        : null;
-    if (!rawData || typeof rawData !== "object") {
-      setImportError("Ugyldig backup-format");
-      setBackupBusy(false);
-      return;
-    }
-
-    const schemaVersion = parsed?.schemaVersion ?? parsed?.version ?? 1;
-    if (schemaVersion > CURRENT_SCHEMA_VERSION) {
-      setImportError("Backup er nyere enn appen. Oppdater appen for å importere.");
-      setBackupBusy(false);
-      return;
-    }
-
-    const data = rawData as Record<string, unknown>;
-    const workouts = Array.isArray(data.workouts) ? data.workouts : [];
-    const sets = Array.isArray(data.sets) ? data.sets : [];
-    const settings = Array.isArray(data.settings) ? data.settings : [];
-    const programs = Array.isArray(data.programs) ? data.programs : [];
-    const programDays = Array.isArray(data.program_days) ? data.program_days : [];
-    const programDayExercises = Array.isArray(data.program_day_exercises) ? data.program_day_exercises : [];
-    const programAlternatives = Array.isArray(data.program_exercise_alternatives) ? data.program_exercise_alternatives : [];
-    const programReplacements = Array.isArray(data.program_replacements) ? data.program_replacements : [];
-    const exerciseTargets = Array.isArray(data.exercise_targets) ? data.exercise_targets : [];
-    const prRecords = Array.isArray(data.pr_records) ? data.pr_records : [];
-
-    if (
-      workouts.length === 0 &&
-      sets.length === 0 &&
-      settings.length === 0 &&
-      programs.length === 0 &&
-      programDays.length === 0 &&
-      programDayExercises.length === 0 &&
-      programAlternatives.length === 0 &&
-      programReplacements.length === 0 &&
-      exerciseTargets.length === 0 &&
-      prRecords.length === 0
-    ) {
-      setImportError("Backup er tom eller mangler data.");
-      setBackupBusy(false);
-      return;
-    }
-
-    try {
-      await ensureDb();
-      const db = getDb();
-      const verb = importMode === "fresh" ? "INSERT INTO" : "INSERT OR IGNORE INTO";
-
-      await db.execAsync("BEGIN");
-      if (importMode === "fresh") {
-        await db.execAsync("DELETE FROM sets");
-        await db.execAsync("DELETE FROM workouts");
-        await db.execAsync("DELETE FROM program_exercise_alternatives");
-        await db.execAsync("DELETE FROM program_day_exercises");
-        await db.execAsync("DELETE FROM program_days");
-        await db.execAsync("DELETE FROM program_replacements");
-        await db.execAsync("DELETE FROM exercise_targets");
-        await db.execAsync("DELETE FROM pr_records");
-        await db.execAsync("DELETE FROM programs");
-        await db.execAsync("DELETE FROM settings");
-      }
-
-      for (const w of workouts) {
-        await db.runAsync(
-          `${verb} workouts(id, date, program_mode, day_key, back_status, notes, day_index, started_at)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            w.id,
-            w.date,
-            w.program_mode,
-            w.day_key,
-            w.back_status,
-            w.notes ?? null,
-            w.day_index ?? null,
-            w.started_at ?? null,
-          ]
-        );
-      }
-
-      for (const s of sets) {
-        await db.runAsync(
-          `${verb} sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            s.id,
-            s.workout_id,
-            s.exercise_name,
-            s.set_index,
-            s.weight,
-            s.reps,
-            s.rpe ?? null,
-            s.created_at,
-            s.exercise_id ?? null,
-          ]
-        );
-      }
-
-      for (const s of settings) {
-        await db.runAsync(`${verb} settings(key, value) VALUES(?, ?)`, [s.key, s.value]);
-      }
-
-      for (const p of programs) {
-        await db.runAsync(
-          `${verb} programs(id, name, mode, json, created_at, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?)`,
-          [p.id, p.name, p.mode ?? null, p.json, p.created_at, p.updated_at]
-        );
-      }
-
-      for (const d of programDays) {
-        await db.runAsync(
-          `${verb} program_days(id, program_id, day_index, name)
-           VALUES(?, ?, ?, ?)`,
-          [d.id, d.program_id, d.day_index, d.name]
-        );
-      }
-
-      for (const b of programDayExercises) {
-        await db.runAsync(
-          `${verb} program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-          [b.id, b.program_id, b.day_index, b.sort_index, b.type, b.ex_id ?? null, b.a_id ?? null, b.b_id ?? null]
-        );
-      }
-
-      for (const a of programAlternatives) {
-        await db.runAsync(
-          `${verb} program_exercise_alternatives(id, program_id, day_index, exercise_id, alt_exercise_id, sort_index)
-           VALUES(?, ?, ?, ?, ?, ?)`,
-          [a.id, a.program_id, a.day_index, a.exercise_id, a.alt_exercise_id, a.sort_index]
-        );
-      }
-
-      for (const r of programReplacements) {
-        await db.runAsync(
-          `${verb} program_replacements(id, program_id, day_index, original_ex_id, replaced_ex_id, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?)`,
-          [r.id, r.program_id, r.day_index, r.original_ex_id, r.replaced_ex_id, r.updated_at]
-        );
-      }
-
-      for (const t of exerciseTargets) {
-        await db.runAsync(
-          `${verb} exercise_targets(id, program_id, exercise_id, rep_min, rep_max, increment_kg, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?, ?)`,
-          [t.id, t.program_id, t.exercise_id, t.rep_min, t.rep_max, t.increment_kg, t.updated_at]
-        );
-      }
-
-      for (const pr of prRecords) {
-        await db.runAsync(
-          `${verb} pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            pr.exercise_id,
-            pr.type,
-            pr.value,
-            pr.reps ?? null,
-            pr.weight ?? null,
-            pr.set_id ?? null,
-            pr.date ?? null,
-            pr.program_id ?? "",
-          ]
-        );
-      }
-
-      await db.execAsync("COMMIT");
-      await loadSettings();
-      setBackupOpen(null);
-      setImportText("");
-      setImportMode("merge");
-      Alert.alert(
-        "Import ferdig",
-        "Data er importert. Vil du rydde bort testdata nå?",
-        [
-          { text: "Senere", style: "cancel" },
-          { text: "Rydd nå", onPress: () => openDataTools(true) },
-        ]
-      );
-    } catch (err) {
-      try {
-        const db = getDb();
-        await db.execAsync("ROLLBACK");
-      } catch {}
-      setImportError("Import feilet. Sjekk formatet.");
-    } finally {
-      setBackupBusy(false);
-    }
+    await loadSettings();
+    setBackupOpen(null);
+    setImportText("");
+    setImportMode("merge");
+    setBackupBusy(false);
+    Alert.alert(
+      t("settings.importDone"),
+      t("settings.importDoneMsg"),
+      [
+        { text: t("settings.importLater"), style: "cancel" },
+        { text: t("settings.importCleanNow"), onPress: () => openDataTools(true) },
+      ]
+    );
   }
 
   const filteredHistoryRows = useMemo(() => {
@@ -951,27 +807,27 @@ export default function Settings() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 80 }}>
-        <TopBar title="Innstillinger" subtitle="System og backup" left={<IconButton icon="menu" onPress={openDrawer} />} />
+        <TopBar title={t("settings.title")} subtitle={t("settings.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
         <Text style={{ color: theme.muted }}>
-          Her styrer du standardvalg. (Logg har også timer-innstillinger via gear ved rest-chipen.)
+          {t("settings.description")}
         </Text>
 
         {workoutLocked ? (
           <Card style={{ borderColor: theme.warn }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono }}>
-              Økt pågår{lockedDayLabel ? ` (${lockedDayLabel})` : ""} – endringer låst.
+              {t("settings.lockedDuringWorkout", { day: lockedDayLabel ? ` (${lockedDayLabel})` : "" })}
             </Text>
           </Card>
         ) : null}
 
-        <Card title="PROGRAMMODE">
+        <Card title={t("settings.programMode")}>
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             <Chip
-              text="Standard"
+              text={t("settings.programMode.standard")}
               active={programMode === "normal"}
               onPress={() => {
                 if (workoutLocked) {
-                  Alert.alert("Låst under aktiv økt", "Avslutt økten før du bytter program.");
+                  Alert.alert(t("settings.lockedAlert"), t("settings.lockedAlertMsg", { setting: "program" }));
                   return;
                 }
                 setProgramMode("normal");
@@ -979,11 +835,11 @@ export default function Settings() {
               }}
             />
             <Chip
-              text="Ryggvennlig"
+              text={t("settings.programMode.back")}
               active={programMode === "back"}
               onPress={() => {
                 if (workoutLocked) {
-                  Alert.alert("Låst under aktiv økt", "Avslutt økten før du bytter program.");
+                  Alert.alert(t("settings.lockedAlert"), t("settings.lockedAlertMsg", { setting: "program" }));
                   return;
                 }
                 setProgramMode("back");
@@ -993,19 +849,19 @@ export default function Settings() {
           </View>
 
           <Text style={{ color: theme.muted }}>
-            Dette bestemmer hvilket program som er default når du starter en økt.
+            {t("settings.programMode.desc")}
           </Text>
         </Card>
 
-        <Card title="TEMA">
+        <Card title={t("settings.theme")}>
           <Text style={{ color: theme.muted, marginBottom: 8 }}>
-            Velg lyst, mørkt eller følg systemet.
+            {t("settings.theme.desc")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             {(["system", "light", "dark"] as ThemeModeSetting[]).map((mode) => (
               <Chip
                 key={`theme_${mode}`}
-                text={mode === "system" ? "System" : mode === "light" ? "Lys" : "Mørk"}
+                text={t(`settings.theme.${mode}`)}
                 active={themeMode === mode}
                 onPress={() => {
                   setThemeModeState(mode);
@@ -1017,20 +873,38 @@ export default function Settings() {
           </View>
         </Card>
 
-        <Card title="STANDARD DAG">
+        <Card title={t("settings.language")}>
           <Text style={{ color: theme.muted, marginBottom: 8 }}>
-            Velg hvilken dag som er «default» når du åpner Logg.
+            {t("settings.language.desc")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+            {(["nb", "en"] as Locale[]).map((loc) => (
+              <Chip
+                key={`lang_${loc}`}
+                text={t(`settings.language.${loc}`)}
+                active={locale === loc}
+                onPress={() => setI18nLocale(loc)}
+              />
+            ))}
+          </View>
+        </Card>
+
+        <WeightUnitCard />
+
+        <Card title={t("settings.defaultDay")}>
+          <Text style={{ color: theme.muted, marginBottom: 8 }}>
+            {t("settings.defaultDay.desc")}
           </Text>
 
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             {[0, 1, 2, 3, 4].map((i) => (
               <Chip
                 key={`ddi_${i}`}
-                text={`Dag ${i + 1}`}
+                text={`${t("common.day")} ${i + 1}`}
                 active={defaultDayIndex === i}
                 onPress={() => {
                   if (workoutLocked) {
-                    Alert.alert("Låst under aktiv økt", "Avslutt økten før du bytter standard dag.");
+                    Alert.alert(t("settings.lockedAlert"), t("settings.lockedAlertMsg", { setting: t("settings.defaultDay") }));
                     return;
                   }
                   setDefaultDayIndex(i);
@@ -1041,9 +915,9 @@ export default function Settings() {
           </View>
         </Card>
 
-        <Card title="REST TIMER (DEFAULT)">
+        <Card title={t("settings.restTimer")}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ color: theme.text }}>Aktiv som standard</Text>
+            <Text style={{ color: theme.text }}>{t("settings.restTimer.active")}</Text>
             <Switch
               value={restEnabled}
               onValueChange={(v) => {
@@ -1054,7 +928,7 @@ export default function Settings() {
           </View>
 
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ color: theme.text }}>Vibrer (kun i app)</Text>
+            <Text style={{ color: theme.text }}>{t("settings.restTimer.vibrate")}</Text>
             <Switch
               value={restVibrate}
               onValueChange={(v) => {
@@ -1064,7 +938,7 @@ export default function Settings() {
             />
           </View>
 
-          <Text style={{ color: theme.muted, marginTop: 6 }}>Lengde (sekunder)</Text>
+          <Text style={{ color: theme.muted, marginTop: 6 }}>{t("settings.restTimer.length")}</Text>
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             {[90, 120, 150, 180].map((sec) => (
               <Chip
@@ -1080,16 +954,16 @@ export default function Settings() {
           </View>
 
           <Text style={{ color: theme.muted }}>
-            (Expo Go: ingen «sikker» vibrering i bakgrunn/locked. Det tar vi i dev build senere.)
+            {t("settings.restTimer.note")}
           </Text>
         </Card>
 
-        <Card title="SUPERSET">
+        <Card title={t("settings.superset")}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={{ color: theme.text }}>Auto annethvert sett</Text>
+              <Text style={{ color: theme.text }}>{t("settings.superset.autoAlternate")}</Text>
               <Text style={{ color: theme.muted }}>
-                Når aktiv: + i supersett logger A, så B, så A, osv.
+                {t("settings.superset.desc")}
               </Text>
             </View>
             <Switch
@@ -1102,60 +976,88 @@ export default function Settings() {
           </View>
         </Card>
 
-        <Card title="BACKUP">
+        <Card title={t("notifications.title")}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={{ color: theme.text }}>{t("notifications.workoutReminders")}</Text>
+            </View>
+            <Switch
+              value={reminderEnabled}
+              onValueChange={handleToggleReminder}
+            />
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={{ color: theme.text }}>{t("notifications.restDaySuggestions")}</Text>
+            </View>
+            <Switch
+              value={restDayEnabled}
+              onValueChange={handleToggleRestDay}
+            />
+          </View>
+          {!notifPermission ? (
+            <Btn label={t("notifications.requestPermission")} onPress={handleRequestNotifPermission} tone="accent" />
+          ) : null}
+        </Card>
+
+        <Card title={t("settings.backup")}>
           <Text style={{ color: theme.muted }}>
-            Eksporter eller importer alt lokalt. Ingen data sendes noen steder.
+            {t("settings.backup.desc")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <Btn label="Eksporter JSON" onPress={openExport} tone="accent" />
-            <Btn label="Importer JSON" onPress={() => setBackupOpen("import")} />
+            <Btn label={t("settings.backup.exportJson")} onPress={openExport} tone="accent" />
+            <Btn label={t("settings.backup.importJson")} onPress={() => setBackupOpen("import")} />
           </View>
           <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-            <Btn label="Eksporter CSV" onPress={openCsvExport} />
-            <Btn label="Health check" onPress={runHealthCheck} />
+            <Btn label={t("settings.exportFile")} onPress={handleExportToFile} tone="accent" />
+            <Btn label={t("settings.importFile")} onPress={handleImportFromFile} />
           </View>
-          {backupBusy ? <Text style={{ color: theme.muted }}>Jobber...</Text> : null}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <Btn label={t("settings.backup.exportCsv")} onPress={openCsvExport} />
+            <Btn label={t("settings.backup.healthCheck")} onPress={runHealthCheck} />
+          </View>
+          {backupBusy ? <Text style={{ color: theme.muted }}>{t("common.working")}</Text> : null}
         </Card>
 
-        <Card title="DEL PROGRAM">
+        <Card title={t("settings.shareProgram")}>
           <Text style={{ color: theme.muted }}>
-            Eksporter eller importer kun aktivt program (ingen historikk).
+            {t("settings.shareProgram.desc")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <Btn label="Eksporter program" onPress={openProgramExport} tone="accent" />
-            <Btn label="Importer program" onPress={() => setShareOpen("import")} />
+            <Btn label={t("settings.shareProgram.export")} onPress={openProgramExport} tone="accent" />
+            <Btn label={t("settings.shareProgram.import")} onPress={() => setShareOpen("import")} />
           </View>
-          {shareBusy ? <Text style={{ color: theme.muted }}>Jobber...</Text> : null}
+          {shareBusy ? <Text style={{ color: theme.muted }}>{t("common.working")}</Text> : null}
         </Card>
 
-        <Card title="DATA & RYDDING">
+        <Card title={t("settings.dataCleanup")}>
           <Text style={{ color: theme.muted }}>
-            Rydd testdata og tomme økter. Brukes etter import eller ved opprydding.
+            {t("settings.dataCleanup.desc")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <Btn label="Åpne" onPress={() => openDataTools(false)} tone="accent" />
-            <Btn label="Slett tomme økter" onPress={deleteEmptyWorkouts} />
+            <Btn label={t("settings.dataCleanup.open")} onPress={() => openDataTools(false)} tone="accent" />
+            <Btn label={t("settings.dataCleanup.deleteEmpty")} onPress={deleteEmptyWorkouts} />
           </View>
-          {dataToolsBusy ? <Text style={{ color: theme.muted }}>Henter historikk...</Text> : null}
+          {dataToolsBusy ? <Text style={{ color: theme.muted }}>{t("settings.fetchingHistory")}</Text> : null}
         </Card>
 
-        <Card title="VERKTOY">
+        <Card title={t("settings.tools")}>
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             <Btn
-              label="Nullstill aktiv økt"
+              label={t("settings.tools.resetWorkout")}
               tone="danger"
               onPress={() => {
                 Alert.alert(
-                  "Nullstill aktiv økt?",
-                  'Dette fjerner kun "activeWorkoutId" så du slipper å være låst i en økt. Data i DB slettes ikke.',
+                  t("settings.resetWorkout"),
+                  t("settings.resetWorkoutMsg"),
                   [
-                    { text: "Avbryt", style: "cancel" },
+                    { text: t("common.cancel"), style: "cancel" },
                     {
-                      text: "Nullstill",
+                      text: t("settings.tools.resetWorkout"),
                       style: "destructive",
                       onPress: () => {
                         setSettingAsync("activeWorkoutId", "").catch(() => {});
-                        Alert.alert("OK", "Active workout er nullstilt.");
+                        Alert.alert(t("common.ok"), t("settings.resetWorkoutDone"));
                       },
                     },
                   ]
@@ -1163,19 +1065,27 @@ export default function Settings() {
               }}
             />
             <Btn
-              label="Vis introduksjon igjen"
+              label={t("settings.tools.showIntro")}
               onPress={() => setShowOnboarding(true)}
             />
           </View>
 
           <Text style={{ color: theme.muted }}>
-            Bruk backup-funksjonen for eksport/import av hele databasen.
+            {t("settings.tools.backupNote")}
           </Text>
           {__DEV__ ? (
             <View style={{ marginTop: 8 }}>
-              <Btn label="Sanity check (dev)" onPress={runSanityCheck} />
+              <Btn label={t("settings.tools.sanityCheck")} onPress={runSanityCheck} />
             </View>
           ) : null}
+        </Card>
+
+        {/* Patch Notes */}
+        <Card title={t("patchNotes.title")}>
+          <Text style={{ color: theme.muted, marginBottom: 8 }}>
+            v{CURRENT_VERSION}
+          </Text>
+          <Btn label={t("patchNotes.whatsNew", { version: CURRENT_VERSION })} onPress={() => setShowPatchNotes(true)} tone="accent" />
         </Card>
       </ScrollView>
 
@@ -1189,10 +1099,10 @@ export default function Settings() {
       />
 
       <Modal visible={backupOpen !== null} transparent animationType="fade" onRequestClose={() => setBackupOpen(null)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
-              {backupOpen === "export" ? "Backup eksport" : backupOpen === "csv" ? "CSV eksport" : "Backup import"}
+              {backupOpen === "export" ? t("settings.modal.backupExport") : backupOpen === "csv" ? t("settings.modal.csvExport") : t("settings.modal.backupImport")}
             </Text>
 
             {backupOpen === "export" ? (
@@ -1203,8 +1113,8 @@ export default function Settings() {
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1213,8 +1123,8 @@ export default function Settings() {
                   }}
                 />
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label="Kopier" onPress={() => copyText(backupText)} tone="accent" />
-                  <Btn label="Lukk" onPress={() => setBackupOpen(null)} />
+                  <Btn label={t("common.copy")} onPress={() => copyText(backupText)} tone="accent" />
+                  <Btn label={t("common.close")} onPress={() => setBackupOpen(null)} />
                 </View>
               </>
             ) : backupOpen === "csv" ? (
@@ -1225,8 +1135,8 @@ export default function Settings() {
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1235,8 +1145,8 @@ export default function Settings() {
                   }}
                 />
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label="Kopier" onPress={() => copyText(backupCsvText)} tone="accent" />
-                  <Btn label="Lukk" onPress={() => setBackupOpen(null)} />
+                  <Btn label={t("common.copy")} onPress={() => copyText(backupCsvText)} tone="accent" />
+                  <Btn label={t("common.close")} onPress={() => setBackupOpen(null)} />
                 </View>
               </>
             ) : (
@@ -1244,13 +1154,13 @@ export default function Settings() {
                 <TextField
                   value={importText}
                   onChangeText={setImportText}
-                  placeholder="Lim inn JSON"
+                  placeholder={t("settings.paste")}
                   placeholderTextColor={theme.muted}
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1260,7 +1170,7 @@ export default function Settings() {
                 />
                 {importError ? <Text style={{ color: theme.danger }}>{importError}</Text> : null}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ color: theme.text }}>Ny profil (slett lokalt)</Text>
+                  <Text style={{ color: theme.text }}>{t("settings.newProfile")}</Text>
                   <Switch
                     value={importMode === "fresh"}
                     onValueChange={(v) => setImportMode(v ? "fresh" : "merge")}
@@ -1268,20 +1178,20 @@ export default function Settings() {
                 </View>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn
-                    label="Importer"
+                    label={t("program.import")}
                     onPress={() => {
                       if (importMode !== "fresh") {
                         handleImport();
                         return;
                       }
-                      Alert.alert("Ny profil", "Dette sletter lokale data. Fortsette?", [
-                        { text: "Avbryt", style: "cancel" },
-                        { text: "Slett og importer", style: "destructive", onPress: handleImport },
+                      Alert.alert(t("settings.newProfileConfirm"), t("settings.newProfileMsg"), [
+                        { text: t("common.cancel"), style: "cancel" },
+                        { text: t("settings.deleteAndImport"), style: "destructive", onPress: handleImport },
                       ]);
                     }}
                     tone="accent"
                   />
-                  <Btn label="Avbryt" onPress={() => setBackupOpen(null)} />
+                  <Btn label={t("common.cancel")} onPress={() => setBackupOpen(null)} />
                 </View>
               </>
             )}
@@ -1290,19 +1200,19 @@ export default function Settings() {
       </Modal>
 
       <Modal visible={dataToolsOpen} transparent animationType="fade" onRequestClose={() => setDataToolsOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "90%" }}>
-            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>Data & Rydding</Text>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "90%" }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("settings.modal.dataCleanup")}</Text>
 
             <TextField
               value={historySearch}
               onChangeText={setHistorySearch}
-              placeholder="Søk øvelse..."
+              placeholder={t("common.search")}
               placeholderTextColor={theme.muted}
               style={{
                 color: theme.text,
-                backgroundColor: theme.panel,
-                borderColor: theme.line,
+                backgroundColor: theme.glass,
+                borderColor: theme.glassBorder,
                 borderWidth: 1,
                 borderRadius: 14,
                 padding: 12,
@@ -1323,55 +1233,55 @@ export default function Settings() {
                     key={row.exercise_id}
                     onPress={() => toggleHistorySelection(row.exercise_id)}
                     style={{
-                      borderColor: selected ? theme.accent : theme.line,
+                      borderColor: selected ? theme.accent : theme.glassBorder,
                       borderWidth: 1,
                       borderRadius: 12,
                       padding: 10,
-                      backgroundColor: theme.panel,
+                      backgroundColor: theme.glass,
                       gap: 4,
                     }}
                   >
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                       <Text style={{ color: theme.text, fontSize: 15 }}>{name || row.exercise_id}</Text>
                       {selected ? (
-                        <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>Valgt</Text>
+                        <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>{t("common.yes")}</Text>
                       ) : null}
                     </View>
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                      {row.exercise_id} · {row.setCount} sett · {row.lastDate ? row.lastDate.slice(0, 10) : "-"}
+                      {row.exercise_id} · {row.setCount} {t("common.sets").toLowerCase()} · {row.lastDate ? row.lastDate.slice(0, 10) : "-"}
                     </Text>
                     {isTest ? (
                       <Text style={{ color: theme.danger, fontFamily: theme.mono, fontSize: 11 }}>
-                        Mulig test‑øvelse
+                        {t("settings.possibleTest")}
                       </Text>
                     ) : null}
                   </Pressable>
                 );
               })}
               {filteredHistoryRows.length === 0 ? (
-                <Text style={{ color: theme.muted }}>Ingen øvelser funnet.</Text>
+                <Text style={{ color: theme.muted }}>{t("settings.noExercisesFound")}</Text>
               ) : null}
             </ScrollView>
 
             <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-              <Btn label="Velg ingen" onPress={clearHistorySelection} />
-              <Btn label="Slett valgte øvelser" tone="danger" onPress={deleteSelectedExercises} />
-              <Btn label="Nullstill alt" tone="danger" onPress={resetAllData} />
+              <Btn label={t("settings.selectNone")} onPress={clearHistorySelection} />
+              <Btn label={t("settings.deleteSelected")} tone="danger" onPress={deleteSelectedExercises} />
+              <Btn label={t("settings.resetAllBtn")} tone="danger" onPress={resetAllData} />
             </View>
 
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Btn label="Slett tomme økter" onPress={deleteEmptyWorkouts} />
-              <Btn label="Lukk" onPress={() => setDataToolsOpen(false)} />
+              <Btn label={t("settings.dataCleanup.deleteEmpty")} onPress={deleteEmptyWorkouts} />
+              <Btn label={t("common.close")} onPress={() => setDataToolsOpen(false)} />
             </View>
           </View>
         </View>
       </Modal>
 
       <Modal visible={shareOpen !== null} transparent animationType="fade" onRequestClose={() => setShareOpen(null)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
-              {shareOpen === "export" ? "Del program (eksport)" : "Del program (import)"}
+              {shareOpen === "export" ? t("settings.modal.shareExport") : t("settings.modal.shareImport")}
             </Text>
 
             {shareOpen === "export" ? (
@@ -1382,8 +1292,8 @@ export default function Settings() {
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1392,8 +1302,8 @@ export default function Settings() {
                   }}
                 />
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label="Kopier" onPress={() => copyText(shareText)} tone="accent" />
-                  <Btn label="Lukk" onPress={() => setShareOpen(null)} />
+                  <Btn label={t("common.copy")} onPress={() => copyText(shareText)} tone="accent" />
+                  <Btn label={t("common.close")} onPress={() => setShareOpen(null)} />
                 </View>
               </>
             ) : (
@@ -1401,13 +1311,13 @@ export default function Settings() {
                 <TextField
                   value={shareImportText}
                   onChangeText={setShareImportText}
-                  placeholder="Lim inn JSON"
+                  placeholder={t("settings.paste")}
                   placeholderTextColor={theme.muted}
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1417,16 +1327,51 @@ export default function Settings() {
                 />
                 {shareError ? <Text style={{ color: theme.danger }}>{shareError}</Text> : null}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ color: theme.text }}>Sett som aktivt program</Text>
+                  <Text style={{ color: theme.text }}>{t("settings.setActiveProgram")}</Text>
                   <Switch value={shareSetActive} onValueChange={setShareSetActive} />
                 </View>
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label="Importer" onPress={handleProgramImport} tone="accent" />
-                  <Btn label="Avbryt" onPress={() => setShareOpen(null)} />
+                  <Btn label={t("program.import")} onPress={handleProgramImport} tone="accent" />
+                  <Btn label={t("common.cancel")} onPress={() => setShareOpen(null)} />
                 </View>
               </>
             )}
           </View>
+        </View>
+      </Modal>
+
+      {/* Patch Notes Modal */}
+      <Modal visible={showPatchNotes} transparent animationType="fade" onRequestClose={() => setShowPatchNotes(false)}>
+        <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.modalOverlay }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowPatchNotes(false)} />
+          <View style={{ marginHorizontal: 20, backgroundColor: theme.modalGlass, borderRadius: 20, padding: 20, maxHeight: "70%", gap: 16 }}>
+            <Text style={{ color: theme.text, fontSize: 20, fontFamily: theme.fontFamily.semibold, textAlign: "center" }}>
+              {t("patchNotes.whatsNew", { version: CURRENT_VERSION })}
+            </Text>
+            <ScrollView style={{ flexGrow: 0 }}>
+              {patchNotes.map((release) => (
+                <View key={release.version} style={{ marginBottom: 16, gap: 8 }}>
+                  <Text style={{ color: theme.accent, fontSize: 14, fontFamily: theme.fontFamily.semibold }}>
+                    v{release.version} — {release.date}
+                  </Text>
+                  {release.changes.map((change, i) => {
+                    const typeLabel = t(`patchNotes.${change.type}`);
+                    const typeColor = change.type === "new" ? theme.success : change.type === "improved" ? theme.accent : theme.warn;
+                    return (
+                      <View key={`${release.version}_${i}`} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: typeColor, marginTop: 2 }}>
+                          <Text style={{ color: "#FFFFFF", fontSize: 10, fontFamily: theme.fontFamily.semibold }}>{typeLabel}</Text>
+                        </View>
+                        <Text style={{ color: theme.text, fontSize: 14, flex: 1 }}>{t(change.key)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+            <Btn label={t("common.close")} onPress={() => setShowPatchNotes(false)} tone="accent" />
+          </View>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowPatchNotes(false)} />
         </View>
       </Modal>
     </Screen>

@@ -1,135 +1,230 @@
-# Gymdash � CONTEXT
+# Gymdash — CONTEXT
 
-## M�l
-Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse, med web-st�tte.
+## Mål
+Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 
-## Design spec (UI v2 � NY PALETTE)
-- Palette: lys base (off-white), dype n�ytraler for text, indigo accent.
-- Typografi: H1 28/32 semibold, H2 22/28 medium, body 15/22 regular, caption 12/16 mono.
-- Spacing scale: 6/10/14/18/24/32 (xs�xxl).
-- Card: radius 22, 1px line, soft shadow (sm/md), padding 18.
-- Buttons: primary (accent fill), secondary (outline), ghost (transparent).
-- Buttons: tydelig press feedback + disabled state.
-- Inputs: tydelig padding, focus-ring i accent, error-border i danger.
-- Chips: pill, active = accent + subtle fill.
-- TopBar: h�yere, tydelig tittel/subtittel + �UI v2� watermark.
-- List rows: aligned left/right, separators for klar rytme.
+## Design spec (UI v3 — Glassmorphism)
+- Palette: purple/orange glassmorphism. Dark: deep purple-black (#0D0B1A), Light: warm purple (#F8F5FF).
+- Accent: purple (#B668F5 dark / #7C3AED light) med orange (#F97316) som sekundær.
+- Glass cards: semi-transparent purple-tinted (`rgba(160,120,220,0.18)` light / `rgba(80,50,140,0.28)` dark), border i glassBorder.
+- AppBackground: gradient orbs (purple, orange, pink) bak transparent navigation containers.
+- VIKTIG: Ingen `elevation` på glass-elementer (Android rendrer hvit bakgrunn bak transparente views).
+- Typografi: Inter font family (400/500/600/700). H1 28 semibold, body 15, caption 11 mono.
+- Spacing scale: 6/10/14/18/24/32 (xs—xxl).
+- Card: radius 22, 1px glassBorder, padding 18. Ingen elevation.
+- Modern UI components: GradientButton, GlassCard, ProgressRing, StatPill, AnimatedNumber (src/ui/modern.tsx).
+- TopBar: tydelig tittel/subtittel, lineHeight med 1.3x multiplier.
+- Buttons: GradientButton (primary), outline, ghost. Haptic feedback.
+- Dark/light mode via ThemeProvider + useTheme() hook.
+- Navigation containers (Drawer sceneStyle, Stack contentStyle) har transparent bakgrunn.
+- Logo: stilisert dumbbell med purple→orange gradient, glass-card bakgrunn, upward arrow accent (GymdashLogo.tsx).
 
-## N�v�rende funksjonalitet (MVP)
-- Logg: dagvalg (1�5), start/avslutt �kt, sett-logg med kg/reps/RPE.
-- Logg: quick-input steppers (targets/inc), m�l/forrige/forslag per �velse, �n-trykk �Bruk forslag�.
-- Logg: supersett A/B alternering, mini-navigator og �Neste� scroll.
-- Logg: rest-timer med presets, auto-start og haptics/vibrasjon.
-- Logg: neste-dag forslag per program + dag-override med �Husk som neste�.
-- Logg: PR-banner ved nye pers (tungeste/e1RM/volum).
-- Logg: set-type (normal/warmup/dropset/restpause), +3 quick add, notater og cue/link per �velse.
-- Logg: superset auto-fokus til neste �velse etter set.
+## Nåværende funksjonalitet
+- Hjem: dashboard med daglig oppsummering, ukentlig statistikk, streak, siste PRs, quick actions.
+- Hjem: neste-økt forhåndsvisning (dagsnavn + øvelsesliste fra program) når ingen aktiv økt.
+- Hjem: varighet vises for fullførte økter (fra ended_at).
+- Hjem: progresjonsforslag-kort (bruk/avvis vektøkninger etter auto-progresjon).
+- Logg: dagvalg (1—10), start/avslutt økt (ended_at persisteres), sett-logg med kg/reps/RPE.
+- Logg: økt-maler — lagre økt som mal, last inn maler, mal-picker modal.
+- Logg: del økt-oppsummering via native share sheet.
+- Logg: periodisering-deload banner ved deload-uke.
+- Logg: auto-progresjon — analyserer økt ved avslutning, foreslår vektøkning når rep-mål er nådd.
+- Logg: quick-input steppers (targets/inc), mål/forrige per øvelse.
+- Logg: supersett A/B alternering, mini-navigator og «Neste» scroll.
+- Logg: rest-timer med presets, auto-start, haptics/vibrasjon + bakgrunnsnotifikasjoner (expo-notifications).
+- Logg: neste-dag forslag per program + dag-override.
+- Logg: PR-banner ved nye pers (tungeste/e1RM/volum). Første sett = baseline (ingen banner).
+- Logg: set-type (normal/warmup/dropset/restpause), +3 quick add, notater per sett og per økt.
+- Logg: superset auto-fokus til neste øvelse etter set.
+- Logg: «Bytt øvelse»-knapp med alternative-picker under trening.
+- Logg: KG/reps suffix-labels alltid synlige i inputfelt.
+- Logg: undo-sett (5 sek vindu med UndoToast etter logging, reverserer PR).
+- Logg: skivefordeling/plate calculator for stangøvelser (visuell mini-modal).
 - Navigasjon: Drawer med hamburger, ingen bottom tabs.
-- Program: program builder, flere programmer, alternativer per �velse (0�3).
-- Program: per �velse rep-range + increment (targets) via enkel modal.
+- Program: program builder, flere programmer, alternativer per øvelse (0—3).
+- Program: fleksibelt antall dager per program (1—10), +/- knapper i ukeoversikt.
+- Program: per øvelse rep-range + increment (targets) + auto-progresjon toggle via modal.
 - Program: targets inkluderer antall sett (target_sets).
-- Program: import/export av program (JSON), dupliser/rename/slett.
-- Program: innebygde templates inkl. �PPL 5-dagers (Brystfokus)� med targets + alternativer.
-- Analyse: �velsesgraf, overall strength, volumserie, muskelgruppe-sets og konsistens.
+- Program: import/export av program (JSON, 1—10 dager), dupliser/rename/slett.
+- Program: innebygde templates inkl. «PPL 5-dagers (Brystfokus)» med targets + alternativer.
+- Program: øvelsessøk med fuzzy matching + FlatList for ytelse (140+ øvelser + egne øvelser).
+- Program: egne øvelser — opprett, slett, med utstyr/merkelapper/increment.
+- Program: forbedret rekkefølge — MaterialIcons piler med haptics, deaktivert ved grense.
+- Program: periodisering — mesosyklus med deload-uker, uke-badge på programkort.
+- Program: del program via fil (native share sheet).
+- Analyse: øvelsesgraf, overall strength, volumserie, muskelgruppe-sets og konsistens.
 - Analyse: Strength Index-graf (e1RM-basert, uten warmup) + muskelgruppe-volum pr uke.
-- Kalender: m�nedsoverblikk med �kter per dato.
-- Settings: lokal backup/restore av hele DB (JSON).
+- Analyse: forbedrede grafer med Y/X-akser, rutenett, interaktive datapunkter.
+- Analyse: øvelsessammenligning — to øvelser side-om-side med stablede grafer + fargekodet legende.
+- Analyse: mål-system — sett vekt/volum/reps-mål per øvelse, progress bar, auto-oppnåelse.
+- Analyse: styrkenivå — beregning av beginner/novice/intermediate/advanced/elite per hovedløft.
+- Analyse: kroppssammensetning — vekttrend-graf siste 90 dager.
+- Analyse: muskelbalanse — radarkart over volum per muskelgruppe.
+- Kalender: månedsoverblikk med økter per dato + detaljvisning per økt.
+- Kropp: vekt/BMI registrering + liste + høyde i settings.
+- Kropp: fremgangsbilde per måling (PhotoPicker med kamera/galleri, fullskjerm forhåndsvisning).
+- Settings: lokal backup/restore av hele DB (JSON), CSV-export, health check.
 - Settings: del program (eksport/import av aktivt program uten historikk).
-- Settings: full backup/restore (JSON), CSV-export, health check (orphan sets).
-- Settings: Data & Rydding (liste per �velse, slett historikk, slett tomme �kter, nullstill alt).
-- Onboarding: intro vises f�rste gang og kan �pnes fra Settings.
-- Splash: AppLoading er oppgradert med fade + logo + minimum varighet i root.
+- Settings: Data & Rydding (liste per øvelse, slett historikk, slett tomme økter, nullstill alt).
+- Settings: tema-valg (system/lys/mørk), standard dag, rest-timer defaults.
+- Settings: språkvelger (norsk/engelsk).
+- Settings: vektenhet-velger (KG/LBS) — alle vekter konverteres ved visning/input.
+- Settings: "Hva er nytt"-seksjon med patch notes modal.
+- Settings: filbasert backup — eksporter til fil + del via native share, importer fra fil.
+- Settings: varsler — treningspåminnelser per ukedag, hviledag-forslag.
+- Onboarding: intro vises første gang og kan åpnes fra Settings.
+- Splash: fade + logo + minimum varighet i root.
+- Øvelsesbibliotek: ~140+ innebygde øvelser med tags, equipment, aliases, alternatives, lower_back_demanding/friendly.
+- Øvelsesbibliotek: egne øvelser — lagres i DB (custom_exercises), integrert i søk/visning/program.
+- Achievements: 25+ prestasjoner (milestones, strength, PR, volume, streak, social/fun).
+- Achievements: galleri med filter, tier-system (common/rare/epic/legendary), poeng.
+- Achievements: auto-sjekk etter sett logget og økt fullført, toast-notifikasjoner.
+- Achievements: del-knapp for opplåste prestasjoner via native share.
+- i18n: flerspråkstøtte (norsk bokmål + engelsk) via I18nProvider + useI18n() hook.
+- i18n: alle 9 skjermer fullt migrert, ~510+ translation keys.
+- Modaler: høy opacity (modalOverlay 0.85, modalGlass 0.92/0.95) for bedre lesbarhet.
 
 ## Arkitektur (viktigste filer)
-- app/_layout.tsx: Root layout (Drawer wrapper) + custom drawer content.
-- app/(tabs)/index.tsx (Logg): �ktflyt, settlogging, rest-timer, forslag/targets, navigator.
+- app/_layout.tsx: Root layout (Drawer wrapper) + custom drawer content + AppBackground + I18nProvider.
+- app/(tabs)/_layout.tsx: Stack layout med transparent contentStyle.
+- app/(tabs)/index.tsx (Hjem): dashboard med daglig oppsummering, ukentlig statistikk, streak, PRs, neste-økt preview.
+- app/(tabs)/log.tsx (Logg): øktflyt, settlogging, rest-timer, targets, navigator, exercise swap.
 - app/(tabs)/program.tsx (Program): program builder + target editor + import/export.
-- app/(tabs)/analysis.tsx (Analyse): graf per �velse + overall + volum/muskel/konsistens.
-- app/(tabs)/body.tsx (Kropp): vekt/BMI registrering + liste + h�yde i settings.
-- app/(tabs)/calendar.tsx (Kalender): m�nedskalender og �ktliste per dato.
-- app/(tabs)/settings.tsx (Settings): app-innstillinger + lokal backup/restore.
-- src/db.ts: SQLite init, schema + settings helpers, web OPFS fallback.
-- src/programStore.ts: program CRUD, defaults, active program per mode, replacements.
-- src/progressionStore.ts: targets (rep-range/increment) + forslag-regler.
-- src/exerciseLibrary.ts: �velsesdata, displayName/tags/increment/search + name->id lookup + bodyweight-flagg/faktor.
-- components/AppLoading.tsx: enkel loading/splash komponent.
+- app/(tabs)/analysis.tsx (Analyse): graf per øvelse + overall + volum/muskel/konsistens + sammenligning + mål.
+- app/(tabs)/body.tsx (Kropp): vekt/BMI registrering + liste.
+- app/(tabs)/calendar.tsx (Kalender): månedskalender og øktliste per dato + detaljmodal.
+- app/(tabs)/settings.tsx (Settings): app-innstillinger + backup/restore + tema + språk + patch notes.
+- app/(tabs)/achievements.tsx (Prestasjoner): achievement galleri + detalj-modal.
+- src/db.ts: SQLite init, schema + settings helpers + achievements tables + exercise_goals + custom_exercises + progression_log + formatDuration().
+- src/i18n.ts: i18n foundation (I18nProvider, useI18n, t(), ~450+ keys nb/en).
+- src/patchNotes.ts: changelog/patch notes system med i18n-keys.
+- src/programStore.ts: program CRUD, defaults, active program per mode, replacements, getNextWorkoutPreview().
+- src/goals.ts: exercise goal CRUD, auto-check, progress tracking (weight/volume/reps mål).
+- src/progressionStore.ts: targets (rep-range/increment/auto-progress) + auto-progresjon analyse + suggestion CRUD.
+- src/units.ts: vektenhet-konvertering (KG/LBS), useWeightUnit() hook, listener pattern.
+- src/plateCalculator.ts: skivefordeling for stangøvelser (greedy algorithm, fargekoding).
+- src/exerciseLibrary.ts: ~140+ innebygde + egne øvelser, tags/equipment/aliases/alternatives, searchExercises(), custom CRUD + cache.
+- src/achievements.ts: achievement definitions, check logic, unlock logic, progress tracking.
+- src/notifications.ts: expo-notifications for rest-timer bakgrunnsvarsel + treningspåminnelser + hviledag-sjekk.
+- src/fileSystem.ts: filbasert backup (save/pick/share) via expo-file-system + expo-sharing + expo-document-picker.
+- src/backup.ts: full database eksport/import (alle tabeller, schemaVersion 3).
+- src/sharing.ts: del økt-oppsummering, program, prestasjoner via native share.
+- src/templates.ts: økt-maler CRUD (workout_templates tabell).
+- src/periodization.ts: treningsperiodisering (mesosyklus, deload-uker, uke-avansering).
+- src/strengthStandards.ts: styrkenivå-kalkulator (beginner→elite) basert på kroppsvekt.
+- src/theme.ts: design tokens, dark/light mode, ThemeProvider, useTheme hook. Inkl. modalOverlay/modalGlass tokens.
+- src/ui/index.tsx: base UI components (Screen/TopBar/Card/Button/Chip/TextField/ListRow/SegButton). TextField har suffix-prop.
+- src/ui/modern.tsx: modern components (GradientButton/GlassCard/ProgressRing/StatPill/AnimatedNumber/Toast/UndoToast).
+- src/components/AppBackground.tsx: gradient orbs bakgrunn (purple/orange/pink).
+- src/components/GymdashLogo.tsx: vektorlogo (react-native-svg) — stilisert dumbbell med purple→orange gradient.
+- src/components/PhotoPicker.tsx: kamera/galleri bildeplukker med komprimering + fullskjerm forhåndsvisning.
+- src/components/workout/RestTimer.tsx: rest-timer UI (ekstrahert fra log.tsx).
+- src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste (ekstrahert fra log.tsx).
+- src/components/workout/SetEntryRow.tsx: individuell sett-rad (ekstrahert fra log.tsx).
+- src/components/modals/PlateCalcModal.tsx: skivefordeling-modal (ekstrahert fra log.tsx).
+- src/components/modals/ExerciseSwapModal.tsx: øvelsesbytte-modal (ekstrahert fra log.tsx).
+- src/components/modals/TemplatePickerModal.tsx: mal-velger modal.
+- src/components/charts/LineChart.tsx: SVG linjegraf (ekstrahert fra analysis.tsx).
+- src/components/charts/MuscleGroupBars.tsx: muskelgruppe-volumbjelker (ekstrahert fra analysis.tsx).
+- src/components/charts/RadarChart.tsx: SVG radarkart for muskelbalanse.
 - components/SplashScreen.tsx: splash med logo + fade.
-- components/OnboardingModal.tsx: 3-stegs intro (f�rstegang + �vis igjen�).
-- components/ui.tsx: delt Screen/Header/Card/Chip/Btn/IconButton.
-- src/components/GymdashLogo.tsx: vektorlogo (react-native-svg).
-- src/ui/index.tsx: nytt designsystem (Screen/TopBar/Card/Button/Chip/TextField/SectionHeader) brukt av hovedskjermene.
+- components/OnboardingModal.tsx: 3-stegs intro.
 
 ## Database (skjema)
-- workouts: id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at
-- sets: id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup
+- workouts: id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, ended_at
+- sets: id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, notes
 - sets: + external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg
 - settings: key, value
-- body_metrics: date (PK), weight_kg, note
-- programs: id, name, mode, json, created_at, updated_at
+- body_metrics: date (PK), weight_kg, note, photo_uri
+- programs: id, name, mode, json, created_at, updated_at, periodization_json
+- workout_templates: id, name, description, exercises_json, created_at, last_used_at
 - pr_records: exercise_id, type, value, reps, weight, set_id, date, program_id
-- backup JSON: schemaVersion, exportedAt, appVersion + alle tabeller
 - program_days: id, program_id, day_index, name
 - program_day_exercises: id, program_id, day_index, sort_index, type, ex_id, a_id, b_id
 - program_exercise_alternatives: id, program_id, day_index, exercise_id, alt_exercise_id, sort_index
-- program_replacements: legacy (ikke brukt i UI)
-- exercise_targets: id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at
+- exercise_targets: id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress
+- custom_exercises: id, display_name, equipment, tags (JSON), default_increment_kg, is_bodyweight, bodyweight_factor, created_at
+- progression_log: id, program_id, exercise_id, old_weight_kg, new_weight_kg, reason, created_at, applied, dismissed
+- achievements: id, category, name, description, icon, requirement_type, requirement_value, requirement_exercise_id, tier, points, created_at
+- user_achievements: id, achievement_id, unlocked_at, workout_id, set_id, value_achieved
+- exercise_goals: id, exercise_id, goal_type, target_value, created_at, achieved_at, program_id
+- backup JSON: schemaVersion, exportedAt, appVersion + alle tabeller
 
 ## Konvensjoner / constraints
-- Full file output for endrede filer (ikke diff/snutter)
-- Ikke store refactors uten � bli bedt om det
-- Ikke bruk expo-notifications i Expo Go (begrensninger)
-- Web: expo-sqlite wasm/COOP/COEP og OPFS fallback
-- Unng� hooks inne i loops/conditionals
-- Hold UI minimalistisk (UI v2 light palette), monofont metadata
+- Ikke store refactors uten å bli bedt om det
+- Web: expo-sqlite wasm/COOP/COEP og OPFS fallback (DB deaktivert, in-memory no-op)
+- Unngå hooks inne i loops/conditionals
 - Safe area: Screen wrapper (SafeAreaView) + StatusBar i root
-- UI: ny visuell stil via src/ui (components/ui.tsx regnes som legacy)
-- Program templates: 5-dagers Normal/Ryggvennlig + PPL 5-dagers (Brystfokus) (stable IDs) + legacy v1 navnes korrekt
+- UI: src/ui/index.tsx (base) + src/ui/modern.tsx (glassmorphism). components/ui.tsx er legacy.
+- Program templates: 5-dagers Normal/Ryggvennlig + PPL 5-dagers (Brystfokus) (stable IDs)
 - Preview APK: EAS build profile preview (internal, android apk); bump expo.android.versionCode per build
-- Preview APK: `android.versionCode` er n� 2 (oppdater ved neste build)
+- Preview APK: `android.versionCode` er nå 5 (oppdater ved neste build)
+- Production build: EAS build profile production (store, android app-bundle)
 - Testing: `npm run verify` (typecheck + jest + lint), `npm run test` for unit tests
+- Android: ALDRI bruk `elevation` på elementer med transparent/semi-transparent backgroundColor (gir hvit rektangel)
+- i18n: alle UI-strenger via t("key") fra useI18n() hook. Nye strenger legges til i src/i18n.ts (nb + en).
+- Vektenhet: alle verdier lagres i kg internt. Konvertering skjer kun ved display/input via useWeightUnit() hook.
+- Versjonering: semver 0.0.x (pre-release). Nåværende: v0.0.5 (versionCode 5).
 
-## Kjent teknisk gjeld / �huskeliste�
+## Kjent teknisk gjeld / «huskeliste»
 - Web: DB er deaktivert (in-memory no-op, ingen persistens).
-- Forslagslogikk er enkel v1 (b�r forbedres senere).
-- Analyse: ingen avansert filtrering per program enn�.
-- Backup/restore: stor JSON kan v�re treg p� eldre enheter.
-- Data & Rydding: sletter PR/targets for valgte �velser (workouts ryddes via egen knapp).
+- Analyse: ingen avansert filtrering per program ennå.
+- Backup/restore: stor JSON kan være treg på eldre enheter.
+- Data & Rydding: sletter PR/targets for valgte øvelser.
 - Legacy sets uten exercise_id kan mangle match hvis exercise_name ikke finnes i bibliotek.
-- Eldre workouts uten program_id faller tilbake til program_mode for �neste dag�.
-- PRs beregnes per program_id; Analyse viser beste PR p� tvers av program.
+- Eldre workouts uten program_id faller tilbake til program_mode for «neste dag».
+- PRs beregnes per program_id; Analyse viser beste PR på tvers av program.
 - Warmup-sett lagres, men ikke brukt i PR/volum/strength index.
 - Edit/slett sett oppdaterer ikke PR-historikk automatisk.
-- Coaching hints: enkel rule-based hint i Logg (basert p� siste sett + rep-range/RPE).
 - Cue/link UI fjernet (legacy data beholdes kun i storage).
-- �Husk som neste� fjernet fra Logg (dagvalg er kun midlertidig).
-- Rest-timer flyttet ned til set-omr�det; settings-ikon i topbar.
-- Legg-til-sett CTA er st�rre og mer tydelig i sticky bar.
-- Logg: bottom-sheet/�ya fjernet; kun inline input i �velseskort.
-- Repair av splittede �kter flytter sett inn i �n �kt; tomme "Merged into ..."-rader kan bli igjen.
-- Expo CLI start feiler lokalt uten nett (fetch failed i doctor); bruk nett/skip doctor for sanity.
+- Rest-timer i set-området; settings-ikon i topbar.
+- Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
+- App icon PNG (1024×1024) må genereres fra GymdashLogo SVG for Play Store.
 
-- Logg: auto-scroll f�lger nye sett (kun n�r bunnen er synlig).
-## Neste pakke (plan)
-- 1) QA av set-type/warmup, +3 quick add og notater/cue.
-- 2) QA av strength index + muskelgruppe-volum (warmup-filter).
-- 3) QA av backup/restore + health check + CSV.
-
-## Build � Preview APK (Android)
+## Build — Preview APK (Android)
 - Kommandoer: `npx eas login` (ved behov) og `npx eas build --platform android --profile preview`
-- Install: �pne build-link/QR, last ned APK, installer (tillat �unknown apps� ved prompt)
-- Update: �k `expo.android.versionCode` + bygg ny APK + installer over eksisterende (data beholdes)
+- Install: åpne build-link/QR, last ned APK, installer (tillat «unknown apps» ved prompt)
+- Update: øk `expo.android.versionCode` + bygg ny APK + installer over eksisterende (data beholdes)
+
+## Build — Production (Play Store)
+- Kommando: `npx eas build --platform android --profile production`
+- Genererer AAB (app-bundle) for Play Store opplasting
+- Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
-- 2026-01-29: L�s aktiv dag/program under aktiv �kt + one-time repair av splittede �kter (dag 2).
-- 2026-01-29: Fjernet Logg bottom-sheet for � fjerne dobbel input og bar nederst.
-- 2026-01-29: Program header overflow fix (dag-tittel presser ikke actions ut av skjerm).
-- 2026-01-29: Kropp-fane + body_metrics-tabell + bodyweight-sett felter og logg/analyse-kobling.
-
-
-
-
-
-
-
-
-
+- 2026-02-01: Tier 4+5 — Filbasert backup/import via native share + document picker.
+- 2026-02-01: Tier 4+5 — Fremgangsbilder per kroppsmåling (kamera/galleri, fullskjerm forhåndsvisning).
+- 2026-02-01: Tier 4+5 — Sosial deling — del økt, program, prestasjoner via native share sheet.
+- 2026-02-01: Tier 4+5 — Økt-maler (lagre/last inn maler, TemplatePickerModal).
+- 2026-02-01: Tier 4+5 — Treningsperiodisering (mesosyklus, deload-uker, uke-avansering, deload-banner).
+- 2026-02-01: Tier 4+5 — Avansert analyse (styrkenivå, kroppssammensetning, muskelbalanse-radarkart).
+- 2026-02-01: Tier 4+5 — Varsler & påminnelser (treningspåminnelser per ukedag, hviledag-forslag).
+- 2026-02-01: Tier 4+5 — Refaktorering: log.tsx (2875→1400), settings.tsx (1532→1238), analysis.tsx (1425→1179).
+- 2026-02-01: Tier 4+5 — 12 nye komponent-filer, 7 nye utility-filer, 3 DB-migrasjoner, ~60 nye i18n-nøkler.
+- 2026-02-01: Fleksible dagantall — 1–10 dager per program, +/- knapper i ukeoversikt.
+- 2026-02-01: Egne øvelser — custom_exercises tabell, CRUD i exerciseLibrary, opprett/slett i programbygger.
+- 2026-02-01: Forbedret rekkefølge — MaterialIcons piler med haptics + deaktivert ved grense.
+- 2026-02-01: Auto-progresjon — progression_log tabell, analyse ved økt-slutt, forslag på hjem, toggle per øvelse.
+- 2026-02-01: ended_at tracking — varighet persisteres ved økt-slutt, vises på hjem + kalender.
+- 2026-02-01: Neste økt-forhåndsvisning — hjemskjermen viser neste dags øvelser fra program.
+- 2026-02-01: Øvelsessammenligning — sammenlign to øvelser side-om-side i analyse (stablede grafer).
+- 2026-02-01: Mål-system — sett vekt/volum/reps-mål per øvelse, progress bar, auto-sjekk, exercise_goals tabell.
+- 2026-02-01: KG/LBS vektenhet-toggle — src/units.ts, settings-picker, konvertering alle skjermer.
+- 2026-02-01: Undo last set — UndoToast med 5-sek vindu, reverserer sett + PR i DB.
+- 2026-02-01: Plate calculator — visuell skivefordeling for stangøvelser i logg-skjermen.
+- 2026-02-01: FlatList-oppgradering av øvelsespicker i program builder (ytelse).
+- 2026-02-01: i18n flerspråkstøtte (norsk + engelsk) — alle 9 skjermer migrert, ~400+ keys.
+- 2026-02-01: Patch notes system med "Hva er nytt"-modal i Settings.
+- 2026-02-01: Ny logo — stilisert dumbbell med purple→orange gradient.
+- 2026-02-01: Production build profile i eas.json.
+- 2026-02-01: Versjon satt til v0.0.5 (versionCode 5).
+- 2026-01-31: UI v3 glassmorphism overhaul — AppBackground, glass cards, GradientButton, theme redesign.
+- 2026-01-31: Fjernet elevation fra glass-elementer (Android hvit rektangel-fix).
+- 2026-01-31: Utvidet øvelsesbibliotek (~140+ øvelser), lower_back_demanding/friendly tags.
+- 2026-01-31: Achievements-system med 25+ prestasjoner, galleri, tier-system, auto-sjekk.
+- 2026-01-31: Rest-timer bakgrunnsnotifikasjoner via expo-notifications.
+- 2026-01-31: Exercise alternatives med «Bytt øvelse»-knapp under trening.
+- 2026-01-31: Hjemskjerm dashboard, notater per økt/sett, kalender detaljvisning.
+- 2026-01-31: Forbedrede grafer, mer opaque modaler, encoding-fikser, PR baseline-fix, KG/reps labels.
+- 2026-01-29: Lås aktiv dag/program under aktiv økt + one-time repair av splittede økter.
+- 2026-01-29: Kropp-fane + body_metrics-tabell + bodyweight-sett felter.

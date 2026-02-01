@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { Platform, Text, View } from "react-native";
-import { theme } from "../../src/theme";
+import { useTheme } from "../../src/theme";
 import { getDbInfo } from "../../src/db";
 
 type WebInfo = {
@@ -11,6 +11,7 @@ type WebInfo = {
 };
 
 export default function TabLayout() {
+  const theme = useTheme();
   const [webInfo, setWebInfo] = useState<WebInfo | null>(null);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function TabLayout() {
   const showWebBanner = Platform.OS === "web" && webInfo && !webInfo.persistent;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: "transparent" }}>
       {showWebBanner ? (
         <View
           style={{
@@ -35,8 +36,8 @@ export default function TabLayout() {
             zIndex: 100,
             paddingVertical: 8,
             paddingHorizontal: 12,
-            backgroundColor: theme.panel,
-            borderBottomColor: theme.line,
+            backgroundColor: theme.glass,
+            borderBottomColor: theme.glassBorder,
             borderBottomWidth: 1,
           }}
         >
@@ -46,11 +47,14 @@ export default function TabLayout() {
         </View>
       ) : null}
 
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="log" />
         <Stack.Screen name="program" />
         <Stack.Screen name="analysis" />
+        <Stack.Screen name="achievements" />
         <Stack.Screen name="body" />
+        <Stack.Screen name="calendar" />
         <Stack.Screen name="settings" />
       </Stack>
     </View>

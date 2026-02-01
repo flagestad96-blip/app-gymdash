@@ -2,9 +2,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { theme } from "../../src/theme";
+import { useTheme } from "../../src/theme";
+import { useI18n } from "../../src/i18n";
 import { deleteBodyMetric, listBodyMetrics, upsertBodyMetric, getSettingAsync, setSettingAsync, type BodyMetricRow } from "../../src/db";
 import { Screen, TopBar, Card, Btn, TextField, IconButton } from "../../src/ui";
+import { useWeightUnit } from "../../src/units";
+import PhotoPicker from "../../src/components/PhotoPicker";
 
 function isoDateOnly(d = new Date()) {
   const y = d.getFullYear();
@@ -18,6 +21,9 @@ function round1(n: number) {
 }
 
 export default function BodyScreen() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  const wu = useWeightUnit();
   const navigation = useNavigation();
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -30,6 +36,7 @@ export default function BodyScreen() {
   const [dateInput, setDateInput] = useState(isoDateOnly());
   const [weightInput, setWeightInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -58,7 +65,7 @@ export default function BodyScreen() {
   const bmiValue = useMemo(() => {
     const hCm = parsedHeight;
     if (!Number.isFinite(hCm) || hCm <= 0) return null;
-    const w = Number.isFinite(parsedWeightInput) ? parsedWeightInput : latestMetric?.weight_kg;
+    const w = Number.isFinite(parsedWeightInput) ? wu.toKg(parsedWeightInput) : latestMetric?.weight_kg;
     if (!Number.isFinite(w ?? NaN)) return null;
     const hM = hCm / 100;
     return round1((w as number) / (hM * hM));
@@ -67,22 +74,24 @@ export default function BodyScreen() {
   async function saveMetric() {
     const w = Number(weightInput);
     if (!Number.isFinite(w) || w <= 0) {
-      Alert.alert("Ugyldig vekt", "Skriv inn en gyldig vekt i kg.");
+      Alert.alert(t("body.invalidWeight"), t("body.invalidWeightMsg"));
       return;
     }
-    await upsertBodyMetric(dateInput, w, noteInput.trim() || null);
+    await upsertBodyMetric(dateInput, wu.toKg(w), noteInput.trim() || null, photoUri);
     setEditing(false);
     setDateInput(isoDateOnly());
     setWeightInput("");
     setNoteInput("");
+    setPhotoUri(null);
     await refresh();
   }
 
   function startEdit(row: BodyMetricRow) {
     setEditing(true);
     setDateInput(row.date);
-    setWeightInput(String(row.weight_kg));
+    setWeightInput(String(wu.toDisplay(row.weight_kg)));
     setNoteInput(row.note ?? "");
+    setPhotoUri(row.photo_uri ?? null);
   }
 
   function resetForm() {
@@ -90,13 +99,14 @@ export default function BodyScreen() {
     setDateInput(isoDateOnly());
     setWeightInput("");
     setNoteInput("");
+    setPhotoUri(null);
   }
 
   async function confirmDelete(date: string) {
-    Alert.alert("Slett måling?", "Dette kan ikke angres.", [
-      { text: "Avbryt", style: "cancel" },
+    Alert.alert(t("body.deleteMeasurement"), t("program.noUndoWarning"), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Slett",
+        text: t("common.delete"),
         style: "destructive",
         onPress: async () => {
           await deleteBodyMetric(date);
@@ -109,32 +119,33 @@ export default function BodyScreen() {
 
   return (
     <Screen>
-      <TopBar title="Kropp" subtitle="Vekt og BMI" left={<IconButton icon="menu" onPress={openDrawer} />} />
+      <TopBar title={t("body.title")} subtitle={t("body.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
-          <Card title="REGISTRER">
+          <Card title={t("body.register")}>
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-                  Dato: {dateInput}
+                  {t("body.date", { date: dateInput })}
                 </Text>
-                {editing ? <Text style={{ color: theme.muted, fontSize: 12 }}>Redigerer</Text> : null}
+                {editing ? <Text style={{ color: theme.muted, fontSize: 12 }}>{t("body.editing")}</Text> : null}
               </View>
 
               <TextField
                 value={weightInput}
                 onChangeText={setWeightInput}
-                placeholder="Vekt i dag (kg)"
+                placeholder={t("body.weightPlaceholder")}
                 placeholderTextColor={theme.muted}
                 keyboardType="numeric"
+                suffix={wu.unitLabel()}
                 style={{
                   color: theme.text,
                   backgroundColor: theme.panel2,
-                  borderColor: theme.line,
+                  borderColor: theme.glassBorder,
                   borderWidth: 1,
                   borderRadius: 12,
                   padding: 12,
@@ -145,12 +156,12 @@ export default function BodyScreen() {
               <TextField
                 value={noteInput}
                 onChangeText={setNoteInput}
-                placeholder="Notat (valgfritt)"
+                placeholder={t("body.notePlaceholder")}
                 placeholderTextColor={theme.muted}
                 style={{
                   color: theme.text,
                   backgroundColor: theme.panel2,
-                  borderColor: theme.line,
+                  borderColor: theme.glassBorder,
                   borderWidth: 1,
                   borderRadius: 12,
                   padding: 12,
@@ -166,13 +177,13 @@ export default function BodyScreen() {
                 onBlur={() => {
                   setSettingAsync("height_cm", heightCm.trim()).catch(() => {});
                 }}
-                placeholder="Høyde (cm)"
+                placeholder={t("body.heightPlaceholder")}
                 placeholderTextColor={theme.muted}
                 keyboardType="numeric"
                 style={{
                   color: theme.text,
                   backgroundColor: theme.panel2,
-                  borderColor: theme.line,
+                  borderColor: theme.glassBorder,
                   borderWidth: 1,
                   borderRadius: 12,
                   padding: 12,
@@ -186,35 +197,63 @@ export default function BodyScreen() {
                 </Text>
               ) : null}
 
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <PhotoPicker
+                  existingUri={photoUri}
+                  onPicked={setPhotoUri}
+                  onRemove={() => setPhotoUri(null)}
+                />
+                <Text style={{ color: theme.muted, fontSize: 12 }}>
+                  {photoUri ? t("body.changePhoto") : t("body.addPhoto")}
+                </Text>
+              </View>
+
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                <Btn label={editing ? "Oppdater" : "Lagre"} onPress={saveMetric} tone="accent" />
-                {editing ? <Btn label="Avbryt" onPress={resetForm} /> : null}
+                <Btn label={editing ? t("body.update") : t("common.save")} onPress={saveMetric} tone="accent" />
+                {editing ? <Btn label={t("common.cancel")} onPress={resetForm} /> : null}
                 {!editing ? (
-                  <Btn label="I dag" onPress={() => setDateInput(isoDateOnly())} />
+                  <Btn label={t("common.today")} onPress={() => setDateInput(isoDateOnly())} />
                 ) : null}
               </View>
             </View>
           </Card>
 
-          <Card title="SISTE MÅLINGER">
+          <Card title={t("body.recentMeasurements")}>
             {metrics.length === 0 ? (
-              <Text style={{ color: theme.muted }}>Ingen målinger ennå.</Text>
+              <Text style={{ color: theme.muted }}>{t("body.noMeasurements")}</Text>
             ) : (
               <View style={{ gap: 10 }}>
                 {metrics.map((m) => (
                   <View
                     key={`bm_${m.date}`}
                     style={{
-                      borderColor: theme.line,
+                      borderColor: theme.glassBorder,
                       borderWidth: 1,
                       borderRadius: 12,
                       padding: 12,
                       backgroundColor: theme.panel2,
                     }}
                   >
-                    <Text style={{ color: theme.text, fontFamily: theme.mono }}>
-                      {m.date} · {m.weight_kg} kg
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      {m.photo_uri ? (
+                        <PhotoPicker
+                          existingUri={m.photo_uri}
+                          onPicked={async (uri) => {
+                            await upsertBodyMetric(m.date, m.weight_kg, m.note, uri);
+                            await refresh();
+                          }}
+                          onRemove={async () => {
+                            await upsertBodyMetric(m.date, m.weight_kg, m.note, null);
+                            await refresh();
+                          }}
+                        />
+                      ) : null}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.text, fontFamily: theme.mono }}>
+                          {m.date} · {wu.formatWeight(m.weight_kg)}
+                        </Text>
+                      </View>
+                    </View>
                     {parsedHeight > 0 ? (
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
                         BMI: {round1(m.weight_kg / ((parsedHeight / 100) * (parsedHeight / 100)))}
@@ -224,8 +263,8 @@ export default function BodyScreen() {
                       <Text style={{ color: theme.muted, marginTop: 6 }}>{m.note}</Text>
                     ) : null}
                     <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-                      <Btn label="Rediger" onPress={() => startEdit(m)} />
-                      <Btn label="Slett" tone="danger" onPress={() => confirmDelete(m.date)} />
+                      <Btn label={t("common.edit")} onPress={() => startEdit(m)} />
+                      <Btn label={t("common.delete")} tone="danger" onPress={() => confirmDelete(m.date)} />
                     </View>
                   </View>
                 ))}

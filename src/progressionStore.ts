@@ -10,6 +10,19 @@ export type ExerciseTarget = {
   targetSets: number;
   incrementKg: number;
   updatedAt: string;
+  autoProgress: boolean;
+};
+
+export type ProgressionSuggestion = {
+  id: string;
+  programId: string;
+  exerciseId: string;
+  oldWeightKg: number;
+  newWeightKg: number;
+  reason: string | null;
+  createdAt: string;
+  applied: boolean;
+  dismissed: boolean;
 };
 
 export type LastSet = {
@@ -19,19 +32,8 @@ export type LastSet = {
   createdAt?: string | null;
 };
 
-export type NextSuggestion = {
-  weight: number;
-  reps: number;
-  reason: string;
-};
-
 function isoNow() {
   return new Date().toISOString();
-}
-
-function clamp(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.round(n)));
 }
 
 export function defaultTargetForExercise(exerciseId: string) {
@@ -83,8 +85,9 @@ export async function getTargets(programId: string): Promise<Record<string, Exer
     target_sets?: number | null;
     increment_kg: number;
     updated_at: string;
+    auto_progress?: number | null;
   }>(
-    `SELECT program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at
+    `SELECT program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress
      FROM exercise_targets
      WHERE program_id = ?`,
     [programId]
@@ -100,6 +103,7 @@ export async function getTargets(programId: string): Promise<Record<string, Exer
       targetSets: Number.isFinite(r.target_sets ?? NaN) ? Number(r.target_sets) : 3,
       incrementKg: r.increment_kg,
       updatedAt: r.updated_at,
+      autoProgress: r.auto_progress !== 0,
     };
   }
   return map;
@@ -112,14 +116,16 @@ export async function upsertTarget(args: {
   repMax: number;
   targetSets: number;
   incrementKg: number;
+  autoProgress?: boolean;
 }): Promise<void> {
   await ensureDb();
   const now = isoNow();
+  const ap = args.autoProgress !== false ? 1 : 0;
   await getDb().runAsync(
-    `INSERT INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(program_id, exercise_id)
-     DO UPDATE SET rep_min=excluded.rep_min, rep_max=excluded.rep_max, target_sets=excluded.target_sets, increment_kg=excluded.increment_kg, updated_at=excluded.updated_at`,
+     DO UPDATE SET rep_min=excluded.rep_min, rep_max=excluded.rep_max, target_sets=excluded.target_sets, increment_kg=excluded.increment_kg, updated_at=excluded.updated_at, auto_progress=excluded.auto_progress`,
     [
       `target_${args.programId}_${args.exerciseId}`,
       args.programId,
@@ -129,58 +135,127 @@ export async function upsertTarget(args: {
       args.targetSets,
       args.incrementKg,
       now,
+      ap,
     ]
   );
 }
 
-export function buildSuggestion(args: {
-  lastSet?: LastSet | null;
-  repMin: number;
-  repMax: number;
-  incrementKg: number;
-}): NextSuggestion | null {
-  const { lastSet, repMin, repMax, incrementKg } = args;
-  if (!lastSet) return null;
+// ── Auto-progression ────────────────────────────────────────────────
 
-  const reps = clamp(lastSet.reps, 1, 100);
-  const weight = lastSet.weight;
+function uid(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
 
-  if (lastSet.rpe != null && lastSet.rpe >= 9.0) {
-    return {
-      weight,
-      reps: clamp(reps, repMin, repMax),
-      reason: "RPE hoy -> hold",
-    };
+type SetRow = { exercise_id: string; weight: number; reps: number };
+
+export async function analyzeWorkoutForProgression(
+  workoutId: string,
+  programId: string
+): Promise<string[]> {
+  if (!workoutId || !programId) return [];
+  await ensureDb();
+  const db = getDb();
+
+  const sets = await db.getAllAsync<SetRow>(
+    `SELECT exercise_id, weight, reps FROM sets
+     WHERE workout_id = ? AND (is_warmup = 0 OR is_warmup IS NULL) AND set_type IS NULL OR set_type = 'normal'
+     ORDER BY exercise_id, created_at`,
+    [workoutId]
+  );
+  if (!sets?.length) return [];
+
+  // Group by exercise
+  const byEx: Record<string, SetRow[]> = {};
+  for (const s of sets) {
+    if (!s.exercise_id) continue;
+    (byEx[s.exercise_id] ??= []).push(s);
   }
 
-  if (reps >= repMax) {
-    return {
-      weight: weight + incrementKg,
-      reps: repMin,
-      reason: `Nadde topp reps -> +${incrementKg}kg`,
-    };
+  const targets = await getTargets(programId);
+  const created: string[] = [];
+
+  for (const [exerciseId, exSets] of Object.entries(byEx)) {
+    const target = targets[exerciseId];
+    if (!target || !target.autoProgress) continue;
+
+    // Check: did all targetSets sets hit repMax or above?
+    const workingSets = exSets.filter((s) => s.weight > 0);
+    if (workingSets.length < target.targetSets) continue;
+
+    const hitMax = workingSets.filter((s) => s.reps >= target.repMax);
+    if (hitMax.length < target.targetSets) continue;
+
+    // All target sets hit repMax — suggest progression
+    const maxWeight = Math.max(...workingSets.map((s) => s.weight));
+    const newWeight = maxWeight + target.incrementKg;
+
+    // Don't create duplicate suggestion for same exercise + weight
+    const existing = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM progression_log
+       WHERE program_id=? AND exercise_id=? AND new_weight_kg=? AND applied=0 AND dismissed=0`,
+      [programId, exerciseId, newWeight]
+    );
+    if (existing) continue;
+
+    const id = uid("prog");
+    const reason = `${hitMax.length}x${target.repMax}+ @ ${maxWeight}kg`;
+    await db.runAsync(
+      `INSERT INTO progression_log (id, program_id, exercise_id, old_weight_kg, new_weight_kg, reason, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, programId, exerciseId, maxWeight, newWeight, reason, isoNow()]
+    );
+    created.push(id);
   }
 
-  if (reps < repMin) {
-    if (reps <= repMin - 2) {
-      return {
-        weight: Math.max(0, weight - incrementKg),
-        reps: repMin,
-        reason: "Under range -> hold",
-      };
-    }
-    return {
-      weight,
-      reps: repMin,
-      reason: "Under range -> hold",
-    };
-  }
+  return created;
+}
 
+type SuggestionRow = {
+  id: string;
+  program_id: string;
+  exercise_id: string;
+  old_weight_kg: number;
+  new_weight_kg: number;
+  reason: string | null;
+  created_at: string;
+  applied: number;
+  dismissed: number;
+};
+
+function rowToSuggestion(r: SuggestionRow): ProgressionSuggestion {
   return {
-    weight,
-    reps: Math.min(reps + 1, repMax),
-    reason: "Bygg reps -> +1 rep",
+    id: r.id,
+    programId: r.program_id,
+    exerciseId: r.exercise_id,
+    oldWeightKg: r.old_weight_kg,
+    newWeightKg: r.new_weight_kg,
+    reason: r.reason,
+    createdAt: r.created_at,
+    applied: !!r.applied,
+    dismissed: !!r.dismissed,
   };
+}
+
+export async function getPendingSuggestions(programId: string): Promise<ProgressionSuggestion[]> {
+  if (!programId) return [];
+  await ensureDb();
+  const rows = await getDb().getAllAsync<SuggestionRow>(
+    `SELECT * FROM progression_log
+     WHERE program_id=? AND applied=0 AND dismissed=0
+     ORDER BY created_at DESC`,
+    [programId]
+  );
+  return (rows ?? []).map(rowToSuggestion);
+}
+
+export async function applySuggestion(id: string): Promise<void> {
+  await ensureDb();
+  await getDb().runAsync(`UPDATE progression_log SET applied=1 WHERE id=?`, [id]);
+}
+
+export async function dismissSuggestion(id: string): Promise<void> {
+  await ensureDb();
+  await getDb().runAsync(`UPDATE progression_log SET dismissed=1 WHERE id=?`, [id]);
 }
 
 const ProgressionStore = {
@@ -188,7 +263,10 @@ const ProgressionStore = {
   getTargets,
   upsertTarget,
   defaultTargetForExercise,
-  buildSuggestion,
+  analyzeWorkoutForProgression,
+  getPendingSuggestions,
+  applySuggestion,
+  dismissSuggestion,
 };
 
 export default ProgressionStore;

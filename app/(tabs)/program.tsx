@@ -1,13 +1,23 @@
-﻿// app/(tabs)/program.tsx
+// app/(tabs)/program.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, Modal, Alert, Platform } from "react-native";
+import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Platform, Switch } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { theme } from "../../src/theme";
+import { useTheme } from "../../src/theme";
+import { useI18n } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
-import { displayNameFor, searchExercises, EXERCISES, EXERCISE_TAGS, type ExerciseTag } from "../../src/exerciseLibrary";
+import {
+  displayNameFor, searchExercises, EXERCISES, EXERCISE_TAGS,
+  type ExerciseTag, type Equipment, type ExerciseDef,
+  isCustomExercise, getCustomExercises, createCustomExercise, deleteCustomExercise,
+} from "../../src/exerciseLibrary";
 import ProgramStore from "../../src/programStore";
 import type { Program, ProgramBlock, ProgramDay } from "../../src/programStore";
 import ProgressionStore, { defaultTargetForExercise, type ExerciseTarget } from "../../src/progressionStore";
+import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, type Periodization } from "../../src/periodization";
+import { shareFile, saveBackupFile } from "../../src/fileSystem";
+import { getShareableProgramJson } from "../../src/sharing";
 import AppLoading from "../../components/AppLoading";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 
@@ -60,29 +70,29 @@ function collectExerciseIds(program: Program, alts: AlternativesMap): string[] {
   return Array.from(set);
 }
 
-function validateImport(payload: unknown): { ok: true; program: ImportPayload } | { ok: false; error: string } {
-  if (!payload || typeof payload !== "object") return { ok: false, error: "Ugyldig JSON" };
+function validateImport(payload: unknown): { ok: true; program: ImportPayload } | { ok: false; errorKey: string } {
+  if (!payload || typeof payload !== "object") return { ok: false, errorKey: "program.invalidJson" };
   const p = payload as ImportPayload;
-  if (!p.name || typeof p.name !== "string") return { ok: false, error: "Program må ha name" };
-  if (!Array.isArray(p.days) || (p.days.length !== 4 && p.days.length !== 5)) {
-    return { ok: false, error: "Program må ha 4 eller 5 dager" };
+  if (!p.name || typeof p.name !== "string") return { ok: false, errorKey: "program.mustHaveName" };
+  if (!Array.isArray(p.days) || p.days.length < 1 || p.days.length > 10) {
+    return { ok: false, errorKey: "program.mustHave1to10Days" };
   }
 
   for (const day of p.days) {
     if (!day || typeof day.name !== "string" || !Array.isArray(day.blocks)) {
-      return { ok: false, error: "Ugyldig day-format" };
+      return { ok: false, errorKey: "program.invalidDayFormat" };
     }
     for (const block of day.blocks) {
-      if (!block || typeof block.type !== "string") return { ok: false, error: "Ugyldig blokk" };
+      if (!block || typeof block.type !== "string") return { ok: false, errorKey: "program.invalidBlock" };
       if (block.type === "single") {
         const exId = block.exId ?? block.ex;
-        if (!exId || typeof exId !== "string") return { ok: false, error: "Single blokk mangler exId" };
+        if (!exId || typeof exId !== "string") return { ok: false, errorKey: "program.singleMissingExId" };
       } else if (block.type === "superset") {
         if (!block.a || !block.b || typeof block.a !== "string" || typeof block.b !== "string") {
-          return { ok: false, error: "Superset mangler a/b" };
+          return { ok: false, errorKey: "program.supersetMissingAB" };
         }
       } else {
-        return { ok: false, error: "Ukjent blokk-type" };
+        return { ok: false, errorKey: "program.unknownBlockType" };
       }
     }
   }
@@ -91,6 +101,8 @@ function validateImport(payload: unknown): { ok: true; program: ImportPayload } 
 }
 
 export default function ProgramScreen() {
+  const theme = useTheme();
+  const { t } = useI18n();
   const [ready, setReady] = useState(false);
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
@@ -128,6 +140,13 @@ export default function ProgramScreen() {
   const [altTag, setAltTag] = useState<ExerciseTag | "all">("all");
   const [altSelection, setAltSelection] = useState<string[]>([]);
 
+  const [periodizationOpen, setPeriodizationOpen] = useState(false);
+  const [periodConfig, setPeriodConfig] = useState<Periodization | null>(null);
+  const [periodEnabled, setPeriodEnabled] = useState(false);
+  const [periodCycleWeeks, setPeriodCycleWeeks] = useState("4");
+  const [periodDeloadWeek, setPeriodDeloadWeek] = useState("4");
+  const [periodDeloadPercent, setPeriodDeloadPercent] = useState("60");
+
   const [importExportOpen, setImportExportOpen] = useState<"export" | "import" | null>(null);
   const [exportText, setExportText] = useState("");
   const [importText, setImportText] = useState("");
@@ -139,6 +158,15 @@ export default function ProgramScreen() {
   const [targetRepMax, setTargetRepMax] = useState(10);
   const [targetSets, setTargetSets] = useState(3);
   const [targetIncrement, setTargetIncrement] = useState(2.5);
+  const [targetAutoProgress, setTargetAutoProgress] = useState(true);
+
+  // Custom exercise state
+  const [customExRefresh, setCustomExRefresh] = useState(0);
+  const [customExModalOpen, setCustomExModalOpen] = useState(false);
+  const [customExName, setCustomExName] = useState("");
+  const [customExEquipment, setCustomExEquipment] = useState<Equipment>("barbell");
+  const [customExTags, setCustomExTags] = useState<ExerciseTag[]>([]);
+  const [customExIncrement, setCustomExIncrement] = useState(2.5);
 
   const loadAll = useCallback(async () => {
     await ProgramStore.ensurePrograms();
@@ -193,6 +221,21 @@ export default function ProgramScreen() {
     setAlternatives(alts);
     setTargets(targetMap);
     setWorkoutLocked(!!activeWorkoutRow);
+
+    // Load periodization config
+    const periodCfg = await getPeriodization(active.id);
+    setPeriodConfig(periodCfg);
+    if (periodCfg) {
+      setPeriodEnabled(periodCfg.enabled);
+      setPeriodCycleWeeks(String(periodCfg.cycleWeeks));
+      setPeriodDeloadWeek(String(periodCfg.deloadEvery));
+      setPeriodDeloadPercent(String(periodCfg.deloadPercent));
+    } else {
+      setPeriodEnabled(false);
+      setPeriodCycleWeeks("4");
+      setPeriodDeloadWeek("4");
+      setPeriodDeloadPercent("60");
+    }
   }, []);
 
   useEffect(() => {
@@ -217,23 +260,25 @@ export default function ProgramScreen() {
   );
 
   const headerStatus = useMemo(() => {
-    const pm = programMode === "back" ? "Ryggvennlig" : "Standard";
+    const pm = programMode === "back" ? t("settings.programMode.back") : t("settings.programMode.standard");
     return `${pm}`;
-  }, [programMode]);
+  }, [programMode, t]);
 
   const activeDay = useMemo(() => {
     if (!activeProgram) return null;
     return activeProgram.days[editingDayIndex] ?? activeProgram.days[0] ?? null;
   }, [activeProgram, editingDayIndex]);
 
+  const allExList = useMemo(() => [...EXERCISES, ...getCustomExercises()], [customExRefresh]);
+
   const filteredExercises = useMemo(() => {
-    const base = pickerQuery.trim() ? searchExercises(pickerQuery.trim()) : EXERCISES;
+    const base = pickerQuery.trim() ? searchExercises(pickerQuery.trim()) : allExList;
     const withTag = pickerTag === "all" ? base : base.filter((e) => e.tags.includes(pickerTag));
     return withTag;
-  }, [pickerQuery, pickerTag]);
+  }, [pickerQuery, pickerTag, allExList]);
 
   const filteredAltExercises = useMemo(() => {
-    const base = altQuery.trim() ? searchExercises(altQuery.trim()) : EXERCISES;
+    const base = altQuery.trim() ? searchExercises(altQuery.trim()) : allExList;
     const withTag = altTag === "all" ? base : base.filter((e) => e.tags.includes(altTag));
     return withTag;
   }, [altQuery, altTag]);
@@ -248,9 +293,9 @@ export default function ProgramScreen() {
     ].includes(activeProgram.id)
   );
 
-  function ensureUnlocked(message = "Avslutt økten før du gjør endringer i programmet.") {
+  function ensureUnlocked(message?: string) {
     if (!workoutLocked) return true;
-    Alert.alert("Økt pågår", message);
+    Alert.alert(t("program.workoutInProgress"), message ?? t("program.lockedDuringWorkout"));
     return false;
   }
 
@@ -268,7 +313,7 @@ export default function ProgramScreen() {
   async function setDayCount(count: number) {
     if (!activeProgram) return;
     if (!ensureUnlocked()) return;
-    const target = clampInt(count, 4, 5);
+    const target = clampInt(count, 1, 10);
     const current = activeProgram.days.length;
     if (current === target) return;
     let nextDays = [...activeProgram.days];
@@ -276,10 +321,10 @@ export default function ProgramScreen() {
       nextDays = nextDays.slice(0, target);
     } else {
       for (let i = current; i < target; i += 1) {
-        nextDays.push(buildEmptyDay(`Dag ${i + 1}`));
+        nextDays.push(buildEmptyDay(t("common.day") + " " + (i + 1)));
       }
     }
-    const renamed = nextDays.map((d, idx) => ({ ...d, name: d.name || `Dag ${idx + 1}` }));
+    const renamed = nextDays.map((d, idx) => ({ ...d, name: d.name || (t("common.day") + " " + (idx + 1)) }));
     const next = { ...activeProgram, days: renamed, updatedAt: isoNow() };
     await saveProgram(next);
     if (activeDayIndex >= renamed.length) {
@@ -289,7 +334,7 @@ export default function ProgramScreen() {
   }
 
   async function setActiveProgramById(programId: string) {
-    if (!ensureUnlocked("Avslutt økten før du bytter program.")) return;
+    if (!ensureUnlocked(t("program.lockedSwitchProgram"))) return;
     await ProgramStore.setActiveProgram(programMode, programId);
     const prog = await ProgramStore.getActiveProgram(programMode);
     setActiveProgram(prog);
@@ -301,7 +346,7 @@ export default function ProgramScreen() {
   }
 
   function openDayEditor(idx: number) {
-    if (!ensureUnlocked("Avslutt økten før du redigerer dager.")) return;
+    if (!ensureUnlocked(t("program.lockedEditDays"))) return;
     setEditingDayIndex(idx);
     setDayEditorOpen(true);
   }
@@ -334,6 +379,7 @@ export default function ProgramScreen() {
     if (!ensureUnlocked()) return;
     const target = index + dir;
     if (target < 0 || target >= activeDay.blocks.length) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const nextDays = activeProgram.days.map((d, di) => {
       if (di !== editingDayIndex) return d;
       const blocks = [...d.blocks];
@@ -382,6 +428,7 @@ export default function ProgramScreen() {
     setTargetRepMax(current?.repMax ?? fallback.repMax);
     setTargetSets(current?.targetSets ?? fallback.targetSets);
     setTargetIncrement(current?.incrementKg ?? fallback.incrementKg);
+    setTargetAutoProgress(current?.autoProgress !== false);
     setTargetEditorOpen(true);
   }
 
@@ -400,6 +447,7 @@ export default function ProgramScreen() {
       repMax,
       targetSets: sets,
       incrementKg: incrementKg || defaultTargetForExercise(targetExerciseId).incrementKg,
+      autoProgress: targetAutoProgress,
     });
     const targetMap = await ProgressionStore.getTargets(activeProgram.id);
     setTargets(targetMap);
@@ -484,13 +532,13 @@ export default function ProgramScreen() {
     if (!activeProgram) return;
     if (!ensureUnlocked()) return;
     if (!canDeleteProgram) {
-      Alert.alert("Kan ikke slette default-program", "Du kan duplisere og redigere i stedet.");
+      Alert.alert(t("program.cannotDeleteDefault"), t("program.cannotDeleteDefaultMsg"));
       return;
     }
-    Alert.alert("Slett program?", "Dette kan ikke angres.", [
-      { text: "Avbryt", style: "cancel" },
+    Alert.alert(t("program.deleteProgramConfirm"), t("program.noUndoWarning"), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Slett",
+        text: t("common.delete"),
         style: "destructive",
         onPress: async () => {
           await ProgramStore.deleteProgram(activeProgram.id);
@@ -499,6 +547,57 @@ export default function ProgramScreen() {
         },
       },
     ]);
+  }
+
+  function openPeriodization() {
+    if (!activeProgram) return;
+    if (periodConfig) {
+      setPeriodEnabled(periodConfig.enabled);
+      setPeriodCycleWeeks(String(periodConfig.cycleWeeks));
+      setPeriodDeloadWeek(String(periodConfig.deloadEvery));
+      setPeriodDeloadPercent(String(periodConfig.deloadPercent));
+    } else {
+      const def = getDefaultPeriodization();
+      setPeriodEnabled(def.enabled);
+      setPeriodCycleWeeks(String(def.cycleWeeks));
+      setPeriodDeloadWeek(String(def.deloadEvery));
+      setPeriodDeloadPercent(String(def.deloadPercent));
+    }
+    setPeriodizationOpen(true);
+  }
+
+  async function savePeriodizationConfig() {
+    if (!activeProgram) return;
+    const cycleWeeks = clampInt(parseInt(periodCycleWeeks, 10), 3, 8);
+    const deloadEvery = clampInt(parseInt(periodDeloadWeek, 10), 1, cycleWeeks);
+    const deloadPercent = clampInt(parseInt(periodDeloadPercent, 10), 20, 100);
+    const currentWeek = periodConfig?.currentWeek ?? 1;
+    const config: Periodization = {
+      enabled: periodEnabled,
+      cycleWeeks,
+      deloadEvery,
+      deloadPercent,
+      currentWeek: currentWeek > cycleWeeks ? 1 : currentWeek,
+    };
+    await savePeriodization(activeProgram.id, config);
+    setPeriodConfig(config);
+    setPeriodizationOpen(false);
+  }
+
+  async function handleShareExport() {
+    if (!activeProgram) return;
+    try {
+      const json = await getShareableProgramJson(activeProgram.id);
+      if (!json) {
+        Alert.alert(t("common.error"), t("program.exportFailed"));
+        return;
+      }
+      const filename = `gymdash_program_${activeProgram.name.replace(/\s+/g, "_")}.json`;
+      const uri = await saveBackupFile(json, filename);
+      await shareFile(uri);
+    } catch {
+      Alert.alert(t("common.error"), t("program.exportFailed"));
+    }
   }
 
   function openExport() {
@@ -521,10 +620,10 @@ export default function ProgramScreen() {
   async function copyText(text: string) {
     if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
       await navigator.clipboard.writeText(text);
-      Alert.alert("Kopiert", "JSON kopiert til utklippstavlen.");
+      Alert.alert(t("settings.copied"), t("settings.copiedMsg"));
       return;
     }
-    Alert.alert("Kopier manuelt", "Marker teksten og kopier manuelt.");
+    Alert.alert(t("settings.copyManual"), t("settings.copyManualMsg"));
   }
 
   async function handleImport() {
@@ -534,13 +633,13 @@ export default function ProgramScreen() {
     try {
       parsed = JSON.parse(importText);
     } catch {
-      setImportError("Ugyldig JSON");
+      setImportError(t("program.invalidJson"));
       return;
     }
 
     const res = validateImport(parsed);
     if (!res.ok) {
-      setImportError(res.error);
+      setImportError(t(res.errorKey));
       return;
     }
 
@@ -576,25 +675,25 @@ export default function ProgramScreen() {
     <Screen>
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 80 }}>
         <TopBar
-          title="Program"
+          title={t("program.title")}
           subtitle={headerStatus}
           left={<IconButton icon="menu" onPress={openDrawer} />}
         />
         <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
           <Chip text={headerStatus} />
-          <Chip text={`Aktiv dag: ${activeDayIndex + 1}`} />
-          <Chip text={`Program: ${activeProgram.name}`} active />
+          <Chip text={`${t("program.activeDay")}: ${activeDayIndex + 1}`} />
+          <Chip text={`${t("program.programLabel")}: ${activeProgram.name}`} active />
         </View>
 
         {workoutLocked ? (
           <Card style={{ borderColor: theme.warn }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono }}>
-              Økt pågår (Dag {activeDayIndex + 1}) – endringer låst.
+              {t("program.workoutLockedDay", { n: activeDayIndex + 1 })}
             </Text>
           </Card>
         ) : null}
 
-        <Card title="PROGRAMMER">
+        <Card title={t("program.programs")}>
           <View style={{ gap: 8 }}>
             {programs.map((p) => {
               const isActive = p.id === activeProgramId;
@@ -606,7 +705,7 @@ export default function ProgramScreen() {
                     padding: 12,
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: isActive ? theme.accent : theme.line,
+                    borderColor: isActive ? theme.accent : theme.glassBorder,
                     backgroundColor: theme.panel2,
                   }}
                 >
@@ -614,25 +713,42 @@ export default function ProgramScreen() {
                     <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>
                       {p.name}
                     </Text>
-                    {isActive ? <Chip text="AKTIV" active /> : null}
+                    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                      {isActive && periodConfig?.enabled ? (
+                        <Chip
+                          text={
+                            isDeloadWeek(periodConfig)
+                              ? "DELOAD"
+                              : `${t("program.week")} ${periodConfig.currentWeek}/${periodConfig.cycleWeeks}`
+                          }
+                          active={isDeloadWeek(periodConfig)}
+                        />
+                      ) : null}
+                      {isActive ? <Chip text={t("program.active")} active /> : null}
+                    </View>
                   </View>
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>Dager: {p.days.length}</Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("common.days")}: {p.days.length}</Text>
                 </Pressable>
               );
             })}
           </View>
 
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <Btn label="Nytt program" onPress={() => openNameModal("new")} tone="accent" />
-            <Btn label="Dupliser" onPress={() => openNameModal("duplicate")} />
-            <Btn label="Gi nytt navn" onPress={() => openNameModal("rename")} />
-            <Btn label="Slett" onPress={deleteActiveProgram} tone="danger" />
+            <Btn label={t("program.newProgram")} onPress={() => openNameModal("new")} tone="accent" />
+            <Btn label={t("program.duplicate")} onPress={() => openNameModal("duplicate")} />
+            <Btn label={t("program.rename")} onPress={() => openNameModal("rename")} />
+            <Btn label={t("common.delete")} onPress={deleteActiveProgram} tone="danger" />
           </View>
 
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <Btn label="Eksporter" onPress={openExport} />
+            <Btn label={t("program.periodization") || "Periodization"} onPress={openPeriodization} />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <Btn label={t("program.export")} onPress={openExport} />
+            <Btn label={t("program.shareFile") || "Share File"} onPress={handleShareExport} />
             <Btn
-              label="Importer"
+              label={t("program.import")}
               onPress={() => {
                 setImportText("");
                 setImportError(null);
@@ -642,14 +758,19 @@ export default function ProgramScreen() {
           </View>
         </Card>
 
-        <Card title="UKEOVERSIKT">
-          <Text style={{ color: theme.muted }}>Trykk på en dag for å åpne editor. Bytt øvelser om du må.</Text>
+        <Card title={t("program.weekOverview")}>
+          <Text style={{ color: theme.muted }}>{t("program.weekOverviewDesc")}</Text>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginTop: 8 }}>
+            <Btn label="-" onPress={() => setDayCount(activeProgram.days.length - 1)} />
+            <Chip text={`${activeProgram.days.length} ${t("common.days").toLowerCase()}`} active />
+            <Btn label="+" onPress={() => setDayCount(activeProgram.days.length + 1)} />
+          </View>
           <View style={{ gap: 10, marginTop: 8 }}>
             {activeProgram.days.map((day, idx) => {
               const isActive = idx === activeDayIndex;
               const altMap = alternatives[idx] ?? {};
               return (
-                <View key={day.id} style={{ gap: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.panel2 }}>
+                <View key={day.id} style={{ gap: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.glassBorder, backgroundColor: theme.panel2 }}>
                   <View style={{ gap: 6 }}>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Text
@@ -664,19 +785,19 @@ export default function ProgramScreen() {
                       <Pressable
                         onPress={() => {
                           if (workoutLocked) {
-                            Alert.alert("Låst under aktiv økt", "Avslutt økten før du bytter aktiv dag.");
+                            Alert.alert(t("settings.lockedAlert"), t("program.lockedSwitchDay"));
                             return;
                           }
                           setActiveDayIndex(idx);
                           setSettingAsync("activeDayIndex", String(idx)).catch(() => {});
                         }}
-                        style={{ borderColor: isActive ? theme.accent : theme.line, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.panel }}
+                        style={{ borderColor: isActive ? theme.accent : theme.glassBorder, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.glass }}
                       >
-                        <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>{isActive ? "AKTIV" : "SETT AKTIV"}</Text>
+                        <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>{isActive ? t("program.active") : t("program.setActive")}</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => openDayEditor(idx)}
-                        style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.panel }}
+                        style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.glass }}
                       >
                         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>EDIT</Text>
                       </Pressable>
@@ -685,14 +806,14 @@ export default function ProgramScreen() {
 
                   <View style={{ gap: 6 }}>
                     {day.blocks.length === 0 ? (
-                      <Text style={{ color: theme.muted }}>Ingen øvelser.</Text>
+                      <Text style={{ color: theme.muted }}>{t("program.noExercises")}</Text>
                     ) : (
                       day.blocks.map((block, bi) => {
                         if (block.type === "single") {
                           const altList = altMap[block.exId] ?? [];
                           return (
                             <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
-                              <Text style={{ color: theme.text }}>• {displayNameFor(block.exId)}</Text>
+                              <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.exId)}</Text>
                               {altList.length ? (
                                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                   Alt: {altList.map((id) => displayNameFor(id)).join(", ")}
@@ -705,7 +826,7 @@ export default function ProgramScreen() {
                         const altB = altMap[block.b] ?? [];
                         return (
                           <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
-                            <Text style={{ color: theme.text }}>• {displayNameFor(block.a)}</Text>
+                            <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.a)}</Text>
                             {altA.length ? (
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                 Alt: {altA.map((id) => displayNameFor(id)).join(", ")}
@@ -730,53 +851,57 @@ export default function ProgramScreen() {
       </ScrollView>
 
       <Modal visible={dayEditorOpen} transparent animationType="slide" onRequestClose={() => setDayEditorOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", padding: 14, justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
-            <View style={{ padding: 14, borderBottomColor: theme.line, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
+            <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1} ellipsizeMode="tail">
-                  {activeDay?.name ?? "Dag"}
+                  {activeDay?.name ?? t("common.day")}
                 </Text>
               </View>
               <View style={{ flexShrink: 0 }}>
                 <Pressable
                   onPress={() => setDayEditorOpen(false)}
-                  style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
+                  style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
                 >
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono }}>LUKK</Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono }}>{t("common.close").toUpperCase()}</Text>
                 </Pressable>
               </View>
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }}>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Btn label="Legg til øvelse" onPress={startAddSingle} tone="accent" />
-                <Btn label="Legg til supersett" onPress={startAddSuperset} />
+                <Btn label={t("program.addExercise")} onPress={startAddSingle} tone="accent" />
+                <Btn label={t("program.addSuperset")} onPress={startAddSuperset} />
               </View>
 
               {activeDay ? (
                 <View style={{ gap: 10 }}>
                   {activeDay.blocks.length === 0 ? (
-                    <Text style={{ color: theme.muted }}>Ingen blokker. Legg til øvelser.</Text>
+                    <Text style={{ color: theme.muted }}>{t("program.noBlocks")}</Text>
                   ) : (
                     activeDay.blocks.map((block, idx) => {
                       const altMap = alternatives[editingDayIndex] ?? {};
                       if (block.type === "single") {
                         const altList = altMap[block.exId] ?? [];
                         return (
-                          <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.panel }}>
+                          <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
                             <Text style={{ color: theme.text }}>{displayNameFor(block.exId)}</Text>
                             {altList.length ? (
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                                Alternativer: {altList.map((id) => displayNameFor(id)).join(", ")}
+                                {t("program.alternatives")}: {altList.map((id) => displayNameFor(id)).join(", ")}
                               </Text>
                             ) : null}
                             <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                              <Btn label="Alternativer" onPress={() => openAlternatives(editingDayIndex, block.exId)} />
-                              <Btn label="Mål" onPress={() => openTargetEditor(block.exId)} />
-                              <Btn label="↑" onPress={() => moveBlock(idx, -1)} />
-                              <Btn label="↓" onPress={() => moveBlock(idx, 1)} />
-                              <Btn label="Fjern" tone="danger" onPress={() => removeBlock(idx)} />
+                              <Btn label={t("program.alternatives")} onPress={() => openAlternatives(editingDayIndex, block.exId)} />
+                              <Btn label={t("program.targetBtn")} onPress={() => openTargetEditor(block.exId)} />
+                              <Pressable onPress={() => moveBlock(idx, -1)} disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
+                                <MaterialIcons name="arrow-upward" size={18} color={theme.text} />
+                              </Pressable>
+                              <Pressable onPress={() => moveBlock(idx, 1)} disabled={idx === (activeDay?.blocks.length ?? 1) - 1} style={{ opacity: idx === (activeDay?.blocks.length ?? 1) - 1 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
+                                <MaterialIcons name="arrow-downward" size={18} color={theme.text} />
+                              </Pressable>
+                              <Btn label={t("program.remove")} tone="danger" onPress={() => removeBlock(idx)} />
                             </View>
                           </View>
                         );
@@ -784,27 +909,31 @@ export default function ProgramScreen() {
                       const altA = altMap[block.a] ?? [];
                       const altB = altMap[block.b] ?? [];
                       return (
-                        <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.panel }}>
+                        <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
                           <Text style={{ color: theme.text }}>A: {displayNameFor(block.a)}</Text>
                           {altA.length ? (
                             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                              Alternativer: {altA.map((id) => displayNameFor(id)).join(", ")}
+                              {t("program.alternatives")}: {altA.map((id) => displayNameFor(id)).join(", ")}
                             </Text>
                           ) : null}
                           <Text style={{ color: theme.text, marginTop: 6 }}>B: {displayNameFor(block.b)}</Text>
                           {altB.length ? (
                             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                              Alternativer: {altB.map((id) => displayNameFor(id)).join(", ")}
+                              {t("program.alternatives")}: {altB.map((id) => displayNameFor(id)).join(", ")}
                             </Text>
                           ) : null}
                           <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                             <Btn label="Alt A" onPress={() => openAlternatives(editingDayIndex, block.a)} />
                             <Btn label="Alt B" onPress={() => openAlternatives(editingDayIndex, block.b)} />
-                            <Btn label="Mål A" onPress={() => openTargetEditor(block.a)} />
-                            <Btn label="Mål B" onPress={() => openTargetEditor(block.b)} />
-                            <Btn label="↑" onPress={() => moveBlock(idx, -1)} />
-                            <Btn label="↓" onPress={() => moveBlock(idx, 1)} />
-                            <Btn label="Fjern" tone="danger" onPress={() => removeBlock(idx)} />
+                            <Btn label={`${t("program.targetBtn")} A`} onPress={() => openTargetEditor(block.a)} />
+                            <Btn label={`${t("program.targetBtn")} B`} onPress={() => openTargetEditor(block.b)} />
+                            <Pressable onPress={() => moveBlock(idx, -1)} disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
+                              <MaterialIcons name="arrow-upward" size={18} color={theme.text} />
+                            </Pressable>
+                            <Pressable onPress={() => moveBlock(idx, 1)} disabled={idx === (activeDay?.blocks.length ?? 1) - 1} style={{ opacity: idx === (activeDay?.blocks.length ?? 1) - 1 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
+                              <MaterialIcons name="arrow-downward" size={18} color={theme.text} />
+                            </Pressable>
+                            <Btn label={t("program.remove")} tone="danger" onPress={() => removeBlock(idx)} />
                           </View>
                         </View>
                       );
@@ -818,18 +947,32 @@ export default function ProgramScreen() {
       </Modal>
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", padding: 14, justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
-            <View style={{ padding: 14, borderBottomColor: theme.line, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ color: theme.text, fontSize: 16 }}>Velg øvelse</Text>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
+            <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, gap: 8 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: theme.text, fontSize: 16 }}>{t("program.chooseExercise")}</Text>
+                <Pressable
+                  onPress={() => {
+                    setPickerOpen(false);
+                    setPendingSupersetA(null);
+                  }}
+                  style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
+                >
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono }}>{t("common.close").toUpperCase()}</Text>
+                </Pressable>
+              </View>
               <Pressable
                 onPress={() => {
-                  setPickerOpen(false);
-                  setPendingSupersetA(null);
+                  setCustomExName("");
+                  setCustomExEquipment("barbell");
+                  setCustomExTags([]);
+                  setCustomExIncrement(2.5);
+                  setCustomExModalOpen(true);
                 }}
-                style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6, borderColor: theme.accent, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, alignSelf: "flex-start" }}
               >
-                <Text style={{ color: theme.muted, fontFamily: theme.mono }}>LUKK</Text>
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 13 }}>+ {t("program.createCustom")}</Text>
               </Pressable>
             </View>
 
@@ -837,12 +980,12 @@ export default function ProgramScreen() {
               <TextField
                 value={pickerQuery}
                 onChangeText={setPickerQuery}
-                placeholder="Søk..."
+                placeholder={t("common.search")}
                 placeholderTextColor={theme.muted}
                 style={{
                   color: theme.text,
-                  backgroundColor: theme.panel,
-                  borderColor: theme.line,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
                   borderWidth: 1,
                   borderRadius: 14,
                   padding: 12,
@@ -851,37 +994,70 @@ export default function ProgramScreen() {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 <Chip text="All" active={pickerTag === "all"} onPress={() => setPickerTag("all")} />
-                {EXERCISE_TAGS.map((t) => (
-                  <Chip key={t} text={t} active={pickerTag === t} onPress={() => setPickerTag(t)} />
+                {EXERCISE_TAGS.map((tag) => (
+                  <Chip key={tag} text={tag} active={pickerTag === tag} onPress={() => setPickerTag(tag)} />
                 ))}
               </ScrollView>
 
-              <ScrollView
-                contentContainerStyle={{ gap: 8 }}
+              <FlatList
+                data={filteredExercises}
+                keyExtractor={(ex) => ex.id}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="none"
-              >
-                {filteredExercises.map((ex) => (
+                contentContainerStyle={{ gap: 8 }}
+                ListEmptyComponent={
+                  <Text style={{ color: theme.muted, textAlign: "center", padding: 20 }}>
+                    {t("program.noResults")}
+                  </Text>
+                }
+                renderItem={({ item: ex }) => (
                   <Pressable
-                    key={ex.id}
                     onPress={() => handlePickExercise(ex.id)}
+                    onLongPress={isCustomExercise(ex.id) ? () => {
+                      Alert.alert(
+                        t("program.deleteCustom"),
+                        t("program.deleteCustomConfirm"),
+                        [
+                          { text: t("common.cancel"), style: "cancel" },
+                          {
+                            text: t("common.delete"),
+                            style: "destructive",
+                            onPress: async () => {
+                              const result = await deleteCustomExercise(ex.id);
+                              if (!result.ok) {
+                                Alert.alert(t("program.customExInUse"));
+                              } else {
+                                setCustomExRefresh((v) => v + 1);
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    } : undefined}
                     style={{
                       padding: 12,
                       borderRadius: 14,
                       borderWidth: 1,
-                      borderColor: theme.line,
-                      backgroundColor: theme.panel,
+                      borderColor: isCustomExercise(ex.id) ? theme.accent : theme.glassBorder,
+                      backgroundColor: theme.glass,
                     }}
                   >
-                  <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>{ex.displayName}</Text>
-                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{ex.equipment} · {ex.tags.join("/")}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, flex: 1 }} numberOfLines={1}>{ex.displayName}</Text>
+                      {isCustomExercise(ex.id) ? (
+                        <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 9, borderWidth: 1, borderColor: theme.accent, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          {t("program.customExercise")}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{ex.equipment} {"\u00b7"} {ex.tags.join("/")}</Text>
                   </Pressable>
-                ))}
-              </ScrollView>
+                )}
+              />
 
               {pickerMode === "addSupersetB" && pendingSupersetA ? (
                 <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
-                  Velg øvelse B (A er {displayNameFor(pendingSupersetA)}).
+                  {t("program.chooseExerciseB", { name: displayNameFor(pendingSupersetA) })}
                 </Text>
               ) : null}
             </View>
@@ -890,22 +1066,22 @@ export default function ProgramScreen() {
       </Modal>
 
       <Modal visible={altEditorOpen} transparent animationType="slide" onRequestClose={() => setAltEditorOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", padding: 14, justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
-            <View style={{ padding: 14, borderBottomColor: theme.line, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between" }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
+            <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between" }}>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: theme.text, fontSize: 16 }}>Alternativer</Text>
+                <Text style={{ color: theme.text, fontSize: 16 }}>{t("program.alternatives")}</Text>
                 {altContext ? (
                   <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-                    {displayNameFor(altContext.exerciseId)} (0–3)
+                    {displayNameFor(altContext.exerciseId)} (0{"\u2013"}3)
                   </Text>
                 ) : null}
               </View>
               <Pressable
                 onPress={() => setAltEditorOpen(false)}
-                style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
+                style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
               >
-                <Text style={{ color: theme.muted, fontFamily: theme.mono }}>LUKK</Text>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono }}>{t("common.close").toUpperCase()}</Text>
               </Pressable>
             </View>
 
@@ -913,12 +1089,12 @@ export default function ProgramScreen() {
               <TextField
                 value={altQuery}
                 onChangeText={setAltQuery}
-                placeholder="Søk..."
+                placeholder={t("common.search")}
                 placeholderTextColor={theme.muted}
                 style={{
                   color: theme.text,
-                  backgroundColor: theme.panel,
-                  borderColor: theme.line,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
                   borderWidth: 1,
                   borderRadius: 14,
                   padding: 12,
@@ -927,8 +1103,8 @@ export default function ProgramScreen() {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 <Chip text="All" active={altTag === "all"} onPress={() => setAltTag("all")} />
-                {EXERCISE_TAGS.map((t) => (
-                  <Chip key={`alt_${t}`} text={t} active={altTag === t} onPress={() => setAltTag(t)} />
+                {EXERCISE_TAGS.map((tag) => (
+                  <Chip key={`alt_${tag}`} text={tag} active={altTag === tag} onPress={() => setAltTag(tag)} />
                 ))}
               </ScrollView>
 
@@ -955,13 +1131,13 @@ export default function ProgramScreen() {
                           padding: 12,
                           borderRadius: 14,
                           borderWidth: 1,
-                          borderColor: selected ? theme.accent : theme.line,
-                          backgroundColor: theme.panel,
+                          borderColor: selected ? theme.accent : theme.glassBorder,
+                          backgroundColor: theme.glass,
                         }}
                       >
                         <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>{ex.displayName}</Text>
                         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-                          {ex.equipment} · {ex.tags.join("/")}
+                          {ex.equipment} {"\u00b7"} {ex.tags.join("/")}
                         </Text>
                       </Pressable>
                     );
@@ -969,8 +1145,8 @@ export default function ProgramScreen() {
               </ScrollView>
 
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                <Btn label="Lagre" onPress={saveAlternatives} tone="accent" />
-                <Btn label="Tøm" onPress={() => setAltSelection([])} />
+                <Btn label={t("common.save")} onPress={saveAlternatives} tone="accent" />
+                <Btn label={t("program.clear")} onPress={() => setAltSelection([])} />
               </View>
             </View>
           </View>
@@ -978,20 +1154,20 @@ export default function ProgramScreen() {
       </Modal>
 
       <Modal visible={nameModalOpen} transparent animationType="fade" onRequestClose={() => setNameModalOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
-              {nameAction === "new" ? "Nytt program" : nameAction === "duplicate" ? "Dupliser program" : "Gi nytt navn"}
+              {nameAction === "new" ? t("program.newProgram") : nameAction === "duplicate" ? t("program.duplicateProgram") : t("program.rename")}
             </Text>
             <TextField
               value={nameValue}
               onChangeText={setNameValue}
-              placeholder="Navn"
+              placeholder={t("program.name")}
               placeholderTextColor={theme.muted}
               style={{
                 color: theme.text,
-                backgroundColor: theme.panel,
-                borderColor: theme.line,
+                backgroundColor: theme.glass,
+                borderColor: theme.glassBorder,
                 borderWidth: 1,
                 borderRadius: 14,
                 padding: 12,
@@ -999,13 +1175,13 @@ export default function ProgramScreen() {
             />
             {nameAction === "new" ? (
               <View style={{ gap: 8 }}>
-                <Text style={{ color: theme.muted }}>Antall dager</Text>
+                <Text style={{ color: theme.muted }}>{t("program.daysCount")}</Text>
                 <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   <Btn
                     label="-"
                     onPress={() => setNewProgramDays((v) => clampInt(v - 1, 1, 10))}
                   />
-                  <Chip text={`${clampInt(newProgramDays, 1, 10)} dager`} active />
+                  <Chip text={`${clampInt(newProgramDays, 1, 10)} ${t("common.days").toLowerCase()}`} active />
                   <Btn
                     label="+"
                     onPress={() => setNewProgramDays((v) => clampInt(v + 1, 1, 10))}
@@ -1014,23 +1190,23 @@ export default function ProgramScreen() {
               </View>
             ) : null}
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Btn label="Lagre" onPress={submitName} tone="accent" />
-              <Btn label="Avbryt" onPress={() => setNameModalOpen(false)} />
+              <Btn label={t("common.save")} onPress={submitName} tone="accent" />
+              <Btn label={t("common.cancel")} onPress={() => setNameModalOpen(false)} />
             </View>
           </View>
         </View>
       </Modal>
 
       <Modal visible={targetEditorOpen} transparent animationType="fade" onRequestClose={() => setTargetEditorOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
-            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>Mål per øvelse</Text>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.targets")}</Text>
             <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
               {targetExerciseId ? displayNameFor(targetExerciseId) : ""}
             </Text>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>Rep range</Text>
+              <Text style={{ color: theme.muted }}>{t("program.repRange")}</Text>
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                 <Btn
                   label="-1"
@@ -1059,37 +1235,46 @@ export default function ProgramScreen() {
             </View>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>Antall sett</Text>
+              <Text style={{ color: theme.muted }}>{t("program.setsCount")}</Text>
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                 <Btn label="-1" onPress={() => setTargetSets((v) => clampInt(v - 1, 1, 10))} />
-                <Chip text={`${clampInt(targetSets, 1, 10)} sett`} active />
+                <Chip text={`${clampInt(targetSets, 1, 10)} ${t("common.sets").toLowerCase()}`} active />
                 <Btn label="+1" onPress={() => setTargetSets((v) => clampInt(v + 1, 1, 10))} />
               </View>
             </View>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>Increment (kg)</Text>
+              <Text style={{ color: theme.muted }}>{t("program.increment")}</Text>
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                 <Btn label="-2.5" onPress={() => setTargetIncrement((v) => Math.max(0, v - 2.5))} />
-                <Chip text={`${targetIncrement.toFixed(1)} kg`} />
+                <Chip text={`${targetIncrement.toFixed(1)} ${t("common.kg")}`} />
                 <Btn label="+2.5" onPress={() => setTargetIncrement((v) => v + 2.5)} />
                 <Btn label="+5" onPress={() => setTargetIncrement((v) => v + 5)} />
               </View>
             </View>
 
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.muted }}>{t("program.autoProgress")}</Text>
+              <Switch
+                value={targetAutoProgress}
+                onValueChange={setTargetAutoProgress}
+                trackColor={{ false: theme.glassBorder, true: theme.accent }}
+              />
+            </View>
+
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Btn label="Lagre" onPress={saveTarget} tone="accent" />
-              <Btn label="Avbryt" onPress={() => setTargetEditorOpen(false)} />
+              <Btn label={t("common.save")} onPress={saveTarget} tone="accent" />
+              <Btn label={t("common.cancel")} onPress={() => setTargetEditorOpen(false)} />
             </View>
           </View>
         </View>
       </Modal>
 
       <Modal visible={importExportOpen !== null} transparent animationType="fade" onRequestClose={() => setImportExportOpen(null)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.bg, borderColor: theme.line, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
-              {importExportOpen === "export" ? "Eksporter program" : "Importer program"}
+              {importExportOpen === "export" ? t("program.exportProgram") : t("program.importProgram")}
             </Text>
             {importExportOpen === "export" ? (
               <>
@@ -1099,8 +1284,8 @@ export default function ProgramScreen() {
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1109,8 +1294,8 @@ export default function ProgramScreen() {
                   }}
                 />
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label="Kopier" onPress={() => copyText(exportText)} tone="accent" />
-                  <Btn label="Lukk" onPress={() => setImportExportOpen(null)} />
+                  <Btn label={t("common.copy")} onPress={() => copyText(exportText)} tone="accent" />
+                  <Btn label={t("common.close")} onPress={() => setImportExportOpen(null)} />
                 </View>
               </>
             ) : (
@@ -1118,13 +1303,13 @@ export default function ProgramScreen() {
                 <TextField
                   value={importText}
                   onChangeText={setImportText}
-                  placeholder="Lim inn JSON"
+                  placeholder={t("settings.paste")}
                   placeholderTextColor={theme.muted}
                   multiline
                   style={{
                     color: theme.text,
-                    backgroundColor: theme.panel,
-                    borderColor: theme.line,
+                    backgroundColor: theme.glass,
+                    borderColor: theme.glassBorder,
                     borderWidth: 1,
                     borderRadius: 14,
                     padding: 12,
@@ -1134,16 +1319,174 @@ export default function ProgramScreen() {
                 />
                 {importError ? <Text style={{ color: theme.danger }}>{importError}</Text> : null}
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label="Importer" onPress={handleImport} tone="accent" />
-                  <Btn label="Avbryt" onPress={() => setImportExportOpen(null)} />
+                  <Btn label={t("program.import")} onPress={handleImport} tone="accent" />
+                  <Btn label={t("common.cancel")} onPress={() => setImportExportOpen(null)} />
                 </View>
               </>
             )}
           </View>
         </View>
       </Modal>
+
+      {/* Custom exercise creation modal */}
+      <Modal visible={customExModalOpen} transparent animationType="fade" onRequestClose={() => setCustomExModalOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.createCustom")}</Text>
+
+            <TextField
+              value={customExName}
+              onChangeText={setCustomExName}
+              placeholder={t("program.exerciseName")}
+              placeholderTextColor={theme.muted}
+              style={{ color: theme.text, backgroundColor: theme.glass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12 }}
+            />
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: theme.muted }}>{t("program.equipment")}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {(["barbell", "dumbbell", "machine", "cable", "bodyweight", "smith", "trapbar", "other"] as Equipment[]).map((eq) => (
+                  <Chip key={eq} text={eq} active={customExEquipment === eq} onPress={() => setCustomExEquipment(eq)} />
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: theme.muted }}>{t("program.selectTags")}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {EXERCISE_TAGS.map((tag) => (
+                  <Chip
+                    key={tag}
+                    text={tag}
+                    active={customExTags.includes(tag)}
+                    onPress={() => {
+                      setCustomExTags((prev) =>
+                        prev.includes(tag) ? prev.filter((t) => t !== tag) : prev.length < 4 ? [...prev, tag] : prev
+                      );
+                    }}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: theme.muted }}>{t("program.increment")}</Text>
+              <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+                <Btn label="-" onPress={() => setCustomExIncrement((v) => Math.max(0.5, v - 0.5))} />
+                <Chip text={`${customExIncrement.toFixed(1)} kg`} />
+                <Btn label="+" onPress={() => setCustomExIncrement((v) => v + 0.5)} />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Btn
+                label={t("common.save")}
+                tone="accent"
+                onPress={async () => {
+                  const name = customExName.trim();
+                  if (!name) return;
+                  await createCustomExercise({
+                    displayName: name,
+                    equipment: customExEquipment,
+                    tags: customExTags,
+                    defaultIncrementKg: customExIncrement,
+                  });
+                  setCustomExRefresh((v) => v + 1);
+                  setCustomExModalOpen(false);
+                }}
+              />
+              <Btn label={t("common.cancel")} onPress={() => setCustomExModalOpen(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Periodization Modal */}
+      <Modal visible={periodizationOpen} transparent animationType="fade" onRequestClose={() => setPeriodizationOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.periodization") || "Periodization"}</Text>
+
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.muted }}>{t("program.enablePeriodization") || "Enable"}</Text>
+              <Switch
+                value={periodEnabled}
+                onValueChange={setPeriodEnabled}
+                trackColor={{ false: theme.glassBorder, true: theme.accent }}
+              />
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted }}>{t("program.cycleLength") || "Cycle length (3-8 weeks)"}</Text>
+              <TextField
+                value={periodCycleWeeks}
+                onChangeText={setPeriodCycleWeeks}
+                keyboardType="numeric"
+                placeholder="4"
+                placeholderTextColor={theme.muted}
+                style={{
+                  color: theme.text,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted }}>{t("program.deloadWeekNumber") || "Deload week number"}</Text>
+              <TextField
+                value={periodDeloadWeek}
+                onChangeText={setPeriodDeloadWeek}
+                keyboardType="numeric"
+                placeholder="4"
+                placeholderTextColor={theme.muted}
+                style={{
+                  color: theme.text,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted }}>{t("program.deloadIntensity") || "Deload intensity %"}</Text>
+              <TextField
+                value={periodDeloadPercent}
+                onChangeText={setPeriodDeloadPercent}
+                keyboardType="numeric"
+                placeholder="60"
+                placeholderTextColor={theme.muted}
+                style={{
+                  color: theme.text,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              />
+            </View>
+
+            {periodConfig?.enabled ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                {isDeloadWeek(periodConfig)
+                  ? "DELOAD"
+                  : `${t("program.week") || "Week"} ${periodConfig.currentWeek}/${periodConfig.cycleWeeks}`}
+              </Text>
+            ) : null}
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Btn label={t("common.save")} onPress={savePeriodizationConfig} tone="accent" />
+              <Btn label={t("common.cancel")} onPress={() => setPeriodizationOpen(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
-
-

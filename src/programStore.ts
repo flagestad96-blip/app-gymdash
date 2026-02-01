@@ -827,6 +827,28 @@ export function cloneProgram(program: Program, name: string): Program {
   };
 }
 
+/** Get preview data for the next workout day */
+export async function getNextWorkoutPreview(
+  programId: string,
+  nextDayIndex: number
+): Promise<{ dayName: string; exercises: string[] } | null> {
+  if (!programId) return null;
+  await ensureDb();
+  const program = await getProgram(programId);
+  if (!program || !program.days[nextDayIndex]) return null;
+  const day = program.days[nextDayIndex];
+  const exercises: string[] = [];
+  for (const block of day.blocks) {
+    if (block.type === "single") {
+      exercises.push(block.exId);
+    } else {
+      exercises.push(block.a);
+      exercises.push(block.b);
+    }
+  }
+  return { dayName: day.name, exercises };
+}
+
 const ProgramStore = {
   ensurePrograms,
   listPrograms,
@@ -844,6 +866,7 @@ const ProgramStore = {
   setAlternatives,
   createBlankProgram,
   cloneProgram,
+  getNextWorkoutPreview,
   DEFAULT_STANDARD_PROGRAM,
   DEFAULT_BACK_PROGRAM,
   STANDARD_PROGRAM_ID,

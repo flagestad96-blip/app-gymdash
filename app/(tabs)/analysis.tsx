@@ -1,13 +1,20 @@
 ﻿// app/(tabs)/analysis.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, Modal, FlatList } from "react-native";
+import { View, Text, Pressable, ScrollView, Modal, FlatList, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import Svg, { Path, Circle } from "react-native-svg";
-import { theme } from "../../src/theme";
-import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
-import { displayNameFor, EXERCISES, searchExercises, tagsFor, resolveExerciseId, isBodyweight } from "../../src/exerciseLibrary";
+import { useTheme } from "../../src/theme";
+import { useI18n } from "../../src/i18n";
+import { LinearGradient } from "expo-linear-gradient";
+import { ensureDb, getDb, getSettingAsync, setSettingAsync, listBodyMetrics, type BodyMetricRow } from "../../src/db";
+import LineChart from "../../src/components/charts/LineChart";
+import MuscleGroupBars, { MUSCLE_GROUPS, primaryMuscleGroups } from "../../src/components/charts/MuscleGroupBars";
+import { getStandard, getStandardExerciseIds, hasStandard, getTargetWeights, type StrengthLevel, type Gender } from "../../src/strengthStandards";
+import RadarChart, { type RadarDataPoint } from "../../src/components/charts/RadarChart";
+import { getGoalsForExercise, createGoal, deleteGoal, getCurrentValueForGoal, type ExerciseGoal, type GoalType } from "../../src/goals";
+import { displayNameFor, EXERCISES, searchExercises, resolveExerciseId, isBodyweight } from "../../src/exerciseLibrary";
 import AppLoading from "../../components/AppLoading";
-import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow } from "../../src/ui";
+import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
+import { useWeightUnit, unitLabel } from "../../src/units";
 
 type RangeKey = "week" | "month" | "year";
 
@@ -47,28 +54,6 @@ type PrView = {
   e1rm?: PrRow;
   volume?: PrRow;
 };
-
-const MUSCLE_GROUPS = [
-  "chest",
-  "back",
-  "shoulders",
-  "biceps",
-  "triceps",
-  "quads",
-  "hamstrings",
-  "glutes",
-  "calves",
-  "core",
-] as const;
-
-function primaryMuscleGroups(exerciseId?: string | null, exerciseName?: string | null): string[] {
-  const exId = exerciseId ? String(exerciseId) : exerciseName ? resolveExerciseId(exerciseName) : null;
-  if (!exId) return ["other"];
-  const tags = tagsFor(exId);
-  const groups = tags.filter((t) => MUSCLE_GROUPS.includes(t as (typeof MUSCLE_GROUPS)[number]));
-  if (groups.length === 0) return ["other"];
-  return groups.slice(0, 2);
-}
 
 function daysBack(range: RangeKey) {
   if (range === "week") return 7;
@@ -130,72 +115,10 @@ function weightForSet(row: RowSet): number | null {
   return row.weight;
 }
 
-function buildLinePath(points: { x: number; y: number }[]) {
-  if (points.length === 0) return "";
-  const [first, ...rest] = points;
-  let d = `M ${first.x} ${first.y}`;
-  for (const p of rest) d += ` L ${p.x} ${p.y}`;
-  return d;
-}
-
-function LineChart({
-  values,
-  labels,
-  height = 140,
-}: {
-  values: number[];
-  labels: string[];
-  height?: number;
-}) {
-  const width = 320;
-
-  const safeValues = values.filter((v) => Number.isFinite(v));
-  const minV = safeValues.length ? Math.min(...safeValues) : 0;
-  const maxV = safeValues.length ? Math.max(...safeValues) : 1;
-  const pad = 12;
-
-  const span = Math.max(1e-9, maxV - minV);
-
-  const points = values.map((v, i) => {
-    const x = pad + (i * (width - pad * 2)) / Math.max(1, values.length - 1);
-    const y = pad + ((maxV - v) * (height - pad * 2)) / span;
-    return { x, y };
-  });
-
-  const d = buildLinePath(points);
-
-  if (values.length === 0) {
-    return (
-      <View style={{ paddingVertical: 10 }}>
-        <Text style={{ color: theme.muted }}>Ingen data i valgt periode.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ gap: 8 }}>
-      <Svg width={width} height={height}>
-        <Path d={d} stroke={theme.text} strokeWidth={2} fill="none" />
-        {points.map((p, idx) => (
-          <Circle key={idx} cx={p.x} cy={p.y} r={2.8} fill={theme.text} />
-        ))}
-      </Svg>
-
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{labels[0] ?? ""}</Text>
-        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-          {labels[labels.length - 1] ?? ""}
-        </Text>
-      </View>
-
-      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-        Min {minV.toFixed(1)} - Max {maxV.toFixed(1)}
-      </Text>
-    </View>
-  );
-}
-
 export default function Analysis() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  const wu = useWeightUnit();
   const [ready, setReady] = useState(false);
 
   const navigation = useNavigation();
@@ -214,6 +137,23 @@ export default function Analysis() {
   const [workouts, setWorkouts] = useState<RowWorkout[]>([]);
   const [prStats, setPrStats] = useState<PrView | null>(null);
 
+  // Comparison mode
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [comparisonExerciseKey, setComparisonExerciseKey] = useState<string>("");
+  const [comparisonPickerOpen, setComparisonPickerOpen] = useState(false);
+
+  // Goals
+  const [exerciseGoals, setExerciseGoals] = useState<(ExerciseGoal & { currentValue: number })[]>([]);
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [goalType, setGoalType] = useState<GoalType>("weight");
+  const [goalTarget, setGoalTarget] = useState("");
+
+  // Advanced analytics state
+  const [bodyweight, setBodyweight] = useState<number | null>(null);
+  const [gender, setGender] = useState<Gender>("male");
+  const [bodyMetrics90, setBodyMetrics90] = useState<BodyMetricRow[]>([]);
+  const [allPrRecords, setAllPrRecords] = useState<PrRow[]>([]);
+
   useEffect(() => {
     ensureDb().then(async () => {
       const savedRange = (await getSettingAsync("analysisRange")) as RangeKey | null;
@@ -225,6 +165,34 @@ export default function Analysis() {
       setReady(true);
     });
   }, []);
+
+  // Load bodyweight and body metrics on mount
+  useEffect(() => {
+    if (!ready) return;
+    (async () => {
+      try {
+        const latest = await listBodyMetrics(1);
+        if (latest.length > 0) setBodyweight(latest[0].weight_kg);
+      } catch {}
+      try {
+        const metrics = await listBodyMetrics(90);
+        setBodyMetrics90(metrics);
+      } catch {}
+    })();
+  }, [ready]);
+
+  // Load all PR records for strength standards
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      const rows = getDb().getAllSync<PrRow>(
+        `SELECT exercise_id, type, value, reps, weight, set_id, date, program_id FROM pr_records WHERE type = 'e1rm'`
+      );
+      setAllPrRecords(Array.isArray(rows) ? rows : []);
+    } catch {
+      setAllPrRecords([]);
+    }
+  }, [ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -320,6 +288,26 @@ export default function Analysis() {
     }
   }, [ready, selectedExerciseKey]);
 
+  // Load goals for selected exercise
+  const loadGoals = useCallback(async () => {
+    if (!ready || !selectedExerciseKey) { setExerciseGoals([]); return; }
+    try {
+      const programMode = (await getSettingAsync("programMode")) || "normal";
+      const programId = await getSettingAsync(`activeProgramId_${programMode}`);
+      if (!programId) { setExerciseGoals([]); return; }
+      const goals = await getGoalsForExercise(selectedExerciseKey, programId);
+      const withProgress = await Promise.all(
+        goals.map(async (g) => ({
+          ...g,
+          currentValue: await getCurrentValueForGoal(g),
+        }))
+      );
+      setExerciseGoals(withProgress);
+    } catch { setExerciseGoals([]); }
+  }, [ready, selectedExerciseKey]);
+
+  useEffect(() => { loadGoals(); }, [loadGoals]);
+
   function setRangeAndPersist(r: RangeKey) {
     setRange(r);
     setSettingAsync("analysisRange", r).catch(() => {});
@@ -341,8 +329,8 @@ export default function Analysis() {
 
   const selectedExerciseLabel = useMemo(() => {
     const found = exerciseKeys.find((e) => e.key === selectedExerciseKey);
-    return found?.label ?? "Velg øvelse";
-  }, [exerciseKeys, selectedExerciseKey]);
+    return found?.label ?? t("analysis.chooseExercise");
+  }, [exerciseKeys, selectedExerciseKey, t]);
 
   const exerciseSeries = useMemo(() => {
     if (!selectedExerciseKey) return { labels: [] as string[], values: [] as number[] };
@@ -364,6 +352,28 @@ export default function Analysis() {
     const values = days.map((d) => perDay[d]);
     return { labels, values };
   }, [sets, selectedExerciseKey]);
+
+  const comparisonSeries = useMemo(() => {
+    if (!comparisonMode || !comparisonExerciseKey) return { labels: [] as string[], values: [] as number[] };
+    const perDay: Record<string, number> = {};
+    for (const row of sets) {
+      const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
+      if (key !== comparisonExerciseKey) continue;
+      const day = isoDateOnly(new Date(row.created_at));
+      const w = weightForSet(row);
+      if (w == null) continue;
+      const val = epley1RM(w, row.reps);
+      perDay[day] = Math.max(perDay[day] ?? 0, val);
+    }
+    const days = Object.keys(perDay).sort();
+    return { labels: days.map((d) => d.slice(5)), values: days.map((d) => perDay[d]) };
+  }, [sets, comparisonExerciseKey, comparisonMode]);
+
+  const comparisonExerciseLabel = useMemo(() => {
+    if (!comparisonExerciseKey) return t("analysis.chooseSecondExercise");
+    const found = exerciseKeys.find((e) => e.key === comparisonExerciseKey);
+    return found?.label ?? comparisonExerciseKey;
+  }, [exerciseKeys, comparisonExerciseKey, t]);
 
   const exerciseStats = useMemo(() => {
     if (!selectedExerciseKey) return null;
@@ -445,9 +455,9 @@ export default function Analysis() {
     const bigGroups = new Set(["chest", "back", "quads", "hamstrings", "glutes", "shoulders"]);
     const statusFor = (count: number, group: string) => {
       const [low, high] = bigGroups.has(group) ? [8, 12] : [6, 10];
-      if (count < low) return "for lite";
-      if (count > high) return "mye";
-      return "ok";
+      if (count < low) return t("analysis.tooLittle");
+      if (count > high) return t("analysis.tooMuch");
+      return t("analysis.ok");
     };
 
     const byWeek: Record<string, Record<string, number>> = {};
@@ -617,6 +627,79 @@ export default function Analysis() {
     return { avg, dayAverages, count: durationsMin.length };
   }, [sets, workouts]);
 
+  // ── Strength Standards ──────────────────────────────────────────────
+  const STRENGTH_LIFT_IDS = ["bench_press", "back_squat", "deadlift", "overhead_press", "barbell_row"] as const;
+  const STANDARD_EXERCISE_MAP: Record<string, string> = { back_squat: "squat" };
+
+  const strengthStandardsData = useMemo(() => {
+    return STRENGTH_LIFT_IDS.map((exId) => {
+      const standardId = STANDARD_EXERCISE_MAP[exId] ?? exId;
+      const prRow = allPrRecords.find((r) => r.exercise_id === exId);
+      const e1rm = prRow?.value ?? null;
+      let level: StrengthLevel | null = null;
+      if (e1rm && bodyweight && bodyweight > 0 && hasStandard(standardId)) {
+        level = getStandard(standardId, e1rm, bodyweight, gender);
+      }
+      return { exId, standardId, e1rm, level };
+    });
+  }, [allPrRecords, bodyweight, gender]);
+
+  const LEVEL_COLORS: Record<StrengthLevel, string> = {
+    beginner: "#9CA3AF",
+    novice: "#60A5FA",
+    intermediate: "#34D399",
+    advanced: "#FBBF24",
+    elite: "#F87171",
+  };
+
+  // ── Body Composition ──────────────────────────────────────────────
+  const bodyCompData = useMemo(() => {
+    if (!bodyMetrics90.length) return null;
+    const sorted = [...bodyMetrics90].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const weights = sorted.map((m) => m.weight_kg);
+    const current = weights[weights.length - 1];
+    const min = Math.min(...weights);
+    const max = Math.max(...weights);
+    const change = weights.length >= 2 ? current - weights[0] : 0;
+    const labels = sorted.map((m) => m.date.slice(5));
+    return { labels, values: weights, current, min, max, change };
+  }, [bodyMetrics90]);
+
+  // ── Muscle Balance Radar ──────────────────────────────────────────
+  const RADAR_GROUPS = ["chest", "back", "shoulders", "biceps", "triceps", "quads", "hamstrings"] as const;
+
+  const radarData = useMemo((): RadarDataPoint[] => {
+    // Use last 4 weeks of sets
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 28);
+    const cutoffIso = isoDateOnly(cutoff);
+
+    const volumeByGroup: Record<string, number> = {};
+    for (const g of RADAR_GROUPS) volumeByGroup[g] = 0;
+
+    for (const row of sets) {
+      if (isWarmup(row)) continue;
+      const d = isoDateOnly(new Date(row.created_at));
+      if (d < cutoffIso) continue;
+      const w = weightForSet(row);
+      if (w == null) continue;
+      const vol = w * row.reps;
+      const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
+      for (const g of groups) {
+        if (g in volumeByGroup) {
+          volumeByGroup[g] += vol;
+        }
+      }
+    }
+
+    const maxVol = Math.max(...Object.values(volumeByGroup), 1);
+    return RADAR_GROUPS.map((g) => ({
+      label: g.charAt(0).toUpperCase() + g.slice(1),
+      value: volumeByGroup[g],
+      max: maxVol,
+    }));
+  }, [sets]);
+
   if (!ready) {
     return <AppLoading />;
   }
@@ -624,68 +707,52 @@ export default function Analysis() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
-        <TopBar title="Analyse" subtitle={`Range: ${range}`} left={<IconButton icon="menu" onPress={openDrawer} />} />
+        <TopBar title={t("analysis.title")} subtitle={t("analysis.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
 
-        <Card title="RANGE">
+        <Card title={t("analysis.range")}>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <SegButton label="UKE" active={range === "week"} onPress={() => setRangeAndPersist("week")} />
-            <SegButton label="MÅNED" active={range === "month"} onPress={() => setRangeAndPersist("month")} />
-            <SegButton label="ÅR" active={range === "year"} onPress={() => setRangeAndPersist("year")} />
+            <SegButton label={t("analysis.week")} active={range === "week"} onPress={() => setRangeAndPersist("week")} />
+            <SegButton label={t("analysis.month")} active={range === "month"} onPress={() => setRangeAndPersist("month")} />
+            <SegButton label={t("analysis.year")} active={range === "year"} onPress={() => setRangeAndPersist("year")} />
           </View>
-          <Text style={{ color: theme.muted }}>Viser data fra siste {daysBack(range)} dager.</Text>
+          <Text style={{ color: theme.muted }}>{t("analysis.showingData", { n: daysBack(range) })}</Text>
         </Card>
 
-        <Card title="STRENGTH INDEX">
+        <Card title={t("analysis.strengthIndex")}>
           <Text style={{ color: theme.muted }}>
-            Basert på beste e1RM per øvelse per økt (uten warmup). Baseline = snitt av de 3 første øktene.
+            {t("analysis.e1rmNote")}
           </Text>
-          <LineChart values={strengthIndexSeries.values} labels={strengthIndexSeries.labels} />
+          <LineChart values={strengthIndexSeries.values.map(v => wu.toDisplay(v))} labels={strengthIndexSeries.labels} unit={wu.unitLabel()} />
         </Card>
 
-        <Card title="VOLUM">
+        <Card title={t("analysis.volume")}>
           <Text style={{ color: theme.muted }}>
             {range === "week"
-              ? "Daglig volum (sum kg x reps)."
+              ? t("analysis.dailyVolume")
               : range === "month"
-              ? "Ukentlig volum i perioden."
-              : "Månedlig volum i perioden."}
+              ? t("analysis.weeklyVolume")
+              : t("analysis.monthlyVolume")}
           </Text>
-          <LineChart values={volumeSeries.values} labels={volumeSeries.labels} />
+          <LineChart values={volumeSeries.values.map(v => wu.toDisplay(v))} labels={volumeSeries.labels} unit={wu.unitLabel()} />
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-            Totalt: {volumeSeries.values.reduce((a, b) => a + b, 0).toFixed(0)} kg-reps
+            Totalt: {wu.toDisplay(volumeSeries.values.reduce((a, b) => a + b, 0)).toFixed(0)} {wu.unitLabel().toLowerCase()}-reps
           </Text>
         </Card>
 
-        <Card title="MUSKELGRUPPER (HARD SETS)">
-          {muscleStats.rows.length === 0 ? (
-            <Text style={{ color: theme.muted }}>Ingen sett i valgt periode.</Text>
-          ) : (
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                Uke fra {muscleStats.week}
-              </Text>
-              {muscleStats.rows.map((r, idx) => (
-                <ListRow
-                  key={r.group}
-                  title={r.group}
-                  subtitle={`${r.count} sett · ${r.status}${r.delta === 0 ? "" : r.delta > 0 ? ` (+${r.delta})` : ` (${r.delta})`}`}
-                  divider={idx < muscleStats.rows.length - 1}
-                />
-              ))}
-            </View>
-          )}
+        <Card title={t("analysis.muscleGroups")}>
+          <MuscleGroupBars rows={muscleStats.rows} week={muscleStats.week} />
         </Card>
 
-        <Card title="KONSISTENS">
+        <Card title={t("analysis.consistency")}>
           {consistencyStats.length === 0 ? (
-            <Text style={{ color: theme.muted }}>Ingen økter i valgt periode.</Text>
+            <Text style={{ color: theme.muted }}>{t("analysis.noSessions")}</Text>
           ) : (
             <View style={{ gap: 8 }}>
               {consistencyStats.map((row, idx) => (
                 <ListRow
                   key={row.week}
-                  title={`Uke ${row.week}`}
-                  subtitle={`${row.count} økter · ${row.totalMin.toFixed(0)} min`}
+                  title={t("analysis.weekLabel", { week: row.week })}
+                  subtitle={t("analysis.sessionsCount", { count: row.count, min: row.totalMin.toFixed(0) })}
                   divider={idx < consistencyStats.length - 1}
                 />
               ))}
@@ -693,66 +760,123 @@ export default function Analysis() {
           )}
         </Card>
 
-        <Card title="ØVELSE">
-          <Pressable
-            onPress={() => setExercisePickerOpen(true)}
-            style={{
-              borderColor: theme.line,
-              borderWidth: 1,
-              borderRadius: 14,
-              padding: 12,
-              backgroundColor: theme.panel2,
-            }}
-          >
-            <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>
-              {selectedExerciseLabel}
-            </Text>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>Trykk for å velge</Text>
-          </Pressable>
+        <Card title={t("analysis.exercise")}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable
+              onPress={() => setExercisePickerOpen(true)}
+              style={{
+                flex: 1,
+                borderColor: theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: theme.radius.lg,
+                padding: 14,
+                backgroundColor: theme.glass,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>
+                {selectedExerciseLabel}
+              </Text>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                {comparisonMode ? t("analysis.exercise1") : t("analysis.tapToChoose")}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { setComparisonMode(!comparisonMode); if (comparisonMode) setComparisonExerciseKey(""); }}
+              style={{
+                borderColor: comparisonMode ? theme.accent : theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: theme.radius.lg,
+                padding: 14,
+                backgroundColor: comparisonMode
+                  ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                  : theme.glass,
+                width: 52,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: comparisonMode ? theme.accent : theme.muted, fontSize: 18 }}>{"\u2194"}</Text>
+            </Pressable>
+          </View>
+
+          {comparisonMode && (
+            <Pressable
+              onPress={() => setComparisonPickerOpen(true)}
+              style={{
+                borderColor: comparisonExerciseKey ? "#F97316" : theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: theme.radius.lg,
+                padding: 14,
+                backgroundColor: theme.glass,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>
+                {comparisonExerciseLabel}
+              </Text>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("analysis.exercise2")}</Text>
+            </Pressable>
+          )}
 
           <Text style={{ color: theme.muted }}>
-            Grafen bruker «best set per dag» (estimert 1RM) for å være stabil.
+            {t("analysis.graphNote")}
           </Text>
 
-          <LineChart values={exerciseSeries.values} labels={exerciseSeries.labels} />
+          {comparisonMode && comparisonExerciseKey ? (
+            <View style={{ gap: 12 }}>
+              <View style={{ flexDirection: "row", gap: 16, justifyContent: "center" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ width: 16, height: 3, backgroundColor: theme.accent, borderRadius: 2 }} />
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }} numberOfLines={1}>{selectedExerciseLabel}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ width: 16, height: 3, backgroundColor: "#F97316", borderRadius: 2 }} />
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }} numberOfLines={1}>{comparisonExerciseLabel}</Text>
+                </View>
+              </View>
+              <LineChart values={exerciseSeries.values.map(v => wu.toDisplay(v))} labels={exerciseSeries.labels} unit={wu.unitLabel()} height={140} />
+              <LineChart values={comparisonSeries.values.map(v => wu.toDisplay(v))} labels={comparisonSeries.labels} unit={wu.unitLabel()} height={140} />
+            </View>
+          ) : (
+            <LineChart values={exerciseSeries.values.map(v => wu.toDisplay(v))} labels={exerciseSeries.labels} unit={wu.unitLabel()} />
+          )}
         </Card>
 
-        <Card title="STATISTIKK">
+        <Card title={t("analysis.stats")}>
           {!exerciseStats ? (
-            <Text style={{ color: theme.muted }}>Ingen sett logget for valgt øvelse enda.</Text>
+            <Text style={{ color: theme.muted }}>{t("analysis.noSetsLogged")}</Text>
           ) : (
             <View style={{ gap: 6 }}>
               <Text style={{ color: theme.text }}>
-                Sist: {exerciseStats.last.weight} kg x {exerciseStats.last.reps} ({exerciseStats.last.created_at.slice(0, 10)})
+                {t("log.previous")}: {wu.formatWeight(exerciseStats.last.weight)} x {exerciseStats.last.reps} ({exerciseStats.last.created_at.slice(0, 10)})
               </Text>
-              <Text style={{ color: theme.muted }}>Beste vekt: {exerciseStats.bestWeight.toFixed(1)} kg</Text>
-              <Text style={{ color: theme.muted }}>Beste est. 1RM: {exerciseStats.best1rm.toFixed(1)} kg</Text>
-              <Text style={{ color: theme.muted }}>Snitt reps: {exerciseStats.avgReps.toFixed(1)}</Text>
-              <Text style={{ color: theme.muted }}>Sett i perioden: {exerciseStats.count}</Text>
+              <Text style={{ color: theme.muted }}>{t("analysis.bestWeight")}: {wu.formatWeight(exerciseStats.bestWeight)}</Text>
+              <Text style={{ color: theme.muted }}>{t("analysis.bestE1rm")}: {wu.formatWeight(exerciseStats.best1rm)}</Text>
+              <Text style={{ color: theme.muted }}>{t("analysis.avgReps")}: {exerciseStats.avgReps.toFixed(1)}</Text>
+              <Text style={{ color: theme.muted }}>{t("analysis.setsInPeriod")}: {exerciseStats.count}</Text>
             </View>
           )}
         </Card>
 
-        <Card title="PRS">
+        <Card title={t("analysis.prs")}>
           {!prStats || (!prStats.heaviest && !prStats.e1rm && !prStats.volume) ? (
-            <Text style={{ color: theme.muted }}>Ingen PR-data for valgt øvelse.</Text>
+            <Text style={{ color: theme.muted }}>{t("analysis.noPRData")}</Text>
           ) : (
             <View style={{ gap: 6 }}>
               {prStats.heaviest ? (
                 <Text style={{ color: theme.text }}>
-                  Tungeste: {prStats.heaviest.value.toFixed(1)} kg
+                  {t("analysis.prHeaviest")}: {wu.formatWeight(prStats.heaviest.value)}
                   {prStats.heaviest.date ? ` (${prStats.heaviest.date})` : ""}
                 </Text>
               ) : null}
               {prStats.e1rm ? (
                 <Text style={{ color: theme.text }}>
-                  e1RM: {prStats.e1rm.value.toFixed(1)} kg
+                  {t("analysis.prE1rm")}: {wu.formatWeight(prStats.e1rm.value)}
                   {prStats.e1rm.date ? ` (${prStats.e1rm.date})` : ""}
                 </Text>
               ) : null}
               {prStats.volume ? (
                 <Text style={{ color: theme.text }}>
-                  Volum-sett: {prStats.volume.value.toFixed(1)}
+                  {t("analysis.prVolume")}: {prStats.volume.value.toFixed(1)}
                   {prStats.volume.date ? ` (${prStats.volume.date})` : ""}
                 </Text>
               ) : null}
@@ -760,28 +884,98 @@ export default function Analysis() {
           )}
         </Card>
 
-        <Card title="OVERALL PROGRESJON">
-          <Text style={{ color: theme.muted }}>
-            Gjennomsnitt av «beste sett» per øvelse per dag (estimert 1RM).
-          </Text>
-          <LineChart values={overallSeries.values} labels={overallSeries.labels} />
+        {/* Goals */}
+        <Card title={t("analysis.goals")}>
+          {!selectedExerciseKey ? (
+            <Text style={{ color: theme.muted }}>{t("analysis.selectExerciseFirst")}</Text>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {exerciseGoals.filter(g => !g.achievedAt).map((goal) => {
+                const progress = goal.targetValue > 0 ? Math.min(100, (goal.currentValue / goal.targetValue) * 100) : 0;
+                const isReps = goal.goalType === "reps";
+                return (
+                  <View key={goal.id} style={{ gap: 4 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                        {t(`analysis.goalType.${goal.goalType}`)}
+                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 13 }}>
+                          {isReps ? `${goal.currentValue}` : wu.formatWeight(goal.currentValue)} / {isReps ? `${goal.targetValue}` : wu.formatWeight(goal.targetValue)}
+                        </Text>
+                        <Pressable onPress={async () => { await deleteGoal(goal.id); loadGoals(); }}>
+                          <Text style={{ color: theme.muted, fontSize: 16 }}>{"\u00D7"}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                    <View style={{ height: 6, backgroundColor: theme.glass, borderRadius: 3, overflow: "hidden", borderWidth: 1, borderColor: theme.glassBorder }}>
+                      <View style={{ height: "100%", width: `${progress}%`, backgroundColor: progress >= 100 ? "#2ed573" : theme.accent, borderRadius: 3 }} />
+                    </View>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                      {progress >= 100 ? t("analysis.goalAchieved") : `${Math.round(progress)}% ${t("analysis.complete")}`}
+                    </Text>
+                  </View>
+                );
+              })}
+              {exerciseGoals.filter(g => g.achievedAt).length > 0 && (
+                <View style={{ gap: 4 }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>
+                    {t("analysis.achievedGoals")}
+                  </Text>
+                  {exerciseGoals.filter(g => g.achievedAt).map((goal) => {
+                    const isReps = goal.goalType === "reps";
+                    return (
+                      <View key={goal.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", opacity: 0.6 }}>
+                        <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
+                          {t(`analysis.goalType.${goal.goalType}`)} {isReps ? goal.targetValue : wu.formatWeight(goal.targetValue)}
+                        </Text>
+                        <Text style={{ color: "#2ed573", fontFamily: theme.mono, fontSize: 11 }}>{"\u2713"}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              <Pressable
+                onPress={() => { setGoalType("weight"); setGoalTarget(""); setGoalModalOpen(true); }}
+                style={{
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: theme.radius.lg,
+                  paddingVertical: 10,
+                  alignItems: "center",
+                  backgroundColor: theme.glass,
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                  {exerciseGoals.filter(g => !g.achievedAt).length > 0 ? t("analysis.addGoal") : t("analysis.setGoal")}
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </Card>
 
-        <Card title="ØKT-TID (SNITT)">
+        <Card title={t("analysis.progression")}>
+          <Text style={{ color: theme.muted }}>
+            {t("analysis.avgNote")}
+          </Text>
+          <LineChart values={overallSeries.values.map(v => wu.toDisplay(v))} labels={overallSeries.labels} unit={wu.unitLabel()} />
+        </Card>
+
+        <Card title={t("analysis.sessionTime")}>
           {durationStats.count === 0 ? (
-            <Text style={{ color: theme.muted }}>Ingen komplette økter med starttid funnet i valgt periode.</Text>
+            <Text style={{ color: theme.muted }}>{t("analysis.noCompleteSessions")}</Text>
           ) : (
             <>
               <Text style={{ color: theme.text, fontSize: 18 }}>{durationStats.avg.toFixed(1)} min</Text>
               <Text style={{ color: theme.muted }}>
-                Basert på {durationStats.count} økter (start til siste set).
+                {t("analysis.basedOnSessions", { count: durationStats.count })}
               </Text>
 
               {durationStats.dayAverages.length > 0 ? (
                 <View style={{ gap: 6, marginTop: 8 }}>
                   {durationStats.dayAverages.map((d) => (
                     <Text key={d.dayIndex} style={{ color: theme.muted, fontFamily: theme.mono }}>
-                      Dag {d.dayIndex + 1}: {d.avgMin.toFixed(1)} min (n={d.n})
+                      {t("analysis.dayLabel", { day: d.dayIndex + 1 })}: {d.avgMin.toFixed(1)} min (n={d.n})
                     </Text>
                   ))}
                 </View>
@@ -790,61 +984,197 @@ export default function Analysis() {
           )}
         </Card>
 
+        {/* ── Strength Standards Card ──────────────────────────────── */}
+        <Card title={t("analysis.strengthStandards")}>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            <Chip text={t("analysis.male")} active={gender === "male"} onPress={() => setGender("male")} />
+            <Chip text={t("analysis.female")} active={gender === "female"} onPress={() => setGender("female")} />
+          </View>
+          {!bodyweight ? (
+            <Text style={{ color: theme.muted }}>{t("analysis.noBodyweight")}</Text>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {strengthStandardsData.map((item) => {
+                const label = displayNameFor(item.exId);
+                return (
+                  <View
+                    key={item.exId}
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      paddingVertical: 6,
+                      borderBottomWidth: 1,
+                      borderBottomColor: theme.glassBorder,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 14, fontFamily: theme.fontFamily.medium }}>
+                        {label}
+                      </Text>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                        {t("analysis.e1rmLabel")}: {item.e1rm ? wu.formatWeight(item.e1rm) : "—"}
+                      </Text>
+                    </View>
+                    {item.level ? (
+                      <View
+                        style={{
+                          backgroundColor: LEVEL_COLORS[item.level] + "22",
+                          borderColor: LEVEL_COLORS[item.level],
+                          borderWidth: 1,
+                          borderRadius: theme.radius.md,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: LEVEL_COLORS[item.level],
+                            fontFamily: theme.mono,
+                            fontSize: 11,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          {t(`analysis.${item.level}`)}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>—</Text>
+                    )}
+                  </View>
+                );
+              })}
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, marginTop: 4 }}>
+                {t("analysis.ratio")}: {bodyweight ? `${wu.formatWeight(bodyweight)} ${t("analysis.gender").toLowerCase()}` : ""}
+              </Text>
+            </View>
+          )}
+        </Card>
+
+        {/* ── Body Composition Card ──────────────────────────────── */}
+        <Card title={t("analysis.bodyComposition")}>
+          {!bodyCompData ? (
+            <Text style={{ color: theme.muted }}>{t("analysis.noBodyweight")}</Text>
+          ) : (
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted }}>{t("analysis.weightTrend")}</Text>
+              <LineChart
+                values={bodyCompData.values.map((v) => wu.toDisplay(v))}
+                labels={bodyCompData.labels}
+                unit={wu.unitLabel()}
+              />
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <View>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>Current</Text>
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
+                    {wu.formatWeight(bodyCompData.current)}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>Min</Text>
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
+                    {wu.formatWeight(bodyCompData.min)}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>Max</Text>
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
+                    {wu.formatWeight(bodyCompData.max)}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>Change</Text>
+                  <Text
+                    style={{
+                      color: bodyCompData.change > 0 ? "#FBBF24" : bodyCompData.change < 0 ? "#34D399" : theme.text,
+                      fontFamily: theme.mono,
+                      fontSize: 14,
+                    }}
+                  >
+                    {bodyCompData.change > 0 ? "+" : ""}{wu.toDisplay(bodyCompData.change).toFixed(1)} {wu.unitLabel()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </Card>
+
+        {/* ── Muscle Balance Radar Card ──────────────────────────── */}
+        <Card title={t("analysis.muscleBalance")}>
+          {radarData.every((d) => d.value === 0) ? (
+            <Text style={{ color: theme.muted }}>{t("analysis.noSetsInPeriod")}</Text>
+          ) : (
+            <View style={{ alignItems: "center", gap: 8 }}>
+              <RadarChart data={radarData} size={240} />
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                {t("analysis.muscleBalance")} — last 4 weeks volume
+              </Text>
+            </View>
+          )}
+        </Card>
+
         {sets.length === 0 ? (
           <Text style={{ color: theme.muted, textAlign: "center", marginTop: 8 }}>
-            Ingen sett logget i valgt periode enda.
+            {t("analysis.noSetsInPeriod")}
           </Text>
         ) : null}
       </ScrollView>
 
       <Modal visible={exercisePickerOpen} animationType="slide" transparent>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", padding: 14, justifyContent: "flex-end" }}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
           <View
             style={{
-              backgroundColor: theme.bg,
-              borderColor: theme.line,
+              backgroundColor: theme.modalGlass,
+              borderColor: theme.glassBorder,
               borderWidth: 1,
-              borderRadius: 18,
+              borderRadius: theme.radius.xl,
               overflow: "hidden",
               maxHeight: "80%",
+              shadowColor: theme.shadow.lg.color,
+              shadowOpacity: theme.shadow.lg.opacity,
+              shadowRadius: theme.shadow.lg.radius,
+              shadowOffset: theme.shadow.lg.offset,
+              elevation: theme.shadow.lg.elevation,
             }}
           >
             <View
               style={{
-                padding: 14,
-                borderBottomColor: theme.line,
+                padding: 16,
+                borderBottomColor: theme.glassBorder,
                 borderBottomWidth: 1,
                 flexDirection: "row",
                 justifyContent: "space-between",
+                alignItems: "center",
               }}
             >
-              <Text style={{ color: theme.text, fontSize: 16 }}>Velg øvelse</Text>
+              <Text style={{ color: theme.text, fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold }}>{t("analysis.chooseExercise")}</Text>
               <Pressable
                 onPress={() => setExercisePickerOpen(false)}
-                style={{ borderColor: theme.line, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
+                style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: theme.glass }}
               >
-                <Text style={{ color: theme.muted, fontFamily: theme.mono }}>LUKK</Text>
+                <Text style={{ color: theme.accent, fontFamily: theme.mono }}>{t("analysis.close")}</Text>
               </Pressable>
             </View>
 
-            <View style={{ padding: 14, gap: 10 }}>
+            <View style={{ padding: 16, gap: 12 }}>
               <TextField
                 value={exerciseQuery}
                 onChangeText={setExerciseQuery}
-                placeholder="Søk..."
+                placeholder={t("common.search")}
                 placeholderTextColor={theme.muted}
                 style={{
                   color: theme.text,
-                  backgroundColor: theme.panel,
-                  borderColor: theme.line,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
                   borderWidth: 1,
-                  borderRadius: 14,
+                  borderRadius: theme.radius.lg,
                   padding: 12,
                 }}
               />
 
               {filteredExerciseList.length === 0 ? (
-                <Text style={{ color: theme.muted }}>Ingen treff.</Text>
+                <Text style={{ color: theme.muted }}>{t("analysis.noMatch")}</Text>
               ) : (
                 <FlatList
                   data={filteredExerciseList}
@@ -861,11 +1191,11 @@ export default function Analysis() {
                           setExercisePickerOpen(false);
                         }}
                         style={{
-                          padding: 12,
-                          borderRadius: 14,
+                          padding: 14,
+                          borderRadius: theme.radius.lg,
                           borderWidth: 1,
-                          borderColor: active ? theme.accent : theme.line,
-                          backgroundColor: theme.panel,
+                          borderColor: active ? theme.accent : theme.glassBorder,
+                          backgroundColor: active ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
                           marginBottom: 8,
                         }}
                       >
@@ -873,13 +1203,199 @@ export default function Analysis() {
                           {item.label}
                         </Text>
                         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-                          {item.count} sett
+                          {item.count} {t("common.sets").toLowerCase()}
                         </Text>
                       </Pressable>
                     );
                   }}
                 />
               )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Goal Creation Modal */}
+      <Modal visible={goalModalOpen} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "center" }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.xl, padding: 20, gap: 16 }}>
+            <Text style={{ color: theme.text, fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.bold }}>
+              {t("analysis.setGoal")}
+            </Text>
+            <Text style={{ color: theme.text, fontSize: theme.fontSize.md }}>{selectedExerciseLabel}</Text>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("analysis.goalTypeLabel")}</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["weight", "volume", "reps"] as GoalType[]).map((gt) => (
+                  <Pressable
+                    key={gt}
+                    onPress={() => setGoalType(gt)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      alignItems: "center",
+                      borderRadius: theme.radius.lg,
+                      borderWidth: 1,
+                      borderColor: goalType === gt ? theme.accent : theme.glassBorder,
+                      backgroundColor: goalType === gt
+                        ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                        : theme.glass,
+                    }}
+                  >
+                    <Text style={{ color: goalType === gt ? theme.accent : theme.text, fontFamily: theme.fontFamily.medium, fontSize: 13 }}>
+                      {t(`analysis.goalType.${gt}`)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("analysis.targetValue")}</Text>
+              <TextField
+                value={goalTarget}
+                onChangeText={setGoalTarget}
+                keyboardType="numeric"
+                placeholder={goalType === "reps" ? "12" : "100"}
+                placeholderTextColor={theme.muted}
+                style={{
+                  color: theme.text,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: theme.radius.lg,
+                  padding: 16,
+                  fontSize: 28,
+                  fontFamily: theme.mono,
+                  textAlign: "center",
+                }}
+              />
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, textAlign: "center" }}>
+                {goalType === "reps"
+                  ? t("analysis.repsHint")
+                  : prStats?.heaviest
+                    ? `${t("analysis.currentBest")}: ${goalType === "weight" ? wu.formatWeight(prStats.heaviest.value) : wu.formatWeight(prStats.volume?.value ?? 0)}`
+                    : t("analysis.noPRYet")
+                }
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <Pressable
+                onPress={() => { setGoalModalOpen(false); setGoalTarget(""); }}
+                style={{ flex: 1, paddingVertical: 14, alignItems: "center", borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.glassBorder, backgroundColor: theme.glass }}
+              >
+                <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium }}>{t("common.cancel")}</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  const target = parseFloat(goalTarget);
+                  if (!target || target <= 0) { Alert.alert(t("common.error"), t("analysis.invalidGoalValue")); return; }
+                  try {
+                    const programMode = (await getSettingAsync("programMode")) || "normal";
+                    const programId = await getSettingAsync(`activeProgramId_${programMode}`);
+                    if (!programId) return;
+                    const targetStore = goalType !== "reps" ? wu.toKg(target) : target;
+                    await createGoal(selectedExerciseKey, goalType, targetStore, programId);
+                    setGoalModalOpen(false);
+                    setGoalTarget("");
+                    loadGoals();
+                  } catch (err) {
+                    console.error("Failed to create goal:", err);
+                  }
+                }}
+                style={{ flex: 1, paddingVertical: 14, alignItems: "center", borderRadius: theme.radius.lg, backgroundColor: theme.accent }}
+              >
+                <Text style={{ color: "#fff", fontFamily: theme.fontFamily.bold }}>{t("common.save")}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Comparison Exercise Picker Modal */}
+      <Modal visible={comparisonPickerOpen} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
+          <View
+            style={{
+              backgroundColor: theme.modalGlass,
+              borderColor: theme.glassBorder,
+              borderWidth: 1,
+              borderRadius: theme.radius.xl,
+              overflow: "hidden",
+              maxHeight: "80%",
+            }}
+          >
+            <View
+              style={{
+                padding: 16,
+                borderBottomColor: theme.glassBorder,
+                borderBottomWidth: 1,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold }}>
+                {t("analysis.chooseSecondExercise")}
+              </Text>
+              <Pressable
+                onPress={() => setComparisonPickerOpen(false)}
+                style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: theme.glass }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono }}>{t("analysis.close")}</Text>
+              </Pressable>
+            </View>
+
+            <View style={{ padding: 16, gap: 12 }}>
+              <TextField
+                value={exerciseQuery}
+                onChangeText={setExerciseQuery}
+                placeholder={t("common.search")}
+                placeholderTextColor={theme.muted}
+                style={{
+                  color: theme.text,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: theme.radius.lg,
+                  padding: 12,
+                }}
+              />
+
+              <FlatList
+                data={filteredExerciseList.filter(e => e.key !== selectedExerciseKey)}
+                keyExtractor={(item) => item.key}
+                keyboardShouldPersistTaps="handled"
+                style={{ maxHeight: 360 }}
+                renderItem={({ item }) => {
+                  const active = item.key === comparisonExerciseKey;
+                  return (
+                    <Pressable
+                      onPress={() => {
+                        setComparisonExerciseKey(item.key);
+                        setComparisonPickerOpen(false);
+                      }}
+                      style={{
+                        padding: 14,
+                        borderRadius: theme.radius.lg,
+                        borderWidth: 1,
+                        borderColor: active ? "#F97316" : theme.glassBorder,
+                        backgroundColor: active ? "rgba(249, 115, 22, 0.12)" : theme.glass,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                        {item.count} {t("common.sets").toLowerCase()}
+                      </Text>
+                    </Pressable>
+                  );
+                }}
+              />
             </View>
           </View>
         </View>

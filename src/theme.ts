@@ -6,15 +6,38 @@ export type ThemeMode = "light" | "dark" | "system";
 export type Theme = {
   mode: "light" | "dark";
   isDark: boolean;
+
+  // Base colors
   bg: string;
   panel: string;
   panel2: string;
   text: string;
   muted: string;
   line: string;
+  divider: string;
+
+  // Glass effects
+  glass: string;
+  glassBorder: string;
+  modalOverlay: string;
+  modalGlass: string;
+
+  // Accent colors
   accent: string;
+  accentGradient: [string, string];
+  success: string;
+  successGradient: [string, string];
   warn: string;
   danger: string;
+  dangerGradient: [string, string];
+
+  // Typography
+  fontFamily: {
+    regular: string;
+    medium: string;
+    semibold: string;
+    bold: string;
+  };
   mono: string;
   fontSize: {
     xs: number;
@@ -35,6 +58,8 @@ export type Theme = {
     md: number;
     lg: number;
   };
+
+  // Spacing
   space: {
     xs: number;
     sm: number;
@@ -43,6 +68,8 @@ export type Theme = {
     xl: number;
     xxl: number;
   };
+
+  // Radius
   radius: {
     sm: number;
     md: number;
@@ -50,6 +77,8 @@ export type Theme = {
     xl: number;
     pill: number;
   };
+
+  // Shadows
   shadow: {
     sm: {
       color: string;
@@ -65,11 +94,40 @@ export type Theme = {
       offset: { width: number; height: number };
       elevation: number;
     };
+    lg: {
+      color: string;
+      opacity: number;
+      radius: number;
+      offset: { width: number; height: number };
+      elevation: number;
+    };
+    glow: {
+      color: string;
+      opacity: number;
+      radius: number;
+      offset: { width: number; height: number };
+      elevation: number;
+    };
   };
+
+  // Animation
+  animation: {
+    fast: number;
+    normal: number;
+    slow: number;
+    spring: {
+      damping: number;
+      stiffness: number;
+    };
+  };
+
+  // Interaction
   hitSlop: {
     sm: { top: number; bottom: number; left: number; right: number };
     md: { top: number; bottom: number; left: number; right: number };
   };
+
+  // Legacy
   textSize: {
     xs: number;
     sm: number;
@@ -81,6 +139,12 @@ export type Theme = {
 };
 
 const TOKENS = {
+  fontFamily: {
+    regular: "Inter_400Regular",
+    medium: "Inter_500Medium",
+    semibold: "Inter_600SemiBold",
+    bold: "Inter_700Bold",
+  },
   fontSize: {
     xs: 11,
     sm: 13,
@@ -96,9 +160,9 @@ const TOKENS = {
     bold: "700",
   } as const,
   lineHeight: {
-    sm: 16,
-    md: 22,
-    lg: 28,
+    sm: 20,
+    md: 24,
+    lg: 36,
   },
   space: {
     xs: 6,
@@ -126,38 +190,91 @@ function createTheme(mode: "light" | "dark"): Theme {
     return {
       mode,
       isDark: true,
-      bg: "#0B0F14",
-      panel: "#141A23",
-      panel2: "#1B2330",
-      text: "#E8ECF3",
-      muted: "#A1AEC0",
-      line: "#2A3442",
-      accent: "#22D3EE",
-      warn: "#F59E0B",
-      danger: "#F87171",
+
+      // Base colors - Deep purple-black with warmth
+      bg: "#0D0B1A",
+      panel: "rgba(30, 20, 55, 0.55)",
+      panel2: "rgba(45, 30, 75, 0.35)",
+      text: "#F5F0FF",
+      muted: "#A89CC8",
+      line: "rgba(255, 255, 255, 0.07)",
+      divider: "rgba(255, 255, 255, 0.04)",
+
+      // Glass effects - frosted purple glass
+      glass: "rgba(80, 50, 140, 0.28)",
+      glassBorder: "rgba(120, 80, 200, 0.22)",
+      modalOverlay: "rgba(0, 0, 0, 0.85)",
+      modalGlass: "rgba(30, 20, 55, 0.92)",
+
+      // Accent: purple-to-orange gradient
+      accent: "#B668F5",
+      accentGradient: ["#9C44DC", "#F97316"],
+      success: "#6EE7A0",
+      successGradient: ["#34D399", "#10B981"],
+      warn: "#FBBF24",
+      danger: "#FB7185",
+      dangerGradient: ["#FB7185", "#F43F5E"],
+
+      // Typography
+      fontFamily: TOKENS.fontFamily,
       mono: "monospace",
       fontSize: TOKENS.fontSize,
       fontWeight: TOKENS.fontWeight,
       lineHeight: TOKENS.lineHeight,
+
+      // Spacing
       space: TOKENS.space,
+
+      // Radius
       radius: TOKENS.radius,
+
+      // Soft shadows with purple glow
       shadow: {
         sm: {
-          color: "#000000",
-          opacity: 0.35,
-          radius: 10,
-          offset: { width: 0, height: 6 },
-          elevation: 3,
+          color: "#1A0A30",
+          opacity: 0.25,
+          radius: 6,
+          offset: { width: 0, height: 3 },
+          elevation: 2,
         },
         md: {
-          color: "#000000",
+          color: "#1A0A30",
+          opacity: 0.35,
+          radius: 12,
+          offset: { width: 0, height: 6 },
+          elevation: 5,
+        },
+        lg: {
+          color: "#1A0A30",
           opacity: 0.45,
+          radius: 24,
+          offset: { width: 0, height: 10 },
+          elevation: 10,
+        },
+        glow: {
+          color: "#B668F5",
+          opacity: 0.35,
           radius: 18,
-          offset: { width: 0, height: 12 },
-          elevation: 7,
+          offset: { width: 0, height: 0 },
+          elevation: 0,
         },
       },
+
+      // Animation
+      animation: {
+        fast: 180,
+        normal: 280,
+        slow: 450,
+        spring: {
+          damping: 14,
+          stiffness: 160,
+        },
+      },
+
+      // Interaction
       hitSlop: TOKENS.hitSlop,
+
+      // Legacy
       textSize: TOKENS.fontSize,
     };
   }
@@ -165,38 +282,91 @@ function createTheme(mode: "light" | "dark"): Theme {
   return {
     mode,
     isDark: false,
-    bg: "#F6F7FB",
-    panel: "#FFFFFF",
-    panel2: "#EEF1F7",
-    text: "#0F172A",
-    muted: "#64748B",
-    line: "#E2E8F0",
-    accent: "#4F46E5",
+
+    // Base colors - Warm light with purple tint
+    bg: "#F8F5FF",
+    panel: "rgba(255, 255, 255, 0.55)",
+    panel2: "rgba(243, 237, 255, 0.40)",
+    text: "#1A0E2E",
+    muted: "#6E5C8E",
+    line: "rgba(100, 60, 160, 0.1)",
+    divider: "rgba(100, 60, 160, 0.06)",
+
+    // Glass effects - uniform purple-tinted glass
+    glass: "rgba(160, 120, 220, 0.18)",
+    glassBorder: "rgba(140, 100, 200, 0.22)",
+    modalOverlay: "rgba(0, 0, 0, 0.85)",
+    modalGlass: "rgba(248, 245, 255, 0.95)",
+
+    // Accent: purple-to-orange gradient
+    accent: "#7C3AED",
+    accentGradient: ["#7C3AED", "#F97316"],
+    success: "#22C55E",
+    successGradient: ["#22C55E", "#16A34A"],
     warn: "#F59E0B",
     danger: "#EF4444",
+    dangerGradient: ["#EF4444", "#DC2626"],
+
+    // Typography
+    fontFamily: TOKENS.fontFamily,
     mono: "monospace",
     fontSize: TOKENS.fontSize,
     fontWeight: TOKENS.fontWeight,
     lineHeight: TOKENS.lineHeight,
+
+    // Spacing
     space: TOKENS.space,
+
+    // Radius
     radius: TOKENS.radius,
+
+    // Soft shadows with purple tint
     shadow: {
       sm: {
-        color: "#0F172A",
-        opacity: 0.08,
-        radius: 8,
-        offset: { width: 0, height: 4 },
+        color: "#7C3AED",
+        opacity: 0.06,
+        radius: 6,
+        offset: { width: 0, height: 3 },
         elevation: 2,
       },
       md: {
-        color: "#0F172A",
-        opacity: 0.12,
-        radius: 16,
+        color: "#7C3AED",
+        opacity: 0.1,
+        radius: 12,
+        offset: { width: 0, height: 6 },
+        elevation: 5,
+      },
+      lg: {
+        color: "#7C3AED",
+        opacity: 0.14,
+        radius: 24,
         offset: { width: 0, height: 10 },
-        elevation: 6,
+        elevation: 10,
+      },
+      glow: {
+        color: "#7C3AED",
+        opacity: 0.3,
+        radius: 18,
+        offset: { width: 0, height: 0 },
+        elevation: 0,
       },
     },
+
+    // Animation
+    animation: {
+      fast: 180,
+      normal: 280,
+      slow: 450,
+      spring: {
+        damping: 14,
+        stiffness: 160,
+      },
+    },
+
+    // Interaction
     hitSlop: TOKENS.hitSlop,
+
+    // Legacy
     textSize: TOKENS.fontSize,
   };
 }
