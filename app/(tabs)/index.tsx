@@ -11,6 +11,7 @@ import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, IconButton, Card } from "../../src/ui";
 import { GradientButton } from "../../src/ui/modern";
 import { displayNameFor } from "../../src/exerciseLibrary";
+import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
 import { getNextWorkoutPreview } from "../../src/programStore";
 import { getPendingSuggestions, applySuggestion, dismissSuggestion, type ProgressionSuggestion } from "../../src/progressionStore";
@@ -261,6 +262,7 @@ export default function HomeScreen() {
                   <Text style={{ color: theme.text, fontFamily: theme.fontFamily.regular, fontSize: 14 }}>
                     {displayNameFor(exId)}
                   </Text>
+                  <BackImpactDot exerciseId={exId} />
                 </View>
               ))}
               {nextWorkout.exercises.length > 5 && (
@@ -311,9 +313,12 @@ export default function HomeScreen() {
                   }}
                 >
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
-                      {displayNameFor(s.exerciseId)}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                        {displayNameFor(s.exerciseId)}
+                      </Text>
+                      <BackImpactDot exerciseId={s.exerciseId} />
+                    </View>
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                       {wu.formatWeight(s.oldWeightKg)} {"\u2192"} {wu.formatWeight(s.newWeightKg)}
                     </Text>
@@ -383,9 +388,12 @@ export default function HomeScreen() {
                   }}
                 >
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
-                      {displayNameFor(pr.exercise_id)}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                        {displayNameFor(pr.exercise_id)}
+                      </Text>
+                      <BackImpactDot exerciseId={pr.exercise_id} />
+                    </View>
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
                       {prTypeLabel(pr.type)} \u00B7 {pr.date.slice(5).replace("-", ".")}
                     </Text>

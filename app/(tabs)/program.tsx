@@ -12,6 +12,7 @@ import {
   type ExerciseTag, type Equipment, type ExerciseDef,
   isCustomExercise, getCustomExercises, createCustomExercise, deleteCustomExercise,
 } from "../../src/exerciseLibrary";
+import BackImpactDot from "../../src/components/BackImpactDot";
 import ProgramStore from "../../src/programStore";
 import type { Program, ProgramBlock, ProgramDay } from "../../src/programStore";
 import ProgressionStore, { defaultTargetForExercise, type ExerciseTarget } from "../../src/progressionStore";
@@ -813,7 +814,10 @@ export default function ProgramScreen() {
                           const altList = altMap[block.exId] ?? [];
                           return (
                             <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
-                              <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.exId)}</Text>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.exId)}</Text>
+                                <BackImpactDot exerciseId={block.exId} />
+                              </View>
                               {altList.length ? (
                                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                   Alt: {altList.map((id) => displayNameFor(id)).join(", ")}
@@ -826,13 +830,19 @@ export default function ProgramScreen() {
                         const altB = altMap[block.b] ?? [];
                         return (
                           <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
-                            <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.a)}</Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.a)}</Text>
+                              <BackImpactDot exerciseId={block.a} />
+                            </View>
                             {altA.length ? (
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                 Alt: {altA.map((id) => displayNameFor(id)).join(", ")}
                               </Text>
                             ) : null}
-                            <Text style={{ color: theme.text }}>  + {displayNameFor(block.b)}</Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={{ color: theme.text }}>  + {displayNameFor(block.b)}</Text>
+                              <BackImpactDot exerciseId={block.b} />
+                            </View>
                             {altB.length ? (
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                 Alt: {altB.map((id) => displayNameFor(id)).join(", ")}
@@ -886,7 +896,10 @@ export default function ProgramScreen() {
                         const altList = altMap[block.exId] ?? [];
                         return (
                           <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
-                            <Text style={{ color: theme.text }}>{displayNameFor(block.exId)}</Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={{ color: theme.text }}>{displayNameFor(block.exId)}</Text>
+                              <BackImpactDot exerciseId={block.exId} />
+                            </View>
                             {altList.length ? (
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                 {t("program.alternatives")}: {altList.map((id) => displayNameFor(id)).join(", ")}
@@ -910,13 +923,19 @@ export default function ProgramScreen() {
                       const altB = altMap[block.b] ?? [];
                       return (
                         <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
-                          <Text style={{ color: theme.text }}>A: {displayNameFor(block.a)}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={{ color: theme.text }}>A: {displayNameFor(block.a)}</Text>
+                            <BackImpactDot exerciseId={block.a} />
+                          </View>
                           {altA.length ? (
                             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                               {t("program.alternatives")}: {altA.map((id) => displayNameFor(id)).join(", ")}
                             </Text>
                           ) : null}
-                          <Text style={{ color: theme.text, marginTop: 6 }}>B: {displayNameFor(block.b)}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
+                            <Text style={{ color: theme.text }}>B: {displayNameFor(block.b)}</Text>
+                            <BackImpactDot exerciseId={block.b} />
+                          </View>
                           {altB.length ? (
                             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                               {t("program.alternatives")}: {altB.map((id) => displayNameFor(id)).join(", ")}

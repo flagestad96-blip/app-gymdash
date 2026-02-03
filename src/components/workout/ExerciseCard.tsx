@@ -1,6 +1,6 @@
 // src/components/workout/ExerciseCard.tsx
-import React, { useRef } from "react";
-import { View, Text, Pressable, Animated } from "react-native";
+import React, { useRef, useState } from "react";
+import { View, Text, Pressable, Animated, Modal } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
 import { displayNameFor, getExercise } from "../../exerciseLibrary";
+import BackImpactDot from "../BackImpactDot";
 import SetEntryRow from "./SetEntryRow";
 import type { SetRow } from "./SetEntryRow";
 import { RestTimerInline } from "./RestTimer";
@@ -227,6 +228,15 @@ function ExerciseHalf({
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
+  const [rpeHelperOpen, setRpeHelperOpen] = useState(false);
+
+  const RPE_SCALE: { value: string; desc: string }[] = [
+    { value: "6", desc: t("log.rpe6") },
+    { value: "7", desc: t("log.rpe7") },
+    { value: "8", desc: t("log.rpe8") },
+    { value: "9", desc: t("log.rpe9") },
+    { value: "10", desc: t("log.rpe10") },
+  ];
 
   const inc = target.incrementKg;
   const incD = wu.toDisplay(inc);
@@ -235,9 +245,15 @@ function ExerciseHalf({
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <Text style={{ color: theme.text, fontSize: prefix ? undefined : theme.fontSize.md, fontWeight: prefix ? undefined : theme.fontWeight.semibold }}>
-          {prefix ? `${prefix}: ` : ""}{displayNameFor(exId)}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+          <Text style={{ color: theme.text, fontSize: prefix ? undefined : theme.fontSize.md, fontWeight: prefix ? undefined : theme.fontWeight.semibold }}>
+            {prefix ? `${prefix}: ` : ""}{displayNameFor(exId)}
+          </Text>
+          {(() => { const eq = getExercise(exId)?.equipment; return eq ? (
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
+          ) : null; })()}
+          <BackImpactDot exerciseId={exId} />
+        </View>
         {altList.length ? (
           <Pressable
             onPress={() => onOpenAltPicker(baseExId)}
@@ -399,26 +415,83 @@ function ExerciseHalf({
             fontFamily: theme.mono,
           }}
         />
-        <TextField
-          value={input.rpe}
-          onChangeText={(v) => onSetInput(exId, "rpe", v)}
-          onFocus={() => onFocusExercise(exId)}
-          placeholder={prefix ? "rpe" : "0"}
-          placeholderTextColor={theme.muted}
-          keyboardType="numeric"
-          suffix={prefix ? undefined : "RPE"}
-          style={{
-            width: 70,
-            color: theme.text,
-            backgroundColor: theme.panel2,
-            borderColor: theme.line,
-            borderWidth: 1,
-            borderRadius: 12,
-            padding: 10,
-            fontFamily: theme.mono,
-          }}
-        />
+        <Pressable onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setRpeHelperOpen(true); }}>
+          <TextField
+            value={input.rpe}
+            onChangeText={(v) => onSetInput(exId, "rpe", v)}
+            onFocus={() => onFocusExercise(exId)}
+            placeholder={prefix ? "rpe" : "0"}
+            placeholderTextColor={theme.muted}
+            keyboardType="numeric"
+            suffix={prefix ? undefined : "RPE"}
+            style={{
+              width: 70,
+              color: theme.text,
+              backgroundColor: theme.panel2,
+              borderColor: theme.line,
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 10,
+              fontFamily: theme.mono,
+            }}
+          />
+        </Pressable>
       </View>
+
+      {/* RPE helper modal */}
+      <Modal visible={rpeHelperOpen} transparent animationType="fade">
+        <Pressable
+          onPress={() => setRpeHelperOpen(false)}
+          style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", alignItems: "center" }}
+        >
+          <View
+            style={{
+              width: 280,
+              backgroundColor: theme.modalGlass,
+              borderRadius: theme.radius.xl,
+              borderWidth: 1,
+              borderColor: theme.glassBorder,
+              padding: 20,
+              gap: 6,
+            }}
+          >
+            <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 16, marginBottom: 4 }}>
+              RPE
+            </Text>
+            {RPE_SCALE.map((item) => (
+              <Pressable
+                key={item.value}
+                onPress={() => {
+                  onSetInput(exId, "rpe", item.value);
+                  setRpeHelperOpen(false);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  paddingVertical: 8,
+                  paddingHorizontal: 10,
+                  borderRadius: theme.radius.md,
+                  backgroundColor: input.rpe === item.value
+                    ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.1)")
+                    : pressed ? theme.glass : "transparent",
+                })}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 16, width: 28, textAlign: "center" }}>
+                  {item.value}
+                </Text>
+                <Text style={{ color: theme.text, fontSize: 13, fontFamily: theme.fontFamily.regular, flex: 1 }}>
+                  {item.desc}
+                </Text>
+              </Pressable>
+            ))}
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, marginTop: 4, textAlign: "center" }}>
+              {t("log.rpeTapHint")}
+            </Text>
+          </View>
+        </Pressable>
+      </Modal>
 
       <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {steps.map((step) => (

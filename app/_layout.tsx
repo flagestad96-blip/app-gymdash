@@ -174,6 +174,7 @@ function RootLayoutInner() {
         const mode: ThemeMode =
           modeRaw === "light" || modeRaw === "dark" || modeRaw === "system" ? modeRaw : "system";
         setThemeMode(mode);
+      } catch {
       } finally {
         if (alive) setAppReady(true);
         clearTimeout(hardTimeout);

@@ -40,6 +40,9 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Logg: KG/reps suffix-labels alltid synlige i inputfelt.
 - Logg: undo-sett (5 sek vindu med UndoToast etter logging, reverserer PR).
 - Logg: skivefordeling/plate calculator for stangøvelser (visuell mini-modal).
+- Logg: RPE-hjelper — hold inne RPE-feltet for hurtigvelger (skala 6—10 med beskrivelser).
+- Logg: oppsummeringsmodal ved økt-slutt — varighet, antall sett, volum, topp e1RM, PR-badges.
+- Logg: utstyrstype (barbell/dumbbell/cable/machine/etc.) vises ved siden av øvelsesnavnet.
 - Navigasjon: Drawer med hamburger, ingen bottom tabs.
 - Program: program builder, flere programmer, alternativer per øvelse (0—3).
 - Program: fleksibelt antall dager per program (1—10), +/- knapper i ukeoversikt.
@@ -47,7 +50,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Program: targets inkluderer antall sett (target_sets).
 - Program: import/export av program (JSON, 1—10 dager), dupliser/rename/slett.
 - Program: innebygde templates inkl. «PPL 5-dagers (Brystfokus)» med targets + alternativer.
-- Program: øvelsessøk med fuzzy matching + FlatList for ytelse (140+ øvelser + egne øvelser).
+- Program: øvelsessøk med fuzzy matching + FlatList for ytelse (183 øvelser + egne øvelser).
 - Program: egne øvelser — opprett, slett, med utstyr/merkelapper/increment.
 - Program: forbedret rekkefølge — MaterialIcons piler med haptics, deaktivert ved grense.
 - Program: periodisering — mesosyklus med deload-uker, uke-badge på programkort.
@@ -74,21 +77,25 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Settings: varsler — treningspåminnelser per ukedag, hviledag-forslag.
 - Onboarding: intro vises første gang og kan åpnes fra Settings.
 - Splash: fade + logo + minimum varighet i root.
-- Øvelsesbibliotek: ~140+ innebygde øvelser med tags, equipment, aliases, alternatives, lower_back_demanding/friendly.
+- Øvelsesbibliotek: 183 innebygde øvelser med tags, equipment, aliases, alternatives, backImpact.
+- Øvelsesbibliotek: alle øvelser har predefinerte alternativer.
 - Øvelsesbibliotek: egne øvelser — lagres i DB (custom_exercises), integrert i søk/visning/program.
+- Ryggbelastning: backImpact-felt per øvelse (red/yellow/green/null) — 14 røde, 16 gule, 29 grønne.
+- Ryggbelastning: BackImpactDot-komponent vises på alle skjermer ved øvelsesnavn.
+- Ryggbelastning: trykk på dot viser label (Høy/Moderat/Ryggvennlig).
 - Achievements: 25+ prestasjoner (milestones, strength, PR, volume, streak, social/fun).
 - Achievements: galleri med filter, tier-system (common/rare/epic/legendary), poeng.
 - Achievements: auto-sjekk etter sett logget og økt fullført, toast-notifikasjoner.
 - Achievements: del-knapp for opplåste prestasjoner via native share.
 - i18n: flerspråkstøtte (norsk bokmål + engelsk) via I18nProvider + useI18n() hook.
-- i18n: alle 9 skjermer fullt migrert, ~510+ translation keys.
+- i18n: alle 9 skjermer fullt migrert, ~560+ translation keys.
 - Modaler: høy opacity (modalOverlay 0.85, modalGlass 0.92/0.95) for bedre lesbarhet.
 
 ## Arkitektur (viktigste filer)
 - app/_layout.tsx: Root layout (Drawer wrapper) + custom drawer content + AppBackground + I18nProvider.
 - app/(tabs)/_layout.tsx: Stack layout med transparent contentStyle.
 - app/(tabs)/index.tsx (Hjem): dashboard med daglig oppsummering, ukentlig statistikk, streak, PRs, neste-økt preview.
-- app/(tabs)/log.tsx (Logg): øktflyt, settlogging, rest-timer, targets, navigator, exercise swap.
+- app/(tabs)/log.tsx (Logg): øktflyt, settlogging, rest-timer, targets, navigator, exercise swap, RPE-hjelper, økt-oppsummering.
 - app/(tabs)/program.tsx (Program): program builder + target editor + import/export.
 - app/(tabs)/analysis.tsx (Analyse): graf per øvelse + overall + volum/muskel/konsistens + sammenligning + mål.
 - app/(tabs)/body.tsx (Kropp): vekt/BMI registrering + liste.
@@ -96,17 +103,17 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - app/(tabs)/settings.tsx (Settings): app-innstillinger + backup/restore + tema + språk + patch notes.
 - app/(tabs)/achievements.tsx (Prestasjoner): achievement galleri + detalj-modal.
 - src/db.ts: SQLite init, schema + settings helpers + achievements tables + exercise_goals + custom_exercises + progression_log + formatDuration().
-- src/i18n.ts: i18n foundation (I18nProvider, useI18n, t(), ~450+ keys nb/en).
+- src/i18n.ts: i18n foundation (I18nProvider, useI18n, t(), ~560+ keys nb/en).
 - src/patchNotes.ts: changelog/patch notes system med i18n-keys.
 - src/programStore.ts: program CRUD, defaults, active program per mode, replacements, getNextWorkoutPreview().
 - src/goals.ts: exercise goal CRUD, auto-check, progress tracking (weight/volume/reps mål).
 - src/progressionStore.ts: targets (rep-range/increment/auto-progress) + auto-progresjon analyse + suggestion CRUD.
 - src/units.ts: vektenhet-konvertering (KG/LBS), useWeightUnit() hook, listener pattern.
 - src/plateCalculator.ts: skivefordeling for stangøvelser (greedy algorithm, fargekoding).
-- src/exerciseLibrary.ts: ~140+ innebygde + egne øvelser, tags/equipment/aliases/alternatives, searchExercises(), custom CRUD + cache.
+- src/exerciseLibrary.ts: 183 innebygde + egne øvelser, tags/equipment/aliases/alternatives/backImpact, searchExercises(), custom CRUD + cache.
 - src/achievements.ts: achievement definitions, check logic, unlock logic, progress tracking.
 - src/notifications.ts: expo-notifications for rest-timer bakgrunnsvarsel + treningspåminnelser + hviledag-sjekk.
-- src/fileSystem.ts: filbasert backup (save/pick/share) via expo-file-system + expo-sharing + expo-document-picker.
+- src/fileSystem.ts: filbasert backup (save/pick/share) via expo-file-system/src/legacy + expo-sharing + expo-document-picker.
 - src/backup.ts: full database eksport/import (alle tabeller, schemaVersion 3).
 - src/sharing.ts: del økt-oppsummering, program, prestasjoner via native share.
 - src/templates.ts: økt-maler CRUD (workout_templates tabell).
@@ -118,11 +125,12 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - src/components/AppBackground.tsx: gradient orbs bakgrunn (purple/orange/pink).
 - src/components/GymdashLogo.tsx: vektorlogo (react-native-svg) — stilisert dumbbell med purple→orange gradient.
 - src/components/PhotoPicker.tsx: kamera/galleri bildeplukker med komprimering + fullskjerm forhåndsvisning.
+- src/components/BackImpactDot.tsx: farget dot-indikator for ryggbelastning (rød/gul/grønn). Vises ved alle øvelsesnavn.
 - src/components/workout/RestTimer.tsx: rest-timer UI (ekstrahert fra log.tsx).
-- src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste (ekstrahert fra log.tsx).
+- src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste, utstyrslabel, RPE-hjelper, BackImpactDot (ekstrahert fra log.tsx).
 - src/components/workout/SetEntryRow.tsx: individuell sett-rad (ekstrahert fra log.tsx).
 - src/components/modals/PlateCalcModal.tsx: skivefordeling-modal (ekstrahert fra log.tsx).
-- src/components/modals/ExerciseSwapModal.tsx: øvelsesbytte-modal (ekstrahert fra log.tsx).
+- src/components/modals/ExerciseSwapModal.tsx: øvelsesbytte-modal med BackImpactDot (ekstrahert fra log.tsx).
 - src/components/modals/TemplatePickerModal.tsx: mal-velger modal.
 - src/components/charts/LineChart.tsx: SVG linjegraf (ekstrahert fra analysis.tsx).
 - src/components/charts/MuscleGroupBars.tsx: muskelgruppe-volumbjelker (ekstrahert fra analysis.tsx).
@@ -158,13 +166,15 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - UI: src/ui/index.tsx (base) + src/ui/modern.tsx (glassmorphism). components/ui.tsx er legacy.
 - Program templates: 5-dagers Normal/Ryggvennlig + PPL 5-dagers (Brystfokus) (stable IDs)
 - Preview APK: EAS build profile preview (internal, android apk); bump expo.android.versionCode per build
-- Preview APK: `android.versionCode` er nå 5 (oppdater ved neste build)
+- Preview APK: `android.versionCode` er nå 6 (oppdater ved neste build)
 - Production build: EAS build profile production (store, android app-bundle)
 - Testing: `npm run verify` (typecheck + jest + lint), `npm run test` for unit tests
 - Android: ALDRI bruk `elevation` på elementer med transparent/semi-transparent backgroundColor (gir hvit rektangel)
 - i18n: alle UI-strenger via t("key") fra useI18n() hook. Nye strenger legges til i src/i18n.ts (nb + en).
 - Vektenhet: alle verdier lagres i kg internt. Konvertering skjer kun ved display/input via useWeightUnit() hook.
-- Versjonering: semver 0.0.x (pre-release). Nåværende: v0.0.5 (versionCode 5).
+- Versjonering: semver. Nåværende: v1.0.0 (versionCode 6).
+- expo-file-system: VIKTIG — bruk `import * as FileSystem from "expo-file-system/src/legacy"` (IKKE fra hoved-pakken). Expo SDK 54 / expo-file-system v19 kaster runtime-feil for legacy API importert fra main.
+- Sirkulær import: db.ts og exerciseLibrary.ts har sirkulær avhengighet. Løst med lazy `require()` i begge filer. `_loadCustomExercisesFromDb(db)` tar db-handle direkte for å unngå deadlock under initDb().
 
 ## Kjent teknisk gjeld / «huskeliste»
 - Web: DB er deaktivert (in-memory no-op, ingen persistens).
@@ -180,6 +190,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Rest-timer i set-området; settings-ikon i topbar.
 - Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
 - App icon PNG (1024×1024) må genereres fra GymdashLogo SVG for Play Store.
+- ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.
 
 ## Build — Preview APK (Android)
 - Kommandoer: `npx eas login` (ved behov) og `npx eas build --platform android --profile preview`
@@ -192,6 +203,15 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-02-03: v1.0.0 — Ryggbelastnings-system (backImpact: red/yellow/green) med BackImpactDot på alle skjermer.
+- 2026-02-03: v1.0.0 — RPE-hjelper (long-press for skala 6—10 med beskrivelser).
+- 2026-02-03: v1.0.0 — Oppsummeringsmodal ved økt-slutt (varighet, sett, volum, topp e1RM, PRs).
+- 2026-02-03: v1.0.0 — Utstyrstype-label ved øvelsesnavn under trening.
+- 2026-02-03: v1.0.0 — 183 øvelser med alternativer for alle (var 163/183, nå 183/183).
+- 2026-02-03: v1.0.0 — Ny øvelse: Svend Press.
+- 2026-02-03: v1.0.0 — Fikset sirkulær import deadlock (db.ts ↔ exerciseLibrary.ts).
+- 2026-02-03: v1.0.0 — Fikset expo-file-system v19 legacy API import.
+- 2026-02-03: v1.0.0 — Fjernet debug console.log fra db.ts, _layout.tsx, index.tsx.
 - 2026-02-01: Tier 4+5 — Filbasert backup/import via native share + document picker.
 - 2026-02-01: Tier 4+5 — Fremgangsbilder per kroppsmåling (kamera/galleri, fullskjerm forhåndsvisning).
 - 2026-02-01: Tier 4+5 — Sosial deling — del økt, program, prestasjoner via native share sheet.
@@ -217,7 +237,6 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - 2026-02-01: Patch notes system med "Hva er nytt"-modal i Settings.
 - 2026-02-01: Ny logo — stilisert dumbbell med purple→orange gradient.
 - 2026-02-01: Production build profile i eas.json.
-- 2026-02-01: Versjon satt til v0.0.5 (versionCode 5).
 - 2026-01-31: UI v3 glassmorphism overhaul — AppBackground, glass cards, GradientButton, theme redesign.
 - 2026-01-31: Fjernet elevation fra glass-elementer (Android hvit rektangel-fix).
 - 2026-01-31: Utvidet øvelsesbibliotek (~140+ øvelser), lower_back_demanding/friendly tags.

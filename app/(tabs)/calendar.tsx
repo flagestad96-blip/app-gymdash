@@ -7,6 +7,7 @@ import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, IconButton, Card, ListRow, Button } from "../../src/ui";
 import { displayNameFor } from "../../src/exerciseLibrary";
+import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
 
 type WorkoutRow = {
@@ -344,9 +345,12 @@ export default function CalendarScreen() {
               {/* Exercise groups */}
               {exerciseGroups.map((group) => (
                 <View key={group.exId} style={{ gap: 6 }}>
-                  <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 15 }}>
-                    {group.name}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 15 }}>
+                      {group.name}
+                    </Text>
+                    <BackImpactDot exerciseId={group.exId} />
+                  </View>
 
                   {/* Set header */}
                   <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>

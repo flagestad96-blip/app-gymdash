@@ -12,6 +12,7 @@ import { getStandard, getStandardExerciseIds, hasStandard, getTargetWeights, typ
 import RadarChart, { type RadarDataPoint } from "../../src/components/charts/RadarChart";
 import { getGoalsForExercise, createGoal, deleteGoal, getCurrentValueForGoal, type ExerciseGoal, type GoalType } from "../../src/goals";
 import { displayNameFor, EXERCISES, searchExercises, resolveExerciseId, isBodyweight } from "../../src/exerciseLibrary";
+import BackImpactDot from "../../src/components/BackImpactDot";
 import AppLoading from "../../components/AppLoading";
 import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
 import { useWeightUnit, unitLabel } from "../../src/units";
@@ -1009,9 +1010,12 @@ export default function Analysis() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontSize: 14, fontFamily: theme.fontFamily.medium }}>
-                        {label}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={{ color: theme.text, fontSize: 14, fontFamily: theme.fontFamily.medium }}>
+                          {label}
+                        </Text>
+                        <BackImpactDot exerciseId={item.exId} />
+                      </View>
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                         {t("analysis.e1rmLabel")}: {item.e1rm ? wu.formatWeight(item.e1rm) : "—"}
                       </Text>

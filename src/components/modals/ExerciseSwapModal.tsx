@@ -6,7 +6,8 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { Btn } from "../../ui";
-import { displayNameFor, getExercise, tagsFor } from "../../exerciseLibrary";
+import { displayNameFor, getExercise, tagsFor, backImpactFor } from "../../exerciseLibrary";
+import BackImpactDot from "../BackImpactDot";
 
 function formatWeight(n: number) {
   if (!Number.isFinite(n)) return "";
@@ -78,10 +79,7 @@ export default function ExerciseSwapModal({
             {alternativeIds.map((exId) => {
               const selected = resolvedExId === exId;
               const exercise = getExercise(exId);
-              const exerciseTags = tagsFor(exId);
               const lastSet = lastSets[exId];
-              const isLowerBackDemanding = exerciseTags.includes("lower_back_demanding");
-              const isLowerBackFriendly = exerciseTags.includes("lower_back_friendly");
 
               return (
                 <Pressable
@@ -102,7 +100,10 @@ export default function ExerciseSwapModal({
                   }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <Text style={{ color: theme.text, fontSize: 16, flex: 1 }}>{displayNameFor(exId)}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 16 }}>{displayNameFor(exId)}</Text>
+                      <BackImpactDot exerciseId={exId} />
+                    </View>
                     {selected && (
                       <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
                         {t("log.selected")}
@@ -127,38 +128,7 @@ export default function ExerciseSwapModal({
                         </Text>
                       </View>
                     )}
-                    {isLowerBackDemanding && (
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 8,
-                          backgroundColor: theme.isDark ? "rgba(251, 191, 36, 0.12)" : "rgba(245, 158, 11, 0.08)",
-                          borderWidth: 1,
-                          borderColor: theme.warn,
-                        }}
-                      >
-                        <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 10 }}>
-                          {t("log.lowerBack")}
-                        </Text>
-                      </View>
-                    )}
-                    {isLowerBackFriendly && (
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 8,
-                          backgroundColor: theme.isDark ? "rgba(110, 231, 160, 0.12)" : "rgba(34, 197, 94, 0.08)",
-                          borderWidth: 1,
-                          borderColor: theme.success,
-                        }}
-                      >
-                        <Text style={{ color: theme.success, fontFamily: theme.mono, fontSize: 10 }}>
-                          {t("log.backFriendlyTag")}
-                        </Text>
-                      </View>
-                    )}
+                    <BackImpactDot exerciseId={exId} showLabel size={7} />
                   </View>
 
                   {lastSet && (

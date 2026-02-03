@@ -1,7 +1,11 @@
 // src/db.ts
 import * as SQLite from "expo-sqlite";
 import { Platform } from "react-native";
-import { resolveExerciseId, isBodyweight, bodyweightFactorFor } from "./exerciseLibrary";
+// Lazy-imported to avoid require cycle: db -> exerciseLibrary -> db
+function getExerciseLibrary() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require("./exerciseLibrary") as typeof import("./exerciseLibrary");
+}
 
 type WebDbInfo = {
   persistent: boolean;
@@ -215,7 +219,6 @@ export async function initDb() {
       }
       globalState.db = db;
     }
-
     if (_inited) return;
 
     const isWeb = Platform.OS === "web";
@@ -490,7 +493,7 @@ export async function initDb() {
           `SELECT id, exercise_name FROM sets WHERE (exercise_id IS NULL OR exercise_id = '') AND exercise_name IS NOT NULL`
         );
         for (const row of rows ?? []) {
-          const exId = resolveExerciseId(row.exercise_name);
+          const exId = getExerciseLibrary().resolveExerciseId(row.exercise_name);
           if (!exId) continue;
           db.runSync(`UPDATE sets SET exercise_id = ? WHERE id = ?`, [exId, row.id]);
         }
@@ -538,14 +541,14 @@ export async function initDb() {
       try {
         const { seedAchievements } = await import("./achievements");
         await seedAchievements({ skipEnsure: true });
-      } catch (error) {
-        console.error("Failed to seed achievements:", error);
-      }
+      } catch {}
 
       // Load custom exercises into in-memory cache
+      // IMPORTANT: We use _loadCustomExercisesFromDb(db) instead of loadCustomExercises()
+      // because loadCustomExercises calls ensureDb() which deadlocks (we're inside initDb's promise).
       try {
-        const { loadCustomExercises } = await import("./exerciseLibrary");
-        await loadCustomExercises();
+        const { _loadCustomExercisesFromDb } = await import("./exerciseLibrary");
+        await _loadCustomExercisesFromDb(db);
       } catch {}
 
       // Auto-progression: add auto_progress column to exercise_targets
@@ -737,7 +740,7 @@ export async function computeBodyweightLoad(
   est_total_load_kg: number | null;
 }> {
   const ext = Number.isFinite(externalLoadKg) ? externalLoadKg : 0;
-  if (!isBodyweight(exerciseId)) {
+  if (!getExerciseLibrary().isBodyweight(exerciseId)) {
     return {
       external_load_kg: ext,
       bodyweight_kg_used: null,
@@ -746,7 +749,7 @@ export async function computeBodyweightLoad(
     };
   }
   const metric = await getLatestBodyMetricBeforeOrOn(date);
-  const factor = bodyweightFactorFor(exerciseId);
+  const factor = getExerciseLibrary().bodyweightFactorFor(exerciseId);
   if (!metric) {
     return {
       external_load_kg: ext,

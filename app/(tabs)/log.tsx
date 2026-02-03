@@ -228,6 +228,15 @@ export default function Logg() {
   const [lastAddedSetId, setLastAddedSetId] = useState<string | null>(null);
   const lastAddedAnim = useRef(new Animated.Value(0)).current;
 
+  const [finishSummary, setFinishSummary] = useState<{
+    duration: string;
+    totalSets: number;
+    totalVolume: number;
+    exercises: number;
+    topE1rm: { name: string; value: number } | null;
+    prs: string[];
+  } | null>(null);
+
   const [undoSet, setUndoSet] = useState<{ row: SetRow; exerciseId: string; prSetId?: string } | null>(null);
   const [undoVisible, setUndoVisible] = useState(false);
   const [plateCalcExId, setPlateCalcExId] = useState<string | null>(null);
@@ -837,6 +846,34 @@ export default function Logg() {
     const programId = program?.id ?? "";
     const dayCount = Math.max(1, program?.days.length ?? 1);
     const nextIdx = (activeDayIndex + 1) % dayCount;
+
+    // Build summary before clearing state
+    const nonWarmup = workoutSets.filter((s) => !isWarmupType(s.set_type, s.is_warmup));
+    const totalVolume = nonWarmup.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
+    const exerciseIds = new Set(nonWarmup.map((s) => s.exercise_id ?? s.exercise_name));
+    let topE1rm: { name: string; value: number } | null = null;
+    for (const s of nonWarmup) {
+      if (s.weight > 0 && s.reps > 0) {
+        const e = round1(epley1RM(s.weight, s.reps));
+        if (!topE1rm || e > topE1rm.value) {
+          topE1rm = { name: displayNameFor(s.exercise_id ?? s.exercise_name), value: e };
+        }
+      }
+    }
+    const prs: string[] = [];
+    for (const [exId, rec] of Object.entries(prRecords)) {
+      if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
+    }
+
+    setFinishSummary({
+      duration: mmss(workoutElapsedSec),
+      totalSets: nonWarmup.length,
+      totalVolume: round1(wu.toDisplay(totalVolume)),
+      exercises: exerciseIds.size,
+      topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
+      prs,
+    });
+
     try {
       await getDb().runAsync(
         `UPDATE workouts SET day_key = ?, day_index = ?, program_id = ?, ended_at = ? WHERE id = ?`,
@@ -1521,6 +1558,91 @@ export default function Logg() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Finish Workout Summary Modal */}
+      <Modal visible={!!finishSummary} transparent animationType="fade" onRequestClose={() => setFinishSummary(null)}>
+        <Pressable
+          onPress={() => setFinishSummary(null)}
+          style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", alignItems: "center", padding: 16 }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 340,
+              backgroundColor: theme.modalGlass,
+              borderColor: theme.glassBorder,
+              borderWidth: 1,
+              borderRadius: theme.radius.xl,
+              padding: 24,
+              gap: 16,
+              shadowColor: theme.shadow.lg.color,
+              shadowOpacity: theme.shadow.lg.opacity,
+              shadowRadius: theme.shadow.lg.radius,
+              shadowOffset: theme.shadow.lg.offset,
+              elevation: theme.shadow.lg.elevation,
+            }}
+          >
+            <Text style={{ color: theme.text, fontFamily: theme.fontFamily.bold, fontSize: 20, textAlign: "center" }}>
+              {t("log.workoutComplete")}
+            </Text>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+              <View style={{ alignItems: "center", gap: 4 }}>
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.duration}</Text>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("common.duration")}</Text>
+              </View>
+              <View style={{ alignItems: "center", gap: 4 }}>
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.totalSets}</Text>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("common.sets")}</Text>
+              </View>
+              <View style={{ alignItems: "center", gap: 4 }}>
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.exercises}</Text>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("common.exercises")}</Text>
+              </View>
+            </View>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: theme.glassBorder, paddingTop: 12, gap: 8 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("common.volume")}</Text>
+                <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
+                  {formatWeight(finishSummary?.totalVolume ?? 0)} {wu.unitLabel()}
+                </Text>
+              </View>
+              {finishSummary?.topE1rm ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.topE1rm")}</Text>
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
+                    {finishSummary.topE1rm.name}: {formatWeight(finishSummary.topE1rm.value)} {wu.unitLabel()}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {finishSummary?.prs.length ? (
+              <View style={{
+                borderWidth: 1,
+                borderColor: theme.accent,
+                borderRadius: theme.radius.lg,
+                backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.1)" : "rgba(124, 58, 237, 0.06)",
+                padding: 12,
+                gap: 4,
+              }}>
+                <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
+                  {t("log.prsThisSession")}
+                </Text>
+                {finishSummary.prs.map((pr, i) => (
+                  <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
+                    {pr}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            <Btn label={t("common.done")} onPress={() => setFinishSummary(null)} tone="accent" />
+          </Pressable>
+        </Pressable>
       </Modal>
     </Screen>
   );
