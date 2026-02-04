@@ -1080,6 +1080,27 @@ export default function Settings() {
           ) : null}
         </Card>
 
+        <Card title={t("settings.privacy")}>
+          <View style={{ gap: 10 }}>
+            <View>
+              <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13, marginBottom: 4 }}>
+                {t("settings.privacy.offlineOnly")}
+              </Text>
+              <Text style={{ color: theme.muted, fontSize: 13 }}>
+                {t("settings.privacy.offlineDesc")}
+              </Text>
+            </View>
+            <View>
+              <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13, marginBottom: 4 }}>
+                {t("settings.privacy.storageTitle")}
+              </Text>
+              <Text style={{ color: theme.muted, fontSize: 13 }}>
+                {t("settings.privacy.storageDesc")}
+              </Text>
+            </View>
+          </View>
+        </Card>
+
         {/* Patch Notes */}
         <Card title={t("patchNotes.title")}>
           <Text style={{ color: theme.muted, marginBottom: 8 }}>

@@ -23,6 +23,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Hjem: dashboard med daglig oppsummering, ukentlig statistikk, streak, siste PRs, quick actions.
 - Hjem: neste-økt forhåndsvisning (dagsnavn + øvelsesliste fra program) når ingen aktiv økt.
 - Hjem: varighet vises for fullførte økter (fra ended_at).
+- Hjem: snitt RPE (fatigue score) i ukentlig statistikk — fargekoding grønn (≤7), oransje (7.1–8.5), rød (>8.5).
 - Hjem: progresjonsforslag-kort (bruk/avvis vektøkninger etter auto-progresjon).
 - Logg: dagvalg (1—10), start/avslutt økt (ended_at persisteres), sett-logg med kg/reps/RPE.
 - Logg: økt-maler — lagre økt som mal, last inn maler, mal-picker modal.
@@ -50,10 +51,12 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Program: targets inkluderer antall sett (target_sets).
 - Program: import/export av program (JSON, 1—10 dager), dupliser/rename/slett.
 - Program: innebygde templates inkl. «PPL 5-dagers (Brystfokus)» med targets + alternativer.
-- Program: øvelsessøk med fuzzy matching + FlatList for ytelse (183 øvelser + egne øvelser).
+- Program: øvelsessøk med fuzzy matching + FlatList for ytelse (184 øvelser + egne øvelser).
 - Program: egne øvelser — opprett, slett, med utstyr/merkelapper/increment.
 - Program: forbedret rekkefølge — MaterialIcons piler med haptics, deaktivert ved grense.
 - Program: periodisering — mesosyklus med deload-uker, uke-badge på programkort.
+- Program: dag-forhåndsvisning — trykk dag → modal med øvelser, targets (sett×reps), estimert varighet.
+- Program: manuell deload-uke — toggle-knapp som reduserer target-sett med 1 per øvelse.
 - Program: del program via fil (native share sheet).
 - Analyse: øvelsesgraf, overall strength, volumserie, muskelgruppe-sets og konsistens.
 - Analyse: Strength Index-graf (e1RM-basert, uten warmup) + muskelgruppe-volum pr uke.
@@ -63,8 +66,16 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Analyse: styrkenivå — beregning av beginner/novice/intermediate/advanced/elite per hovedløft.
 - Analyse: kroppssammensetning — vekttrend-graf siste 90 dager.
 - Analyse: muskelbalanse — radarkart over volum per muskelgruppe.
+- Analyse: chart toggle — bytt mellom e1RM, Volum, Reps PR og Topp Sett i øvelsesgraf.
+- Analyse: 4-ukers trend — lineær e1RM-trend med fargekoding (grønn/rød) + konsistens (økter/uke).
+- Analyse: PR-markører — oransje diamant-ikoner på grafen der PRs ble satt.
+- Analyse: periodesammenligning — side-om-side-kort som viser denne mnd vs forrige mnd (økter, volum, sett, e1RM) med %-endring.
 - Kalender: månedsoverblikk med økter per dato + detaljvisning per økt.
+- Kalender: fargekodede prikker per treningstype (Push/Pull/Ben/Annet) — auto-klassifisert fra øvelsestagger.
+- Kalender: dagsoppsummering — øvelser + beste sett (vekt×reps) vises ved valgt dato.
+- Kalender: dagmerking — merk dager som Hviledag/Hoppet over/Syk (long-press eller knapp), lagret i day_marks-tabell.
 - Kropp: vekt/BMI registrering + liste + høyde i settings.
+- Kropp: vekttrend-graf med 7-dagers glidende snitt + fase-tag (bulk/cut/vedlikehold).
 - Kropp: fremgangsbilde per måling (PhotoPicker med kamera/galleri, fullskjerm forhåndsvisning).
 - Settings: lokal backup/restore av hele DB (JSON), CSV-export, health check.
 - Settings: del program (eksport/import av aktivt program uten historikk).
@@ -75,6 +86,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Settings: "Hva er nytt"-seksjon med patch notes modal.
 - Settings: filbasert backup — eksporter til fil + del via native share, importer fra fil.
 - Settings: varsler — treningspåminnelser per ukedag, hviledag-forslag.
+- Settings: personvern-seksjon — forklarer at appen er 100% offline, ingen data forlater enheten, lokal SQLite-lagring.
 - Onboarding: intro vises første gang og kan åpnes fra Settings.
 - Splash: fade + logo + minimum varighet i root.
 - Øvelsesbibliotek: 183 innebygde øvelser med tags, equipment, aliases, alternatives, backImpact.
@@ -87,6 +99,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Achievements: galleri med filter, tier-system (common/rare/epic/legendary), poeng.
 - Achievements: auto-sjekk etter sett logget og økt fullført, toast-notifikasjoner.
 - Achievements: del-knapp for opplåste prestasjoner via native share.
+- Achievements: PR-kabinett — alle personlige rekorder per øvelse med type, verdi, dato og sett-detaljer.
 - i18n: flerspråkstøtte (norsk bokmål + engelsk) via I18nProvider + useI18n() hook.
 - i18n: alle 9 skjermer fullt migrert, ~560+ translation keys.
 - Modaler: høy opacity (modalOverlay 0.85, modalGlass 0.92/0.95) for bedre lesbarhet.
@@ -203,11 +216,20 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-02-04: Kalender — fargekodede prikker (Push/Pull/Ben/Annet), dagsoppsummering (øvelser + beste sett), dagmerking (Hviledag/Hoppet over/Syk).
+- 2026-02-04: Kropp — vekttrend-graf med 7-dagers glidende snitt + fase-tag (bulk/cut/vedlikehold).
+- 2026-02-04: Achievements — PR-kabinett (per-øvelse PRs med type/verdi/dato/sett).
+- 2026-02-04: Analyse — chart toggle (e1RM/Volum/Reps PR/Topp Sett), 4-ukers trend + konsistens, PR-markører på graf, periodesammenligning (denne mnd vs forrige mnd).
+- 2026-02-04: Program — dag-forhåndsvisning modal (øvelser + targets + estimert varighet).
+- 2026-02-04: Program — manuell deload-uke toggle (−1 sett per øvelse, deload-banner i logg).
+- 2026-02-04: Hjem — snitt RPE (fatigue score) i ukentlig statistikk-kort, fargekoding grønn/oransje/rød.
+- 2026-02-04: Back Extension-oppdatering — Back Extension nå machine, 45-Degree Back Extension nå bodyweight (0.65 faktor), ny Roman Chair Back Extension (bodyweight, 0.77 faktor, rød backImpact).
+- 2026-02-04: Settings — personvern-seksjon (offline-forklaring + datalagringsinfo).
 - 2026-02-03: v1.0.0 — Ryggbelastnings-system (backImpact: red/yellow/green) med BackImpactDot på alle skjermer.
 - 2026-02-03: v1.0.0 — RPE-hjelper (long-press for skala 6—10 med beskrivelser).
 - 2026-02-03: v1.0.0 — Oppsummeringsmodal ved økt-slutt (varighet, sett, volum, topp e1RM, PRs).
 - 2026-02-03: v1.0.0 — Utstyrstype-label ved øvelsesnavn under trening.
-- 2026-02-03: v1.0.0 — 183 øvelser med alternativer for alle (var 163/183, nå 183/183).
+- 2026-02-03: v1.0.0 — 184 øvelser med alternativer for alle (var 163/183, nå 183/183).
 - 2026-02-03: v1.0.0 — Ny øvelse: Svend Press.
 - 2026-02-03: v1.0.0 — Fikset sirkulær import deadlock (db.ts ↔ exerciseLibrary.ts).
 - 2026-02-03: v1.0.0 — Fikset expo-file-system v19 legacy API import.

@@ -849,6 +849,33 @@ export async function getNextWorkoutPreview(
   return { dayName: day.name, exercises };
 }
 
+/** Get estimated workout duration for a specific day based on last 3 completed workouts */
+export async function getEstimatedDuration(programId: string, dayIndex: number): Promise<string | null> {
+  if (!programId) return null;
+  await ensureDb();
+  const rows = await getDb().getAllAsync<{ started_at: string; ended_at: string }>(
+    `SELECT started_at, ended_at FROM workouts
+     WHERE program_id = ? AND day_index = ? AND ended_at IS NOT NULL
+     ORDER BY date DESC LIMIT 3`,
+    [programId, dayIndex]
+  );
+  if (!rows || rows.length === 0) return null;
+  let totalMin = 0;
+  for (const r of rows) {
+    const start = new Date(r.started_at).getTime();
+    const end = new Date(r.ended_at).getTime();
+    if (!isNaN(start) && !isNaN(end) && end > start) {
+      totalMin += (end - start) / 60000;
+    }
+  }
+  const avgMin = Math.round(totalMin / rows.length);
+  if (avgMin < 1) return "< 1 min";
+  if (avgMin < 60) return `${avgMin} min`;
+  const hours = Math.floor(avgMin / 60);
+  const mins = avgMin % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
 const ProgramStore = {
   ensurePrograms,
   listPrograms,

@@ -8,6 +8,7 @@ import { deleteBodyMetric, listBodyMetrics, upsertBodyMetric, getSettingAsync, s
 import { Screen, TopBar, Card, Btn, TextField, IconButton } from "../../src/ui";
 import { useWeightUnit } from "../../src/units";
 import PhotoPicker from "../../src/components/PhotoPicker";
+import LineChart from "../../src/components/charts/LineChart";
 
 function isoDateOnly(d = new Date()) {
   const y = d.getFullYear();
@@ -70,6 +71,35 @@ export default function BodyScreen() {
     const hM = hCm / 100;
     return round1((w as number) / (hM * hM));
   }, [parsedHeight, parsedWeightInput, latestMetric]);
+
+  const weightTrend = useMemo(() => {
+    if (metrics.length < 2) return null;
+    const sorted = [...metrics].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const rawLabels = sorted.map((m) => m.date.slice(5));
+    const rawValues = sorted.map((m) => m.weight_kg);
+
+    // 7-day rolling average
+    const smoothed: number[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const cutoff = new Date(sorted[i].date);
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffIso = isoDateOnly(cutoff);
+      const window = sorted.filter((m) => m.date > cutoffIso && m.date <= sorted[i].date);
+      const avg = window.reduce((sum, m) => sum + m.weight_kg, 0) / window.length;
+      smoothed.push(round1(avg));
+    }
+
+    // Phase tag: compare smoothed avg of last 7 entries vs first 7 entries (or fewer)
+    const n = Math.min(7, Math.floor(smoothed.length / 2));
+    const recentAvg = smoothed.slice(-n).reduce((a, b) => a + b, 0) / n;
+    const earlyAvg = smoothed.slice(0, n).reduce((a, b) => a + b, 0) / n;
+    const delta = recentAvg - earlyAvg;
+    let phase: "bulk" | "cut" | "maintenance" = "maintenance";
+    if (delta > 0.5) phase = "bulk";
+    else if (delta < -0.5) phase = "cut";
+
+    return { rawLabels, rawValues, smoothed, phase };
+  }, [metrics]);
 
   async function saveMetric() {
     const w = Number(weightInput);
@@ -217,6 +247,41 @@ export default function BodyScreen() {
               </View>
             </View>
           </Card>
+
+          {weightTrend && (
+            <Card title={t("body.weightTrend")}>
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                    {t("body.smoothedNote")}
+                  </Text>
+                  <View style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 3,
+                    borderRadius: 8,
+                    backgroundColor: weightTrend.phase === "bulk" ? "#FBBF2422" : weightTrend.phase === "cut" ? "#34D39922" : `${theme.muted}22`,
+                    borderWidth: 1,
+                    borderColor: weightTrend.phase === "bulk" ? "#FBBF24" : weightTrend.phase === "cut" ? "#34D399" : theme.muted,
+                  }}>
+                    <Text style={{
+                      color: weightTrend.phase === "bulk" ? "#FBBF24" : weightTrend.phase === "cut" ? "#34D399" : theme.muted,
+                      fontFamily: theme.mono,
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}>
+                      {t(`body.phase.${weightTrend.phase}`)}
+                    </Text>
+                  </View>
+                </View>
+                <LineChart
+                  values={weightTrend.smoothed.map((v) => wu.toDisplay(v))}
+                  labels={weightTrend.rawLabels}
+                  unit={wu.unitLabel()}
+                />
+              </View>
+            </Card>
+          )}
 
           <Card title={t("body.recentMeasurements")}>
             {metrics.length === 0 ? (

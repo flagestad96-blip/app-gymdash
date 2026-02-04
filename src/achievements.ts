@@ -1,7 +1,12 @@
 // src/achievements.ts
 // Achievement system with gamification
 
-import { ensureDb, getDb } from "./db";
+// Lazy import to avoid circular dependency during db initialization
+function getDbHelpers() {
+  // Dynamic import happens at runtime, not module load time
+  const { ensureDb, getDb } = require("./db");
+  return { ensureDb, getDb };
+}
 
 export type AchievementCategory =
   | "milestone" // First workout, workout milestones
@@ -313,9 +318,9 @@ const DEFAULT_ACHIEVEMENTS: Omit<Achievement, "createdAt">[] = [
  */
 export async function seedAchievements(opts?: { skipEnsure?: boolean }): Promise<void> {
   if (!opts?.skipEnsure) {
-    await ensureDb();
+    await getDbHelpers().ensureDb();
   }
-  const db = getDb();
+  const db = getDbHelpers().getDb();
   const now = new Date().toISOString();
 
   for (const achievement of DEFAULT_ACHIEVEMENTS) {
@@ -349,8 +354,8 @@ export async function seedAchievements(opts?: { skipEnsure?: boolean }): Promise
  * Get all achievements
  */
 export async function getAllAchievements(): Promise<Achievement[]> {
-  await ensureDb();
-  const db = getDb();
+  await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
 
   const rows = await db.getAllAsync<{
     id: string;
@@ -385,8 +390,8 @@ export async function getAllAchievements(): Promise<Achievement[]> {
  * Get user's unlocked achievements
  */
 export async function getUserAchievements(): Promise<UserAchievement[]> {
-  await ensureDb();
-  const db = getDb();
+  await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
 
   const rows = await db.getAllAsync<{
     id: string;
@@ -411,8 +416,8 @@ export async function getUserAchievements(): Promise<UserAchievement[]> {
  * Check if an achievement is unlocked
  */
 export async function isAchievementUnlocked(achievementId: string): Promise<boolean> {
-  await ensureDb();
-  const db = getDb();
+  await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
 
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) as count FROM user_achievements WHERE achievement_id = ?`,
@@ -429,8 +434,8 @@ export async function unlockAchievement(
   achievementId: string,
   context: AchievementContext = {}
 ): Promise<void> {
-  await ensureDb();
-  const db = getDb();
+  await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
 
   // Check if already unlocked
   if (await isAchievementUnlocked(achievementId)) {
@@ -459,7 +464,7 @@ export async function unlockAchievement(
  * Get total workout count
  */
 async function getWorkoutCount(): Promise<number> {
-  const db = getDb();
+  const db = getDbHelpers().getDb();
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(DISTINCT id) as count FROM workouts`
   );
@@ -470,7 +475,7 @@ async function getWorkoutCount(): Promise<number> {
  * Get total PR count
  */
 async function getPRCount(): Promise<number> {
-  const db = getDb();
+  const db = getDbHelpers().getDb();
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) as count FROM pr_records`
   );
@@ -481,7 +486,7 @@ async function getPRCount(): Promise<number> {
  * Check if a weight threshold is met for an exercise
  */
 async function checkWeightThreshold(exerciseId: string, threshold: number): Promise<boolean> {
-  const db = getDb();
+  const db = getDbHelpers().getDb();
   const row = await db.getFirstAsync<{ max_weight: number | null }>(
     `SELECT MAX(weight) as max_weight FROM sets WHERE exercise_id = ? AND is_warmup IS NOT 1`,
     [exerciseId]
@@ -493,7 +498,7 @@ async function checkWeightThreshold(exerciseId: string, threshold: number): Prom
  * Get current workout streak
  */
 async function getCurrentStreak(): Promise<number> {
-  const db = getDb();
+  const db = getDbHelpers().getDb();
   const rows = await db.getAllAsync<{ date: string }>(
     `SELECT DISTINCT date FROM workouts ORDER BY date DESC`
   );
@@ -525,7 +530,7 @@ async function getCurrentStreak(): Promise<number> {
  * Check all achievements and unlock any that are newly met
  */
 export async function checkAndUnlockAchievements(context: AchievementContext = {}): Promise<Achievement[]> {
-  await ensureDb();
+  await getDbHelpers().ensureDb();
   const achievements = await getAllAchievements();
   const unlocked: Achievement[] = [];
 
@@ -580,8 +585,8 @@ export async function checkAndUnlockAchievements(context: AchievementContext = {
  * Get user's total achievement points
  */
 export async function getTotalPoints(): Promise<number> {
-  await ensureDb();
-  const db = getDb();
+  await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
 
   const row = await db.getFirstAsync<{ total: number | null }>(
     `SELECT SUM(a.points) as total
@@ -600,8 +605,8 @@ export async function getAchievementProgress(): Promise<{
   unlocked: number;
   byTier: Record<AchievementTier, { total: number; unlocked: number }>;
 }> {
-  await ensureDb();
-  const db = getDb();
+  await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
 
   const all = await getAllAchievements();
   const unlocked = await getUserAchievements();

@@ -18,6 +18,7 @@ import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip }
 import { useWeightUnit, unitLabel } from "../../src/units";
 
 type RangeKey = "week" | "month" | "year";
+type ChartMetric = "e1rm" | "volume" | "repsPr" | "topSet";
 
 type RowSet = {
   workout_id: string;
@@ -129,6 +130,7 @@ export default function Analysis() {
     else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
   }, [navigation]);
   const [range, setRange] = useState<RangeKey>("month");
+  const [chartMetric, setChartMetric] = useState<ChartMetric>("e1rm");
 
   const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
   const [exerciseQuery, setExerciseQuery] = useState("");
@@ -154,6 +156,7 @@ export default function Analysis() {
   const [gender, setGender] = useState<Gender>("male");
   const [bodyMetrics90, setBodyMetrics90] = useState<BodyMetricRow[]>([]);
   const [allPrRecords, setAllPrRecords] = useState<PrRow[]>([]);
+  const [prevPeriodData, setPrevPeriodData] = useState<{ workouts: number; sets: number; volume: number; bestE1rm: number }>({ workouts: 0, sets: 0, volume: 0, bestE1rm: 0 });
 
   useEffect(() => {
     ensureDb().then(async () => {
@@ -219,6 +222,40 @@ export default function Analysis() {
       [fromDate]
     );
     setSets(Array.isArray(s) ? s : []);
+
+    // Previous period data (for period comparison)
+    try {
+      const d2 = new Date();
+      d2.setDate(d2.getDate() - 30);
+      const thisMonthStart = isoDateOnly(d2);
+      const d3 = new Date();
+      d3.setDate(d3.getDate() - 60);
+      const lastMonthStart = isoDateOnly(d3);
+
+      const prevW = getDb().getFirstSync<{ c: number }>(
+        `SELECT COUNT(DISTINCT date) as c FROM workouts WHERE date >= ? AND date < ?`,
+        [lastMonthStart, thisMonthStart]
+      );
+      const prevS = getDb().getFirstSync<{ c: number; vol: number }>(
+        `SELECT COUNT(1) as c, COALESCE(SUM(CASE WHEN is_warmup = 1 THEN 0 ELSE weight * reps END), 0) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ?`,
+        [lastMonthStart, thisMonthStart]
+      );
+      const prevE1rm = getDb().getAllSync<{ weight: number; reps: number; est_total_load_kg: number | null; exercise_id: string | null }>(
+        `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup != 1`,
+        [lastMonthStart, thisMonthStart]
+      );
+      let bestPrev = 0;
+      for (const r of prevE1rm ?? []) {
+        const wt = r.exercise_id && isBodyweight(r.exercise_id) && Number.isFinite(r.est_total_load_kg ?? NaN) ? r.est_total_load_kg! : r.weight;
+        bestPrev = Math.max(bestPrev, epley1RM(wt, r.reps));
+      }
+      setPrevPeriodData({
+        workouts: prevW?.c ?? 0,
+        sets: prevS?.c ?? 0,
+        volume: Math.round(prevS?.vol ?? 0),
+        bestE1rm: Math.round(bestPrev * 10) / 10,
+      });
+    } catch {}
   }, [ready, range]);
 
   const exerciseKeys = useMemo(() => {
@@ -340,19 +377,43 @@ export default function Analysis() {
     for (const row of sets) {
       const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
       if (key !== selectedExerciseKey) continue;
+      if (isWarmup(row)) continue;
 
       const day = isoDateOnly(new Date(row.created_at));
       const w = weightForSet(row);
       if (w == null) continue;
-      const val = epley1RM(w, row.reps);
-      perDay[day] = Math.max(perDay[day] ?? 0, val);
+
+      if (chartMetric === "e1rm") {
+        const val = epley1RM(w, row.reps);
+        perDay[day] = Math.max(perDay[day] ?? 0, val);
+      } else if (chartMetric === "volume") {
+        perDay[day] = (perDay[day] ?? 0) + w * row.reps;
+      } else if (chartMetric === "repsPr") {
+        perDay[day] = Math.max(perDay[day] ?? 0, row.reps);
+      } else if (chartMetric === "topSet") {
+        perDay[day] = Math.max(perDay[day] ?? 0, w);
+      }
     }
 
     const days = Object.keys(perDay).sort();
     const labels = days.map((d) => d.slice(5));
     const values = days.map((d) => perDay[d]);
     return { labels, values };
-  }, [sets, selectedExerciseKey]);
+  }, [sets, selectedExerciseKey, chartMetric]);
+
+  const prIndices = useMemo(() => {
+    if (!selectedExerciseKey || !allPrRecords.length || !exerciseSeries.labels.length) return [];
+    const prDates = new Set(
+      allPrRecords
+        .filter((r) => r.exercise_id === selectedExerciseKey && r.date)
+        .map((r) => r.date!.slice(5))
+    );
+    const indices: number[] = [];
+    for (let i = 0; i < exerciseSeries.labels.length; i++) {
+      if (prDates.has(exerciseSeries.labels[i])) indices.push(i);
+    }
+    return indices;
+  }, [selectedExerciseKey, allPrRecords, exerciseSeries.labels]);
 
   const comparisonSeries = useMemo(() => {
     if (!comparisonMode || !comparisonExerciseKey) return { labels: [] as string[], values: [] as number[] };
@@ -360,15 +421,23 @@ export default function Analysis() {
     for (const row of sets) {
       const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
       if (key !== comparisonExerciseKey) continue;
+      if (isWarmup(row)) continue;
       const day = isoDateOnly(new Date(row.created_at));
       const w = weightForSet(row);
       if (w == null) continue;
-      const val = epley1RM(w, row.reps);
-      perDay[day] = Math.max(perDay[day] ?? 0, val);
+      if (chartMetric === "e1rm") {
+        perDay[day] = Math.max(perDay[day] ?? 0, epley1RM(w, row.reps));
+      } else if (chartMetric === "volume") {
+        perDay[day] = (perDay[day] ?? 0) + w * row.reps;
+      } else if (chartMetric === "repsPr") {
+        perDay[day] = Math.max(perDay[day] ?? 0, row.reps);
+      } else if (chartMetric === "topSet") {
+        perDay[day] = Math.max(perDay[day] ?? 0, w);
+      }
     }
     const days = Object.keys(perDay).sort();
     return { labels: days.map((d) => d.slice(5)), values: days.map((d) => perDay[d]) };
-  }, [sets, comparisonExerciseKey, comparisonMode]);
+  }, [sets, comparisonExerciseKey, comparisonMode, chartMetric]);
 
   const comparisonExerciseLabel = useMemo(() => {
     if (!comparisonExerciseKey) return t("analysis.chooseSecondExercise");
@@ -394,14 +463,41 @@ export default function Analysis() {
     }));
     const avgReps = filtered.reduce((sum, s) => sum + s.reps, 0) / filtered.length;
 
+    // 4-week trend: compare avg e1RM of first 2 weeks vs last 2 weeks
+    const now = new Date();
+    const d28 = new Date(); d28.setDate(d28.getDate() - 28);
+    const d14 = new Date(); d14.setDate(d14.getDate() - 14);
+    const iso28 = isoDateOnly(d28);
+    const iso14 = isoDateOnly(d14);
+
+    const recent = filtered.filter((s) => isoDateOnly(new Date(s.created_at)) >= iso28);
+    const firstHalf = recent.filter((s) => isoDateOnly(new Date(s.created_at)) < iso14);
+    const secondHalf = recent.filter((s) => isoDateOnly(new Date(s.created_at)) >= iso14);
+
+    const avg1rm = (rows: RowSet[]) => {
+      if (!rows.length) return 0;
+      const vals = rows.map((s) => { const w = weightForSet(s); return w == null ? 0 : epley1RM(w, s.reps); });
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+    const trendValue = firstHalf.length > 0 && secondHalf.length > 0
+      ? Math.round((avg1rm(secondHalf) - avg1rm(firstHalf)) * 10) / 10
+      : null;
+
+    // Consistency: distinct dates with this exercise / weeks in period
+    const distinctDates = new Set(filtered.map((s) => isoDateOnly(new Date(s.created_at))));
+    const periodWeeks = Math.max(1, daysBack(range) / 7);
+    const consistencyValue = Math.round((distinctDates.size / periodWeeks) * 10) / 10;
+
     return {
       last,
       bestWeight,
       best1rm,
       avgReps,
       count: filtered.length,
+      trend: trendValue,
+      consistency: consistencyValue,
     };
-  }, [sets, selectedExerciseKey]);
+  }, [sets, selectedExerciseKey, range]);
 
   const volumeSeries = useMemo(() => {
     const volumeByDay: Record<string, number> = {};
@@ -628,6 +724,31 @@ export default function Analysis() {
     return { avg, dayAverages, count: durationsMin.length };
   }, [sets, workouts]);
 
+  // ── Period Comparison (this month) ─────────────────────────────────
+  const thisPeriodData = useMemo(() => {
+    const d30 = new Date();
+    d30.setDate(d30.getDate() - 30);
+    const cutoff = isoDateOnly(d30);
+
+    const recentWorkouts = workouts.filter((w) => w.date >= cutoff);
+    const recentSets = sets.filter((s) => isoDateOnly(new Date(s.created_at)) >= cutoff && !isWarmup(s));
+    const vol = recentSets.reduce((sum, s) => {
+      const w = weightForSet(s);
+      return sum + (w != null ? w * s.reps : 0);
+    }, 0);
+    let bestE1rm = 0;
+    for (const s of recentSets) {
+      const w = weightForSet(s);
+      if (w != null) bestE1rm = Math.max(bestE1rm, epley1RM(w, s.reps));
+    }
+    return {
+      workouts: new Set(recentWorkouts.map((w) => w.date)).size,
+      sets: recentSets.length,
+      volume: Math.round(vol),
+      bestE1rm: Math.round(bestE1rm * 10) / 10,
+    };
+  }, [sets, workouts]);
+
   // ── Strength Standards ──────────────────────────────────────────────
   const STRENGTH_LIFT_IDS = ["bench_press", "back_squat", "deadlift", "overhead_press", "barbell_row"] as const;
   const STANDARD_EXERCISE_MAP: Record<string, string> = { back_squat: "squat" };
@@ -822,6 +943,13 @@ export default function Analysis() {
             {t("analysis.graphNote")}
           </Text>
 
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <SegButton label={t("analysis.chartE1rm")} active={chartMetric === "e1rm"} onPress={() => setChartMetric("e1rm")} />
+            <SegButton label={t("analysis.chartVolume")} active={chartMetric === "volume"} onPress={() => setChartMetric("volume")} />
+            <SegButton label={t("analysis.chartRepsPr")} active={chartMetric === "repsPr"} onPress={() => setChartMetric("repsPr")} />
+            <SegButton label={t("analysis.chartTopSet")} active={chartMetric === "topSet"} onPress={() => setChartMetric("topSet")} />
+          </View>
+
           {comparisonMode && comparisonExerciseKey ? (
             <View style={{ gap: 12 }}>
               <View style={{ flexDirection: "row", gap: 16, justifyContent: "center" }}>
@@ -834,11 +962,11 @@ export default function Analysis() {
                   <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }} numberOfLines={1}>{comparisonExerciseLabel}</Text>
                 </View>
               </View>
-              <LineChart values={exerciseSeries.values.map(v => wu.toDisplay(v))} labels={exerciseSeries.labels} unit={wu.unitLabel()} height={140} />
-              <LineChart values={comparisonSeries.values.map(v => wu.toDisplay(v))} labels={comparisonSeries.labels} unit={wu.unitLabel()} height={140} />
+              <LineChart values={chartMetric === "repsPr" ? exerciseSeries.values : exerciseSeries.values.map(v => wu.toDisplay(v))} labels={exerciseSeries.labels} unit={chartMetric === "repsPr" ? "reps" : wu.unitLabel()} height={140} markers={prIndices} />
+              <LineChart values={chartMetric === "repsPr" ? comparisonSeries.values : comparisonSeries.values.map(v => wu.toDisplay(v))} labels={comparisonSeries.labels} unit={chartMetric === "repsPr" ? "reps" : wu.unitLabel()} height={140} />
             </View>
           ) : (
-            <LineChart values={exerciseSeries.values.map(v => wu.toDisplay(v))} labels={exerciseSeries.labels} unit={wu.unitLabel()} />
+            <LineChart values={chartMetric === "repsPr" ? exerciseSeries.values : exerciseSeries.values.map(v => wu.toDisplay(v))} labels={exerciseSeries.labels} unit={chartMetric === "repsPr" ? "reps" : wu.unitLabel()} markers={prIndices} />
           )}
         </Card>
 
@@ -854,6 +982,22 @@ export default function Analysis() {
               <Text style={{ color: theme.muted }}>{t("analysis.bestE1rm")}: {wu.formatWeight(exerciseStats.best1rm)}</Text>
               <Text style={{ color: theme.muted }}>{t("analysis.avgReps")}: {exerciseStats.avgReps.toFixed(1)}</Text>
               <Text style={{ color: theme.muted }}>{t("analysis.setsInPeriod")}: {exerciseStats.count}</Text>
+              {exerciseStats.trend !== null && (
+                <Text style={{
+                  color: exerciseStats.trend > 0 ? "#34D399" : exerciseStats.trend < 0 ? "#F87171" : theme.muted,
+                  fontFamily: theme.mono,
+                  fontSize: 13,
+                }}>
+                  {t("analysis.trend")}: {exerciseStats.trend > 0
+                    ? t("analysis.trendUp", { value: wu.toDisplay(exerciseStats.trend).toFixed(1) + " " + wu.unitLabel() })
+                    : exerciseStats.trend < 0
+                      ? t("analysis.trendDown", { value: wu.toDisplay(exerciseStats.trend).toFixed(1) + " " + wu.unitLabel() })
+                      : t("analysis.trendFlat")}
+                </Text>
+              )}
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 13 }}>
+                {t("analysis.consistencyLabel")}: {t("analysis.sessionsPerWeek", { value: exerciseStats.consistency })}
+              </Text>
             </View>
           )}
         </Card>
@@ -1102,6 +1246,50 @@ export default function Analysis() {
               </View>
             </View>
           )}
+        </Card>
+
+        {/* ── Compare Periods Card ─────────────────────────────── */}
+        <Card title={t("analysis.comparePeriods")}>
+          {(() => {
+            const rows = [
+              { label: t("common.workouts"), cur: thisPeriodData.workouts, prev: prevPeriodData.workouts },
+              { label: t("common.volume"), cur: thisPeriodData.volume, prev: prevPeriodData.volume, isWeight: true },
+              { label: t("common.sets"), cur: thisPeriodData.sets, prev: prevPeriodData.sets },
+              { label: "e1RM", cur: thisPeriodData.bestE1rm, prev: prevPeriodData.bestE1rm, isWeight: true },
+            ];
+            return (
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: theme.glassBorder }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, flex: 1 }}> </Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 70, textAlign: "right" }}>{t("analysis.thisMonth")}</Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 70, textAlign: "right" }}>{t("analysis.lastMonth")}</Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 60, textAlign: "right" }}>{t("analysis.change")}</Text>
+                </View>
+                {rows.map((r) => {
+                  const delta = r.cur - r.prev;
+                  const pct = r.prev > 0 ? Math.round((delta / r.prev) * 100) : (r.cur > 0 ? 100 : 0);
+                  const curDisplay = r.isWeight ? wu.toDisplay(r.cur).toFixed(0) : String(r.cur);
+                  const prevDisplay = r.isWeight ? wu.toDisplay(r.prev).toFixed(0) : String(r.prev);
+                  return (
+                    <View key={r.label} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={{ color: theme.text, fontSize: 13, flex: 1 }}>{r.label}</Text>
+                      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13, width: 70, textAlign: "right" }}>{curDisplay}</Text>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 13, width: 70, textAlign: "right" }}>{prevDisplay}</Text>
+                      <Text style={{
+                        color: delta > 0 ? "#34D399" : delta < 0 ? "#F87171" : theme.muted,
+                        fontFamily: theme.mono,
+                        fontSize: 12,
+                        width: 60,
+                        textAlign: "right",
+                      }}>
+                        {delta > 0 ? `+${pct}% \u2191` : delta < 0 ? `${pct}% \u2193` : "\u2192"}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
         </Card>
 
         {/* ── Muscle Balance Radar Card ──────────────────────────── */}

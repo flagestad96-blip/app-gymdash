@@ -1,5 +1,5 @@
 ﻿import React from "react";
-import { Appearance, type TextStyle } from "react-native";
+import { Appearance, type TextStyle, Platform } from "react-native";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -373,11 +373,19 @@ function createTheme(mode: "light" | "dark"): Theme {
 
 const listeners = new Set<() => void>();
 let currentMode: ThemeMode = "system";
-let currentTheme: Theme = createTheme(Appearance.getColorScheme() === "dark" ? "dark" : "light");
+
+function getSystemColorScheme(): "dark" | "light" {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return Appearance.getColorScheme() === "dark" ? "dark" : "light";
+}
+
+let currentTheme: Theme = createTheme(getSystemColorScheme());
 
 function resolveMode(mode: ThemeMode) {
   if (mode === "system") {
-    return Appearance.getColorScheme() === "dark" ? "dark" : "light";
+    return getSystemColorScheme();
   }
   return mode;
 }
@@ -404,12 +412,26 @@ let appearanceSubAttached = false;
 function ensureAppearanceListener() {
   if (appearanceSubAttached) return;
   appearanceSubAttached = true;
+
+  // Listen to React Native Appearance changes (mobile)
   Appearance.addChangeListener(() => {
     if (currentMode === "system") {
       currentTheme = createTheme(resolveMode("system"));
       notify();
     }
   });
+
+  // Listen to web theme changes
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      if (currentMode === "system") {
+        currentTheme = createTheme(resolveMode("system"));
+        notify();
+      }
+    };
+    mediaQuery.addEventListener("change", handleChange);
+  }
 }
 
 const ThemeContext = React.createContext<Theme>(currentTheme);

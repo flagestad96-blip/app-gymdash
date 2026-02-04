@@ -30,6 +30,7 @@ export type LineChartProps = {
   labels: string[];
   height?: number;
   unit?: string;
+  markers?: number[];
 };
 
 function LineChart({
@@ -37,6 +38,7 @@ function LineChart({
   labels,
   height = 160,
   unit = "kg",
+  markers,
 }: LineChartProps) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -158,6 +160,21 @@ function LineChart({
             fill={activeIdx === idx ? theme.text : theme.accent}
           />
         ))}
+
+        {/* PR markers */}
+        {markers?.map((idx) => {
+          const p = points[idx];
+          if (!p) return null;
+          return (
+            <Path
+              key={`marker_${idx}`}
+              d={`M ${p.x} ${p.y - 5} L ${p.x + 4} ${p.y} L ${p.x} ${p.y + 5} L ${p.x - 4} ${p.y} Z`}
+              fill="#F97316"
+              stroke="#FFF"
+              strokeWidth={0.5}
+            />
+          );
+        })}
 
         {/* Invisible touch targets */}
         {points.map((p, idx) => (

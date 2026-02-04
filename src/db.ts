@@ -597,6 +597,16 @@ export async function initDb() {
       try {
         db.execSync(`ALTER TABLE programs ADD COLUMN periodization_json TEXT;`);
       } catch {}
+
+      // Day marks (rest/skipped/sick)
+      try {
+        db.execSync(`
+          CREATE TABLE IF NOT EXISTS day_marks (
+            date TEXT PRIMARY KEY NOT NULL,
+            status TEXT NOT NULL
+          );
+        `);
+      } catch {}
     }
 
     _inited = true;

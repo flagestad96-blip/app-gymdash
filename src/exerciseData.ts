@@ -1,4 +1,5 @@
-// src/exerciseLibrary.ts
+// src/exerciseData.ts
+// Core exercise data and utilities (no database dependencies)
 
 export type ExerciseTag =
   | "chest"
@@ -29,8 +30,6 @@ export type Equipment =
   | "trapbar"
   | "other";
 
-export type BackImpact = "green" | "yellow" | "red";
-
 export type ExerciseDef = {
   id: string;
   displayName: string;
@@ -40,8 +39,7 @@ export type ExerciseDef = {
   isBodyweight?: boolean;
   bodyweightFactor?: number;
   aliases?: string[];
-  alternatives?: string[]; // Array of exercise IDs that can substitute this exercise
-  backImpact?: BackImpact; // Lower-back impact: red = high risk, yellow = caution, green = back-friendly, undefined = not relevant
+  alternatives?: string[];
 };
 
 export const EXERCISES: ExerciseDef[] = [
@@ -79,7 +77,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["chest", "upper", "compound"],
     defaultIncrementKg: 2.5,
     aliases: ["smith bench"],
-    alternatives: ["bench_press", "machine_chest_press", "flat_db_press", "decline_bench_press"],
   },
   {
     id: "smith_incline_press",
@@ -88,7 +85,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["chest", "upper", "compound"],
     defaultIncrementKg: 2.5,
     aliases: ["smith incline bench"],
-    alternatives: ["incline_barbell_press", "incline_db_press", "machine_chest_press", "bench_press"],
   },
   {
     id: "machine_chest_press",
@@ -96,7 +92,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["chest", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    alternatives: ["bench_press", "flat_db_press", "smith_bench_press", "dip"],
   },
   {
     id: "cable_fly",
@@ -104,7 +99,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["pec_deck", "db_fly", "cable_crossover", "low_cable_fly", "high_cable_fly"],
   },
 
   // Shoulders
@@ -139,7 +133,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_lateral_raise", "machine_lateral_raise"],
   },
   {
     id: "machine_lateral_raise",
@@ -147,7 +140,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["shoulders", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["lateral_raise", "cable_lateral_raise"],
   },
   {
     id: "rear_delt_fly",
@@ -155,7 +147,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["shoulders", "back", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["reverse_pec_deck", "face_pull", "band_pull_apart"],
   },
 
   // Triceps
@@ -165,7 +156,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["triceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["overhead_triceps_ext", "skullcrushers", "dip", "close_grip_bench", "cable_triceps_ext"],
+    alternatives: ["overhead_triceps_extension", "skullcrushers", "dip", "close_grip_bench", "cable_triceps_ext"],
   },
   {
     id: "cable_triceps_ext",
@@ -174,7 +165,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["triceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
     aliases: ["triceps extension cable"],
-    alternatives: ["triceps_pushdown", "rope_pushdown", "overhead_triceps_ext", "skullcrushers"],
   },
   {
     id: "overhead_triceps_ext",
@@ -182,7 +172,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["triceps", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["overhead_cable_triceps_ext", "overhead_db_extension", "skullcrushers", "triceps_pushdown"],
   },
   {
     id: "overhead_cable_triceps_ext",
@@ -190,7 +179,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["triceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["overhead_triceps_ext", "overhead_db_extension", "cable_triceps_ext", "rope_pushdown"],
   },
   {
     id: "skullcrushers",
@@ -198,7 +186,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["triceps", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["triceps_pushdown", "overhead_triceps_ext", "dip", "close_grip_bench"],
+    alternatives: ["triceps_pushdown", "overhead_triceps_extension", "dip", "close_grip_bench"],
   },
 
   // Back / pulling
@@ -208,7 +196,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
     aliases: ["lat pulldown", "latpulldown"],
     alternatives: ["pull_up", "neutral_grip_pulldown", "assisted_pullup", "inverted_row"],
   },
@@ -229,7 +216,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["back", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
     alternatives: ["seal_row", "cable_row", "machine_row", "one_arm_db_row", "t_bar_row"],
   },
   {
@@ -238,7 +224,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
     alternatives: ["machine_row", "chest_supported_row", "barbell_row", "one_arm_db_row", "t_bar_row"],
   },
   {
@@ -247,7 +232,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["back", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
     aliases: ["seated row", "row machine"],
     alternatives: ["cable_row", "chest_supported_row", "one_arm_db_row", "t_bar_row"],
   },
@@ -257,7 +241,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["back", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
     alternatives: ["cable_row", "machine_row", "chest_supported_row", "barbell_row"],
   },
   {
@@ -266,7 +249,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["shoulders", "back", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["rear_delt_fly", "reverse_pec_deck", "band_pull_apart"],
   },
 
   // Biceps
@@ -302,7 +284,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["quads", "lower", "compound", "lower_back_friendly"],
     defaultIncrementKg: 5,
-    backImpact: "green",
     alternatives: ["hack_squat", "back_squat", "front_squat", "leg_press_45", "belt_squat"],
   },
   {
@@ -311,9 +292,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["quads", "lower", "compound", "lower_back_friendly"],
     defaultIncrementKg: 5,
-    backImpact: "green",
     aliases: ["45 leg press"],
-    alternatives: ["leg_press", "hack_squat", "back_squat", "belt_squat"],
   },
   {
     id: "hack_squat",
@@ -321,7 +300,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["quads", "lower", "compound", "lower_back_friendly"],
     defaultIncrementKg: 5,
-    backImpact: "green",
     alternatives: ["leg_press", "leg_press_45", "back_squat", "front_squat", "belt_squat"],
   },
   {
@@ -330,8 +308,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "smith",
     tags: ["quads", "lower", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["back_squat", "hack_squat", "leg_press", "belt_squat"],
   },
   {
     id: "leg_extension",
@@ -340,7 +316,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["quads", "isolation"],
     defaultIncrementKg: 2.5,
     aliases: ["leg_ext", "legext"],
-    alternatives: ["sissy_squat", "leg_press", "bodyweight_squat"],
   },
   {
     id: "lying_leg_curl",
@@ -348,9 +323,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["hamstrings", "isolation"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
     aliases: ["leg_curl"],
-    alternatives: ["seated_leg_curl", "standing_leg_curl", "romanian_deadlift", "nordic_curl"],
   },
   {
     id: "seated_leg_curl",
@@ -358,8 +331,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["hamstrings", "isolation"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["lying_leg_curl", "standing_leg_curl", "romanian_deadlift", "nordic_curl"],
   },
   {
     id: "hip_thrust_machine",
@@ -367,9 +338,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["glutes", "lower", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "green",
     aliases: ["booty_builder"],
-    alternatives: ["hip_thrust_barbell", "glute_bridge", "cable_pull_through"],
   },
   {
     id: "glute_kickback_cable",
@@ -377,8 +346,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["glutes", "lower", "isolation"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["hip_thrust_machine", "glute_bridge", "cable_pull_through"],
   },
   {
     id: "glute_bridge",
@@ -386,18 +353,14 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["glutes", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "green",
-    alternatives: ["hip_thrust_barbell", "hip_thrust_machine", "cable_pull_through"],
   },
   {
     id: "back_extension",
     displayName: "Back Extension",
-    equipment: "machine",
+    equipment: "bodyweight",
     tags: ["hamstrings", "glutes", "lower", "isolation"],
     defaultIncrementKg: 2.5,
     aliases: ["rygghev"],
-    alternatives: ["forty_five_back_extension", "roman_chair_back_extension", "reverse_hyper", "good_morning", "romanian_deadlift"],
-    backImpact: "yellow",
   },
   {
     id: "standing_calf_raise",
@@ -405,7 +368,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["calves", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["seated_calf_raise", "donkey_calf_raise", "leg_press_calf_raise"],
   },
   {
     id: "seated_calf_raise",
@@ -414,7 +376,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["calves", "isolation"],
     defaultIncrementKg: 2.5,
     aliases: ["legg"],
-    alternatives: ["standing_calf_raise", "donkey_calf_raise", "leg_press_calf_raise"],
   },
 
   // Hips / accessories
@@ -424,7 +385,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["glutes", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["hip_abduction", "glute_kickback_cable", "cable_pull_through"],
   },
   {
     id: "adductor",
@@ -432,7 +392,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["glutes", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["hip_adduction"],
   },
 
   // Core
@@ -442,7 +401,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["core", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["hanging_leg_raise", "ab_wheel", "reverse_crunch"],
   },
   {
     id: "plank",
@@ -450,7 +408,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["side_plank", "ab_wheel", "pallof_press"],
   },
 
   // Expanded library (v1 polish)
@@ -461,7 +418,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["chest", "upper", "compound"],
     defaultIncrementKg: 2.5,
     aliases: ["incline bench"],
-    alternatives: ["incline_db_press", "smith_incline_press", "bench_press", "machine_chest_press"],
   },
   {
     id: "decline_bench_press",
@@ -469,7 +425,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["chest", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    alternatives: ["bench_press", "decline_db_press", "dip", "machine_chest_press"],
   },
   {
     id: "db_fly",
@@ -478,7 +433,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
     aliases: ["dumbbell fly"],
-    alternatives: ["cable_fly", "pec_deck", "cable_crossover", "db_pullover"],
   },
   {
     id: "pec_deck",
@@ -487,15 +441,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
     aliases: ["pec fly"],
-    alternatives: ["cable_fly", "cable_crossover", "db_fly", "svend_press", "push_up"],
-  },
-  {
-    id: "svend_press",
-    displayName: "Svend Press",
-    equipment: "other",
-    tags: ["chest", "isolation"],
-    defaultIncrementKg: 1,
-    alternatives: ["pec_deck", "cable_crossover", "db_fly", "cable_fly"],
   },
   {
     id: "push_up",
@@ -506,7 +451,6 @@ export const EXERCISES: ExerciseDef[] = [
     isBodyweight: true,
     bodyweightFactor: 0.64,
     aliases: ["pushup"],
-    alternatives: ["bench_press", "flat_db_press", "diamond_push_up", "decline_push_up", "machine_chest_press"],
   },
   {
     id: "dip",
@@ -525,7 +469,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["db_shoulder_press", "overhead_press", "machine_shoulder_press"],
   },
   {
     id: "front_raise",
@@ -533,7 +476,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_lateral_raise", "lateral_raise", "overhead_press"],
   },
   {
     id: "cable_lateral_raise",
@@ -541,7 +483,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["shoulders", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["lateral_raise", "machine_lateral_raise"],
   },
   {
     id: "reverse_pec_deck",
@@ -549,7 +490,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["shoulders", "back", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["rear_delt_fly", "face_pull", "band_pull_apart"],
   },
   {
     id: "upright_row",
@@ -557,8 +497,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
-    alternatives: ["lateral_raise", "cable_lateral_raise", "face_pull", "db_shoulder_press"],
   },
   {
     id: "landmine_press",
@@ -566,7 +504,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["overhead_press", "db_shoulder_press", "arnold_press"],
   },
   {
     id: "barbell_row",
@@ -574,7 +511,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "upper", "compound", "lower_back_demanding"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
     aliases: ["bent over row"],
     alternatives: ["cable_row", "t_bar_row", "one_arm_db_row", "machine_row", "chest_supported_row", "pendlay_row"],
   },
@@ -584,7 +520,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["back", "upper", "compound", "lower_back_demanding"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
     alternatives: ["barbell_row", "cable_row", "chest_supported_row", "machine_row", "landmine_row"],
   },
   {
@@ -593,8 +528,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["lat_pulldown", "wide_grip_pulldown", "pull_up", "assisted_pullup"],
   },
   {
     id: "wide_grip_pulldown",
@@ -602,8 +535,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["lat_pulldown", "neutral_grip_pulldown", "pull_up"],
   },
   {
     id: "straight_arm_pulldown",
@@ -611,9 +542,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "isolation"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
     aliases: ["pullover", "lat pullover"],
-    alternatives: ["db_pullover", "lat_pulldown", "cable_row"],
   },
   {
     id: "single_arm_cable_row",
@@ -621,8 +550,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["one_arm_db_row", "cable_row", "machine_row"],
   },
   {
     id: "inverted_row",
@@ -633,7 +560,6 @@ export const EXERCISES: ExerciseDef[] = [
     isBodyweight: true,
     bodyweightFactor: 0.7,
     aliases: ["bodyweight row"],
-    alternatives: ["cable_row", "machine_row", "trx_row", "pull_up"],
   },
   {
     id: "db_pullover",
@@ -641,7 +567,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["back", "chest", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["straight_arm_pulldown", "cable_fly", "lat_pulldown"],
   },
   {
     id: "deadlift",
@@ -649,7 +574,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
     aliases: ["dl", "dead lift"],
     alternatives: ["romanian_deadlift", "trap_bar_deadlift", "rack_pull", "stiff_leg_deadlift", "deficit_deadlift"],
   },
@@ -659,9 +583,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "trapbar",
     tags: ["back", "lower", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
     aliases: ["hex bar deadlift"],
-    alternatives: ["deadlift", "rack_pull", "romanian_deadlift"],
   },
   {
     id: "rack_pull",
@@ -669,8 +591,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["deadlift", "trap_bar_deadlift", "barbell_row"],
   },
   {
     id: "ez_bar_curl",
@@ -694,7 +614,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["db_curl", "ez_bar_curl", "cable_curl", "spider_curl"],
   },
   {
     id: "spider_curl",
@@ -702,7 +621,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["preacher_curl", "ez_bar_curl", "cable_curl", "concentration_curl"],
   },
   {
     id: "concentration_curl",
@@ -710,7 +628,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 1,
-    alternatives: ["db_curl", "cable_curl", "spider_curl", "preacher_curl"],
   },
   {
     id: "rope_pushdown",
@@ -718,7 +635,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["triceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["triceps_pushdown", "cable_triceps_ext", "overhead_triceps_ext"],
   },
   {
     id: "triceps_kickback",
@@ -726,7 +642,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["triceps", "isolation"],
     defaultIncrementKg: 1,
-    alternatives: ["rope_pushdown", "cable_triceps_ext", "overhead_db_extension"],
   },
   {
     id: "overhead_db_extension",
@@ -734,7 +649,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["triceps", "isolation"],
     defaultIncrementKg: 1,
-    alternatives: ["overhead_triceps_ext", "overhead_cable_triceps_ext", "skullcrushers"],
   },
   {
     id: "close_grip_bench",
@@ -750,7 +664,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["triceps", "upper", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["dip", "assisted_dip", "triceps_pushdown", "diamond_push_up"],
   },
   {
     id: "back_squat",
@@ -758,7 +671,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["quads", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
     aliases: ["squat"],
     alternatives: ["front_squat", "leg_press", "hack_squat", "belt_squat", "goblet_squat", "safety_bar_squat"],
   },
@@ -768,7 +680,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["quads", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
     alternatives: ["back_squat", "leg_press", "hack_squat", "goblet_squat", "safety_bar_squat"],
   },
   {
@@ -777,7 +688,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
     alternatives: ["front_squat", "back_squat", "leg_press", "hack_squat"],
   },
   {
@@ -786,9 +696,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
     aliases: ["bss"],
-    alternatives: ["walking_lunge", "reverse_lunge", "step_up", "goblet_squat"],
   },
   {
     id: "walking_lunge",
@@ -796,8 +704,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["bulgarian_split_squat", "reverse_lunge", "step_up"],
   },
   {
     id: "step_up",
@@ -805,8 +711,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["bulgarian_split_squat", "walking_lunge", "reverse_lunge"],
   },
   {
     id: "belt_squat",
@@ -814,7 +718,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["quads", "lower", "compound", "lower_back_friendly"],
     defaultIncrementKg: 5,
-    backImpact: "green",
     alternatives: ["leg_press", "hack_squat", "back_squat", "front_squat", "leg_press_45"],
   },
   {
@@ -823,8 +726,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["quads", "lower", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "green",
-    alternatives: ["bulgarian_split_squat", "leg_press", "hack_squat"],
   },
   {
     id: "sissy_squat",
@@ -832,7 +733,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["quads", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["leg_extension", "bodyweight_squat", "goblet_squat"],
   },
   {
     id: "bodyweight_squat",
@@ -842,9 +742,7 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 1.0,
-    backImpact: "green",
     aliases: ["bw squat"],
-    alternatives: ["goblet_squat", "leg_press", "sissy_squat"],
   },
   {
     id: "romanian_deadlift",
@@ -852,7 +750,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["hamstrings", "glutes", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
     aliases: ["rdl"],
     alternatives: ["deadlift", "good_morning", "lying_leg_curl", "glute_ham_raise", "single_leg_rdl", "stiff_leg_deadlift"],
   },
@@ -862,8 +759,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["hamstrings", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 2.5,
-    backImpact: "red",
-    alternatives: ["romanian_deadlift", "stiff_leg_deadlift", "back_extension", "banded_good_morning"],
   },
   {
     id: "glute_ham_raise",
@@ -872,7 +767,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["hamstrings", "isolation"],
     defaultIncrementKg: 0,
     aliases: ["ghr"],
-    alternatives: ["nordic_curl", "lying_leg_curl", "seated_leg_curl", "romanian_deadlift"],
   },
   {
     id: "pike_push_up",
@@ -883,7 +777,6 @@ export const EXERCISES: ExerciseDef[] = [
     isBodyweight: true,
     bodyweightFactor: 0.7,
     aliases: ["pike pushup"],
-    alternatives: ["overhead_press", "handstand_push_up", "db_shoulder_press"],
   },
   {
     id: "nordic_curl",
@@ -891,7 +784,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["hamstrings", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["glute_ham_raise", "lying_leg_curl", "seated_leg_curl"],
   },
   {
     id: "hip_thrust_barbell",
@@ -899,8 +791,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["glutes", "lower", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "green",
-    alternatives: ["hip_thrust_machine", "glute_bridge", "cable_pull_through"],
   },
   {
     id: "cable_pull_through",
@@ -908,7 +798,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["glutes", "hamstrings", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["hip_thrust_barbell", "glute_bridge", "romanian_deadlift"],
   },
   {
     id: "single_leg_rdl",
@@ -916,7 +805,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["hamstrings", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["romanian_deadlift", "good_morning", "glute_ham_raise"],
   },
   {
     id: "standing_leg_curl",
@@ -924,8 +812,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["hamstrings", "isolation"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["lying_leg_curl", "seated_leg_curl", "nordic_curl"],
   },
   {
     id: "donkey_calf_raise",
@@ -933,7 +819,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["calves", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["standing_calf_raise", "seated_calf_raise", "leg_press_calf_raise"],
   },
   {
     id: "leg_press_calf_raise",
@@ -941,7 +826,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["calves", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["standing_calf_raise", "seated_calf_raise", "donkey_calf_raise"],
   },
   {
     id: "hanging_leg_raise",
@@ -949,7 +833,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["reverse_crunch", "cable_crunch", "dragon_flag"],
   },
   {
     id: "reverse_crunch",
@@ -957,7 +840,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["hanging_leg_raise", "cable_crunch", "ab_wheel"],
   },
   {
     id: "ab_wheel",
@@ -966,7 +848,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["core", "compound"],
     defaultIncrementKg: 0,
     aliases: ["ab wheel rollout"],
-    alternatives: ["plank", "cable_crunch", "trx_fallout", "dragon_flag"],
   },
   {
     id: "pallof_press",
@@ -974,7 +855,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["core", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_woodchop", "plank", "landmine_rotation"],
   },
   {
     id: "russian_twist",
@@ -982,7 +862,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["cable_woodchop", "pallof_press", "landmine_rotation"],
   },
   {
     id: "side_plank",
@@ -990,7 +869,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
-    alternatives: ["plank", "pallof_press", "russian_twist"],
   },
   {
     id: "cable_woodchop",
@@ -998,7 +876,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["core", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["pallof_press", "russian_twist", "landmine_rotation"],
   },
 
   // Olympic / Power Lifts
@@ -1008,8 +885,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["hang_clean", "clean_and_jerk", "high_pull"],
   },
   {
     id: "clean_and_jerk",
@@ -1017,8 +892,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["power_clean", "hang_clean", "overhead_press"],
   },
   {
     id: "snatch",
@@ -1026,8 +899,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["hang_snatch", "power_clean", "high_pull"],
   },
   {
     id: "hang_clean",
@@ -1035,8 +906,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["power_clean", "clean_and_jerk", "clean_pull"],
   },
   {
     id: "hang_snatch",
@@ -1044,8 +913,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["snatch", "hang_clean", "high_pull"],
   },
   {
     id: "box_squat",
@@ -1053,8 +920,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["quads", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["back_squat", "pause_squat", "front_squat", "hack_squat"],
   },
   {
     id: "pause_squat",
@@ -1062,8 +927,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["quads", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["back_squat", "box_squat", "front_squat", "tempo_squat"],
   },
   {
     id: "tempo_squat",
@@ -1071,8 +934,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["quads", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["back_squat", "pause_squat", "front_squat"],
   },
   {
     id: "power_shrug",
@@ -1080,8 +941,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "upper", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["barbell_row", "high_pull", "deadlift"],
   },
   {
     id: "high_pull",
@@ -1089,8 +948,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "shoulders", "upper", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["power_clean", "power_shrug", "upright_row"],
   },
   {
     id: "clean_pull",
@@ -1098,8 +955,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["deadlift", "power_clean", "hang_clean"],
   },
 
   // Strongman
@@ -1109,7 +964,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 5,
-    alternatives: ["sandbag_carry", "yoke_walk", "deadlift"],
   },
   {
     id: "sled_push",
@@ -1117,7 +971,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["quads", "lower", "compound"],
     defaultIncrementKg: 10,
-    alternatives: ["prowler_push", "leg_press", "sled_pull"],
   },
   {
     id: "sled_pull",
@@ -1125,7 +978,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["quads", "back", "compound"],
     defaultIncrementKg: 10,
-    alternatives: ["sled_push", "sled_drag", "cable_pull_through"],
   },
   {
     id: "tire_flip",
@@ -1133,7 +985,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["deadlift", "atlas_stone", "sled_push"],
   },
   {
     id: "yoke_walk",
@@ -1141,7 +992,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 10,
-    alternatives: ["farmers_walk", "back_squat", "sandbag_carry"],
   },
   {
     id: "log_press",
@@ -1149,7 +999,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 5,
-    alternatives: ["overhead_press", "db_shoulder_press", "landmine_press"],
   },
   {
     id: "atlas_stone",
@@ -1157,7 +1006,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["tire_flip", "deadlift", "front_squat"],
   },
   {
     id: "sandbag_carry",
@@ -1165,7 +1013,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 5,
-    alternatives: ["farmers_walk", "yoke_walk"],
   },
 
   // Calisthenics
@@ -1177,7 +1024,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 1.0,
-    alternatives: ["pull_up", "dip", "lat_pulldown"],
   },
   {
     id: "handstand_push_up",
@@ -1188,7 +1034,6 @@ export const EXERCISES: ExerciseDef[] = [
     isBodyweight: true,
     bodyweightFactor: 1.0,
     aliases: ["hspu"],
-    alternatives: ["pike_push_up", "overhead_press", "db_shoulder_press"],
   },
   {
     id: "archer_push_up",
@@ -1198,7 +1043,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 0.7,
-    alternatives: ["push_up", "one_arm_push_up", "flat_db_press"],
   },
   {
     id: "one_arm_push_up",
@@ -1208,7 +1052,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 0.5,
-    alternatives: ["push_up", "archer_push_up", "flat_db_press"],
   },
   {
     id: "diamond_push_up",
@@ -1218,7 +1061,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 0.64,
-    alternatives: ["close_grip_bench", "triceps_pushdown", "push_up", "bench_dip"],
   },
   {
     id: "decline_push_up",
@@ -1228,7 +1070,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 0.7,
-    alternatives: ["push_up", "incline_barbell_press", "incline_db_press"],
   },
   {
     id: "pistol_squat",
@@ -1238,7 +1079,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 0.5,
-    alternatives: ["bulgarian_split_squat", "leg_press_single_leg", "goblet_squat"],
   },
   {
     id: "l_sit",
@@ -1247,7 +1087,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
     isBodyweight: true,
-    alternatives: ["hanging_leg_raise", "plank", "dragon_flag"],
   },
   {
     id: "dragon_flag",
@@ -1256,7 +1095,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
     isBodyweight: true,
-    alternatives: ["hanging_leg_raise", "ab_wheel", "l_sit"],
   },
   // Machines & Cables
   {
@@ -1265,7 +1103,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_fly", "pec_deck", "db_fly", "low_cable_fly", "high_cable_fly"],
   },
   {
     id: "low_cable_fly",
@@ -1273,7 +1110,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_fly", "cable_crossover", "high_cable_fly", "db_fly"],
   },
   {
     id: "high_cable_fly",
@@ -1281,7 +1117,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_fly", "cable_crossover", "low_cable_fly", "pec_deck"],
   },
   {
     id: "seated_cable_row",
@@ -1289,8 +1124,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "cable",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["cable_row", "machine_row", "one_arm_db_row", "chest_supported_row"],
   },
   {
     id: "hip_abduction",
@@ -1298,7 +1131,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["glutes", "isolation"],
     defaultIncrementKg: 5,
-    alternatives: ["abductor", "glute_kickback_cable"],
   },
   {
     id: "hip_adduction",
@@ -1306,7 +1138,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["lower", "isolation"],
     defaultIncrementKg: 5,
-    alternatives: ["adductor"],
   },
   {
     id: "smith_row",
@@ -1314,7 +1145,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "smith",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["barbell_row", "cable_row", "machine_row", "t_bar_row"],
   },
   {
     id: "smith_overhead_press",
@@ -1322,7 +1152,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "smith",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["overhead_press", "db_shoulder_press", "machine_shoulder_press", "arnold_press"],
   },
   {
     id: "assisted_pullup",
@@ -1330,8 +1159,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 5,
-    backImpact: "green",
-    alternatives: ["lat_pulldown", "pull_up", "neutral_grip_pulldown", "inverted_row"],
   },
   {
     id: "assisted_dip",
@@ -1339,7 +1166,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["chest", "triceps", "upper", "compound"],
     defaultIncrementKg: 5,
-    alternatives: ["dip", "bench_dip", "machine_chest_press", "close_grip_bench"],
   },
 
   // Dumbbell Variations
@@ -1349,7 +1175,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 1,
-    alternatives: ["face_pull", "band_pull_apart", "lateral_raise"],
   },
   {
     id: "z_press",
@@ -1357,7 +1182,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["overhead_press", "db_shoulder_press", "arnold_press"],
   },
   {
     id: "zottman_curl",
@@ -1365,7 +1189,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 1,
-    alternatives: ["hammer_curl", "db_curl", "cable_curl"],
   },
   {
     id: "reverse_lunge",
@@ -1373,8 +1196,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["walking_lunge", "bulgarian_split_squat", "step_up"],
   },
   {
     id: "lateral_lunge",
@@ -1382,8 +1203,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "green",
-    alternatives: ["walking_lunge", "reverse_lunge", "goblet_squat"],
   },
   {
     id: "decline_db_press",
@@ -1391,7 +1210,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["chest", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
-    alternatives: ["decline_bench_press", "flat_db_press", "bench_press", "dip"],
   },
 
   // Stretching / Mobility
@@ -1401,7 +1219,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["back", "upper"],
     defaultIncrementKg: 0,
-    alternatives: ["pull_up", "lat_pulldown", "band_pull_apart"],
   },
   {
     id: "cat_cow",
@@ -1409,7 +1226,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["core", "lower"],
     defaultIncrementKg: 0,
-    alternatives: ["hip_circles", "pigeon_pose", "ninety_ninety_stretch"],
   },
   {
     id: "pigeon_pose",
@@ -1417,7 +1233,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["glutes", "lower"],
     defaultIncrementKg: 0,
-    alternatives: ["ninety_ninety_stretch", "couch_stretch", "hip_circles"],
   },
   {
     id: "couch_stretch",
@@ -1425,7 +1240,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["quads", "lower"],
     defaultIncrementKg: 0,
-    alternatives: ["pigeon_pose", "hip_circles", "ninety_ninety_stretch"],
   },
   {
     id: "band_pull_apart",
@@ -1433,7 +1247,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["back", "shoulders", "upper"],
     defaultIncrementKg: 0,
-    alternatives: ["face_pull", "rear_delt_fly", "shoulder_dislocations"],
   },
   {
     id: "shoulder_dislocations",
@@ -1441,7 +1254,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["shoulders", "upper"],
     defaultIncrementKg: 0,
-    alternatives: ["band_pull_apart", "face_pull", "dead_hang"],
   },
   {
     id: "hip_circles",
@@ -1449,7 +1261,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["glutes", "lower"],
     defaultIncrementKg: 0,
-    alternatives: ["pigeon_pose", "ninety_ninety_stretch", "couch_stretch"],
   },
   {
     id: "ninety_ninety_stretch",
@@ -1457,7 +1268,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "bodyweight",
     tags: ["glutes", "lower"],
     defaultIncrementKg: 0,
-    alternatives: ["pigeon_pose", "hip_circles", "couch_stretch"],
   },
 
   // Cardio / Conditioning
@@ -1467,7 +1277,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["assault_bike", "ski_erg", "battle_ropes"],
   },
   {
     id: "assault_bike",
@@ -1475,7 +1284,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["rowing_machine", "jump_rope", "elliptical", "ski_erg"],
   },
   {
     id: "battle_ropes",
@@ -1483,7 +1291,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["jump_rope", "assault_bike", "rowing_machine"],
   },
   {
     id: "jump_rope",
@@ -1491,7 +1298,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["assault_bike", "battle_ropes", "treadmill"],
   },
   {
     id: "treadmill",
@@ -1499,7 +1305,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["elliptical", "stair_climber", "assault_bike"],
   },
   {
     id: "stair_climber",
@@ -1507,7 +1312,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["lower", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["treadmill", "elliptical", "sled_push"],
   },
   {
     id: "elliptical",
@@ -1515,7 +1319,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["treadmill", "assault_bike", "rowing_machine"],
   },
   {
     id: "sled_drag",
@@ -1523,7 +1326,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["lower", "compound"],
     defaultIncrementKg: 10,
-    alternatives: ["sled_push", "prowler_push", "stair_climber"],
   },
   {
     id: "prowler_push",
@@ -1531,7 +1333,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["lower", "compound"],
     defaultIncrementKg: 10,
-    alternatives: ["sled_push", "sled_drag", "stair_climber"],
   },
   {
     id: "ski_erg",
@@ -1539,7 +1340,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["full", "compound"],
     defaultIncrementKg: 0,
-    alternatives: ["rowing_machine", "assault_bike", "battle_ropes"],
   },
 
   // Specialty
@@ -1549,8 +1349,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    backImpact: "yellow",
-    alternatives: ["one_arm_db_row", "cable_row", "t_bar_row", "barbell_row"],
   },
   {
     id: "landmine_rotation",
@@ -1558,7 +1356,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["core", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["cable_woodchop", "russian_twist", "pallof_press"],
   },
   {
     id: "safety_bar_squat",
@@ -1566,8 +1363,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["quads", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["back_squat", "front_squat", "hack_squat", "belt_squat"],
   },
   {
     id: "banded_good_morning",
@@ -1575,7 +1370,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["hamstrings", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 0,
-    alternatives: ["good_morning", "romanian_deadlift", "back_extension"],
   },
   {
     id: "banded_squat",
@@ -1583,8 +1377,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["quads", "lower", "compound"],
     defaultIncrementKg: 0,
-    backImpact: "green",
-    alternatives: ["bodyweight_squat", "goblet_squat", "back_squat"],
   },
   {
     id: "trx_row",
@@ -1594,7 +1386,6 @@ export const EXERCISES: ExerciseDef[] = [
     defaultIncrementKg: 0,
     isBodyweight: true,
     bodyweightFactor: 0.6,
-    alternatives: ["inverted_row", "cable_row", "machine_row"],
   },
   {
     id: "trx_pike",
@@ -1603,7 +1394,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
     isBodyweight: true,
-    alternatives: ["hanging_leg_raise", "ab_wheel", "plank"],
   },
   {
     id: "trx_fallout",
@@ -1612,7 +1402,6 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["core", "isolation"],
     defaultIncrementKg: 0,
     isBodyweight: true,
-    alternatives: ["ab_wheel", "plank", "cable_crunch"],
   },
   {
     id: "reverse_hyper",
@@ -1620,30 +1409,13 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "machine",
     tags: ["hamstrings", "glutes", "lower", "isolation"],
     defaultIncrementKg: 5,
-    backImpact: "green",
-    alternatives: ["back_extension", "forty_five_back_extension", "glute_ham_raise"],
   },
   {
     id: "forty_five_back_extension",
     displayName: "45-Degree Back Extension",
-    equipment: "bodyweight",
+    equipment: "machine",
     tags: ["hamstrings", "glutes", "lower", "compound"],
     defaultIncrementKg: 0,
-    isBodyweight: true,
-    bodyweightFactor: 0.65,
-    alternatives: ["back_extension", "roman_chair_back_extension", "reverse_hyper", "good_morning"],
-    backImpact: "yellow",
-  },
-  {
-    id: "roman_chair_back_extension",
-    displayName: "Roman Chair Back Extension",
-    equipment: "bodyweight",
-    tags: ["hamstrings", "glutes", "lower", "compound"],
-    defaultIncrementKg: 0,
-    isBodyweight: true,
-    bodyweightFactor: 0.77,
-    alternatives: ["forty_five_back_extension", "back_extension", "reverse_hyper", "good_morning"],
-    backImpact: "red",
   },
   {
     id: "seal_row",
@@ -1651,7 +1423,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "other",
     tags: ["back", "upper", "compound"],
     defaultIncrementKg: 2.5,
-    alternatives: ["chest_supported_row", "cable_row", "machine_row", "one_arm_db_row"],
   },
   {
     id: "pendlay_row",
@@ -1659,8 +1430,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["back", "upper", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "yellow",
-    alternatives: ["barbell_row", "t_bar_row", "cable_row", "one_arm_db_row"],
   },
   {
     id: "deficit_deadlift",
@@ -1668,8 +1437,6 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["hamstrings", "glutes", "back", "full", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
-    alternatives: ["deadlift", "romanian_deadlift", "stiff_leg_deadlift"],
   },
   {
     id: "stiff_leg_deadlift",
@@ -1677,33 +1444,18 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "barbell",
     tags: ["hamstrings", "lower", "compound", "lower_back_demanding"],
     defaultIncrementKg: 5,
-    backImpact: "red",
     aliases: ["sldl"],
-    alternatives: ["romanian_deadlift", "good_morning", "deadlift", "deficit_deadlift"],
   },
 ];
 
-const byId: Record<string, ExerciseDef> = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
+// Build lookup index
+export const byId: Record<string, ExerciseDef> = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
+
 export const EXERCISE_TAGS: ExerciseTag[] = Array.from(
   new Set(EXERCISES.flatMap((e) => e.tags))
 );
 
-export function getExercise(id: string): ExerciseDef | null {
-  return byId[id] ?? null;
-}
-
-export function displayNameFor(id: string): string {
-  return byId[id]?.displayName ?? id;
-}
-
-export function defaultIncrementFor(id: string): number {
-  return byId[id]?.defaultIncrementKg ?? 2.5;
-}
-
-export function tagsFor(id: string): ExerciseTag[] {
-  return byId[id]?.tags ?? [];
-}
-
+// Utility functions (no database dependencies)
 export function isBodyweight(id: string): boolean {
   return !!byId[id]?.isBodyweight;
 }
@@ -1714,63 +1466,9 @@ export function bodyweightFactorFor(id: string): number {
 }
 
 /**
- * Get the hardcoded alternatives for an exercise from the library.
- * Returns an array of exercise IDs that can substitute this exercise.
+ * Resolve exercise ID from static exercises only (no custom exercises).
+ * Used by db.ts during initialization when custom exercises aren't loaded yet.
  */
-export function alternativesFor(id: string): string[] {
-  return byId[id]?.alternatives ?? [];
-}
-
-export function backImpactFor(id: string): BackImpact | null {
-  return byId[id]?.backImpact ?? null;
-}
-
-export function suggestedAlternates(id: string, limit = 12): ExerciseDef[] {
-  const base = byId[id];
-  if (!base) return [];
-  const baseTags = new Set(base.tags);
-
-  const scored = allExercises().filter((e) => e.id !== id)
-    .map((e) => {
-      const shared = e.tags.filter((t) => baseTags.has(t)).length;
-      const equipmentMatch = e.equipment === base.equipment ? 1 : 0;
-      return { ex: e, score: shared * 10 + equipmentMatch };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  return scored.slice(0, limit).map((s) => s.ex);
-}
-
-export function searchExercises(query: string): ExerciseDef[] {
-  const all = allExercises();
-  const q = (query ?? "").trim().toLowerCase();
-  if (!q) return all;
-
-  const normalize = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[\s_-]+/g, "")
-      .replace(/[^a-z0-9]/g, "");
-
-  const nq = normalize(q);
-
-  return all.filter((e) => {
-    const name = e.displayName.toLowerCase();
-    const exId = e.id.toLowerCase();
-    if (name.includes(q) || exId.includes(q)) return true;
-
-    const nName = normalize(e.displayName);
-    const nId = normalize(e.id);
-    if (nName.includes(nq) || nId.includes(nq)) return true;
-
-    return (e.aliases ?? []).some((a) => {
-      const al = a.toLowerCase();
-      return al.includes(q) || normalize(al).includes(nq);
-    });
-  });
-}
-
 export function resolveExerciseId(input: string): string | null {
   if (!input) return null;
 
@@ -1783,155 +1481,15 @@ export function resolveExerciseId(input: string): string | null {
   const n = normalize(input);
   if (!n) return null;
 
+  // Check if it's already a valid ID
   if (byId[input]) return input;
 
-  for (const ex of allExercises()) {
+  // Search through static exercises
+  for (const ex of EXERCISES) {
     if (normalize(ex.id) === n) return ex.id;
     if (normalize(ex.displayName) === n) return ex.id;
     if ((ex.aliases ?? []).some((a) => normalize(a) === n)) return ex.id;
   }
 
   return null;
-}
-
-// ── Custom exercises ────────────────────────────────────────────────
-
-let customExercises: ExerciseDef[] = [];
-
-export function isCustomExercise(id: string): boolean {
-  return id.startsWith("custom_");
-}
-
-export function getCustomExercises(): ExerciseDef[] {
-  return customExercises;
-}
-
-type CustomExRow = {
-  id: string;
-  display_name: string;
-  equipment: string;
-  tags: string;
-  default_increment_kg: number;
-  is_bodyweight: number;
-  bodyweight_factor: number | null;
-  created_at: string;
-};
-
-function rowToExerciseDef(row: CustomExRow): ExerciseDef {
-  let tags: ExerciseTag[] = [];
-  try { tags = JSON.parse(row.tags || "[]"); } catch {}
-  return {
-    id: row.id,
-    displayName: row.display_name,
-    equipment: row.equipment as Equipment,
-    tags,
-    defaultIncrementKg: row.default_increment_kg,
-    isBodyweight: !!row.is_bodyweight,
-    bodyweightFactor: row.bodyweight_factor ?? undefined,
-  };
-}
-
-/**
- * Load custom exercises given a db handle directly (used by initDb to avoid deadlock).
- */
-export async function _loadCustomExercisesFromDb(db: any): Promise<void> {
-  const rows = await (db as { getAllAsync: (sql: string) => Promise<CustomExRow[]> }).getAllAsync(
-    `SELECT * FROM custom_exercises ORDER BY created_at DESC`
-  );
-  for (const ex of customExercises) {
-    delete byId[ex.id];
-  }
-  customExercises = (rows ?? []).map(rowToExerciseDef);
-  for (const ex of customExercises) {
-    byId[ex.id] = ex;
-  }
-}
-
-export async function loadCustomExercises(): Promise<void> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
-  await ensureDb();
-  await _loadCustomExercisesFromDb(getDb());
-}
-
-function uid(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-export async function createCustomExercise(args: {
-  displayName: string;
-  equipment: Equipment;
-  tags: ExerciseTag[];
-  defaultIncrementKg: number;
-  isBodyweight?: boolean;
-  bodyweightFactor?: number;
-}): Promise<string> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
-  await ensureDb();
-  const id = uid("custom");
-  await getDb().runAsync(
-    `INSERT INTO custom_exercises (id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      args.displayName,
-      args.equipment,
-      JSON.stringify(args.tags),
-      args.defaultIncrementKg,
-      args.isBodyweight ? 1 : 0,
-      args.bodyweightFactor ?? null,
-      new Date().toISOString(),
-    ]
-  );
-  await loadCustomExercises();
-  return id;
-}
-
-export async function updateCustomExercise(
-  id: string,
-  args: {
-    displayName: string;
-    equipment: Equipment;
-    tags: ExerciseTag[];
-    defaultIncrementKg: number;
-    isBodyweight?: boolean;
-    bodyweightFactor?: number;
-  }
-): Promise<void> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
-  await ensureDb();
-  await getDb().runAsync(
-    `UPDATE custom_exercises SET display_name=?, equipment=?, tags=?, default_increment_kg=?, is_bodyweight=?, bodyweight_factor=? WHERE id=?`,
-    [
-      args.displayName,
-      args.equipment,
-      JSON.stringify(args.tags),
-      args.defaultIncrementKg,
-      args.isBodyweight ? 1 : 0,
-      args.bodyweightFactor ?? null,
-      id,
-    ]
-  );
-  await loadCustomExercises();
-}
-
-export async function deleteCustomExercise(id: string): Promise<{ ok: boolean; reason?: string }> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
-  await ensureDb();
-  const db = getDb();
-  // Check usage in programs
-  const used = await db.getFirstAsync<{ c: number }>(
-    `SELECT COUNT(1) as c FROM program_day_exercises WHERE ex_id=? OR a_id=? OR b_id=?`,
-    [id, id, id]
-  );
-  if (used && used.c > 0) {
-    return { ok: false, reason: "in_use" };
-  }
-  await db.runAsync(`DELETE FROM custom_exercises WHERE id=?`, [id]);
-  await loadCustomExercises();
-  return { ok: true };
-}
-
-/** Combined list: built-in + custom. Used by search when returning all. */
-function allExercises(): ExerciseDef[] {
-  return [...EXERCISES, ...customExercises];
 }

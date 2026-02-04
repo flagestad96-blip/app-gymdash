@@ -55,6 +55,7 @@ const nb: TranslationMap = {
   "home.greeting.evening": "God kveld",
   "home.todayWorkout": "Dagens \u00f8kt",
   "home.thisWeek": "Denne uken",
+  "home.avgRpe": "SNITT RPE",
   "home.recentPRs": "Siste PRs",
   "home.noWorkout": "Ingen \u00f8kt i dag enn\u00e5. Klar for \u00e5 trene?",
   "home.goToWorkout": "G\u00e5 til \u00f8kt",
@@ -155,6 +156,7 @@ const nb: TranslationMap = {
   "log.rpe9": "Sv\u00e6rt tungt \u2013 1 rep i reserve",
   "log.rpe10": "Maks \u2013 ingen reps i reserve",
   "log.rpeTapHint": "Trykk for \u00e5 velge \u00b7 Hold inne RPE-feltet for hjelp",
+  "log.rpeHoldHint": "Hold inne for RPE-guide",
   "log.workoutComplete": "\u00d8kt fullf\u00f8rt!",
   "log.topE1rm": "Topp e1RM",
   "log.prsThisSession": "PRs denne \u00f8kten",
@@ -211,7 +213,12 @@ const nb: TranslationMap = {
   "program.programLabel": "Program",
   "program.workoutInProgress": "\u00D8kt p\u00e5g\u00e5r",
   "program.workoutLockedDay": "\u00D8kt p\u00e5g\u00e5r (Dag {n}) \u2013 endringer l\u00e5st.",
-  "program.weekOverviewDesc": "Trykk p\u00e5 en dag for \u00e5 \u00e5pne editor. Bytt \u00f8velser om du m\u00e5.",
+  "program.weekOverviewDesc": "Trykk p\u00e5 en dag for \u00e5 se detaljer. Bytt \u00f8velser om du m\u00e5.",
+  "program.preview": "FORHÅNDSVISNING",
+  "program.estDuration": "Estimert varighet",
+  "program.noHistory": "Ingen historikk ennå",
+  "program.deloadWeek": "Deload-uke",
+  "program.endDeload": "Avslutt deload",
   "program.lockedSwitchProgram": "Avslutt \u00f8kten f\u00f8r du bytter program.",
   "program.lockedEditDays": "Avslutt \u00f8kten f\u00f8r du redigerer dager.",
   "program.lockedSwitchDay": "Avslutt \u00f8kten f\u00f8r du bytter aktiv dag.",
@@ -333,6 +340,20 @@ const nb: TranslationMap = {
   "calendar.dayAbbr.sun": "S",
   "calendar.started": "Startet {time}",
   "calendar.note": "NOTAT",
+  "calendar.type.push": "Push",
+  "calendar.type.pull": "Pull",
+  "calendar.type.legs": "Ben",
+  "calendar.type.other": "Annet",
+  "calendar.daySummary": "OPPSUMMERING",
+  "calendar.markDay": "Merk dag",
+  "calendar.markDayMsg": "Velg status for denne dagen.",
+  "calendar.markRest": "Hviledag",
+  "calendar.markSkipped": "Hoppet over",
+  "calendar.markSick": "Syk",
+  "calendar.clearMark": "Fjern merke",
+  "calendar.mark.rest": "Hviledag",
+  "calendar.mark.skipped": "Hoppet over",
+  "calendar.mark.sick": "Syk",
 
   // ── Body Screen ──
   "body.title": "Kropp",
@@ -350,6 +371,11 @@ const nb: TranslationMap = {
   "body.deleteMeasurement": "Slett m\u00e5ling?",
   "body.date": "Dato: {date}",
   "body.bmi": "BMI: {value}",
+  "body.weightTrend": "VEKTTREND",
+  "body.smoothedNote": "7-dagers glidende snitt",
+  "body.phase.bulk": "Bulk",
+  "body.phase.cut": "Cut",
+  "body.phase.maintenance": "Vedlikehold",
 
   // ── Settings Screen ──
   "settings.title": "Innstillinger",
@@ -483,6 +509,11 @@ const nb: TranslationMap = {
   "achievements.points": "{n} poeng",
   "achievements.unlocked": "L\u00e5st opp!",
   "achievements.toast": "Prestasjon l\u00e5st opp!",
+  "achievements.prCabinet": "PR-KABINETT",
+  "achievements.noPrs": "Ingen PRs registrert enn\u00e5.",
+  "achievements.prHeaviest": "Tungeste",
+  "achievements.prE1rm": "e1RM",
+  "achievements.prVolume": "Volum",
 
   // ── Patch Notes ──
   "patchNotes.title": "Nyheter",
@@ -574,7 +605,24 @@ const nb: TranslationMap = {
   "periodization.currentWeek": "N\u00e5v\u00e6rende uke",
   "periodization.weekOf": "Uke {current} av {total}",
   "periodization.deloadBanner": "DELOAD \u2014 {percent}% intensitet",
+  "periodization.deloadBannerSets": "DELOAD \u2014 \u22121 sett per øvelse",
   "periodization.deloadWeek": "DELOAD",
+
+  // ── Chart Toggle & Analysis Enhancements ──
+  "analysis.chartE1rm": "e1RM",
+  "analysis.chartVolume": "Volum",
+  "analysis.chartRepsPr": "Reps PR",
+  "analysis.chartTopSet": "Topp sett",
+  "analysis.trend": "Trend (4u)",
+  "analysis.trendUp": "\u2191 +{value}",
+  "analysis.trendDown": "\u2193 {value}",
+  "analysis.trendFlat": "\u2192 0",
+  "analysis.consistencyLabel": "Konsistens",
+  "analysis.sessionsPerWeek": "{value} \u00f8kter/uke",
+  "analysis.comparePeriods": "SAMMENLIGN PERIODER",
+  "analysis.thisMonth": "Denne mnd",
+  "analysis.lastMonth": "Forrige mnd",
+  "analysis.change": "Endring",
 
   // ── Advanced Analytics (Tier 5) ──
   "analysis.strengthStandards": "STYRKENIV\u00C5",
@@ -603,6 +651,13 @@ const nb: TranslationMap = {
   "notifications.requestPermission": "Gi tillatelse",
   "notifications.enabled": "Aktivert",
   "notifications.restDayMessage": "Du har ikke trent p\u00e5 en stund. Tid for en \u00f8kt?",
+
+  // ── Privacy ──
+  "settings.privacy": "PERSONVERN",
+  "settings.privacy.offlineOnly": "Kun offline",
+  "settings.privacy.offlineDesc": "Gymdash er 100\u00a0% offline. Ingen data sendes til noen server \u2014 alt forblir p\u00e5 enheten din.",
+  "settings.privacy.storageTitle": "Datalagring",
+  "settings.privacy.storageDesc": "All data lagres lokalt i en SQLite-database p\u00e5 enheten. Ingen konto, ingen sky, ingen sporing.",
 };
 
 const en: TranslationMap = {
@@ -653,6 +708,7 @@ const en: TranslationMap = {
   "home.greeting.evening": "Good evening",
   "home.todayWorkout": "Today's workout",
   "home.thisWeek": "This week",
+  "home.avgRpe": "AVG RPE",
   "home.recentPRs": "Recent PRs",
   "home.noWorkout": "No workout today yet. Ready to train?",
   "home.goToWorkout": "Go to workout",
@@ -753,6 +809,7 @@ const en: TranslationMap = {
   "log.rpe9": "Very hard \u2013 1 rep in reserve",
   "log.rpe10": "Max effort \u2013 no reps in reserve",
   "log.rpeTapHint": "Tap to select \u00b7 Long-press RPE field for help",
+  "log.rpeHoldHint": "Hold for RPE guide",
   "log.workoutComplete": "Workout Complete!",
   "log.topE1rm": "Top e1RM",
   "log.prsThisSession": "PRs this session",
@@ -809,7 +866,12 @@ const en: TranslationMap = {
   "program.programLabel": "Program",
   "program.workoutInProgress": "Workout in progress",
   "program.workoutLockedDay": "Workout in progress (Day {n}) \u2013 changes locked.",
-  "program.weekOverviewDesc": "Tap a day to open editor. Swap exercises if needed.",
+  "program.weekOverviewDesc": "Tap a day to see details. Swap exercises if needed.",
+  "program.preview": "PREVIEW",
+  "program.estDuration": "Est. duration",
+  "program.noHistory": "No history yet",
+  "program.deloadWeek": "Deload Week",
+  "program.endDeload": "End Deload",
   "program.lockedSwitchProgram": "End workout before switching program.",
   "program.lockedEditDays": "End workout before editing days.",
   "program.lockedSwitchDay": "End workout before switching active day.",
@@ -931,6 +993,20 @@ const en: TranslationMap = {
   "calendar.dayAbbr.sun": "S",
   "calendar.started": "Started {time}",
   "calendar.note": "NOTE",
+  "calendar.type.push": "Push",
+  "calendar.type.pull": "Pull",
+  "calendar.type.legs": "Legs",
+  "calendar.type.other": "Other",
+  "calendar.daySummary": "SUMMARY",
+  "calendar.markDay": "Mark day",
+  "calendar.markDayMsg": "Choose a status for this day.",
+  "calendar.markRest": "Rest day",
+  "calendar.markSkipped": "Skipped",
+  "calendar.markSick": "Sick",
+  "calendar.clearMark": "Clear mark",
+  "calendar.mark.rest": "Rest day",
+  "calendar.mark.skipped": "Skipped",
+  "calendar.mark.sick": "Sick",
 
   // ── Body Screen ──
   "body.title": "Body",
@@ -948,6 +1024,11 @@ const en: TranslationMap = {
   "body.deleteMeasurement": "Delete measurement?",
   "body.date": "Date: {date}",
   "body.bmi": "BMI: {value}",
+  "body.weightTrend": "WEIGHT TREND",
+  "body.smoothedNote": "7-day rolling average",
+  "body.phase.bulk": "Bulk",
+  "body.phase.cut": "Cut",
+  "body.phase.maintenance": "Maintenance",
 
   // ── Settings Screen ──
   "settings.title": "Settings",
@@ -1081,6 +1162,11 @@ const en: TranslationMap = {
   "achievements.points": "{n} points",
   "achievements.unlocked": "Unlocked!",
   "achievements.toast": "Achievement unlocked!",
+  "achievements.prCabinet": "PR CABINET",
+  "achievements.noPrs": "No PRs recorded yet.",
+  "achievements.prHeaviest": "Heaviest",
+  "achievements.prE1rm": "e1RM",
+  "achievements.prVolume": "Volume",
 
   // ── Patch Notes ──
   "patchNotes.title": "What's New",
@@ -1172,7 +1258,24 @@ const en: TranslationMap = {
   "periodization.currentWeek": "Current week",
   "periodization.weekOf": "Week {current} of {total}",
   "periodization.deloadBanner": "DELOAD \u2014 {percent}% intensity",
+  "periodization.deloadBannerSets": "DELOAD \u2014 \u22121 set per exercise",
   "periodization.deloadWeek": "DELOAD",
+
+  // ── Chart Toggle & Analysis Enhancements ──
+  "analysis.chartE1rm": "e1RM",
+  "analysis.chartVolume": "Volume",
+  "analysis.chartRepsPr": "Reps PR",
+  "analysis.chartTopSet": "Top Set",
+  "analysis.trend": "Trend (4w)",
+  "analysis.trendUp": "\u2191 +{value}",
+  "analysis.trendDown": "\u2193 {value}",
+  "analysis.trendFlat": "\u2192 0",
+  "analysis.consistencyLabel": "Consistency",
+  "analysis.sessionsPerWeek": "{value} sessions/week",
+  "analysis.comparePeriods": "COMPARE PERIODS",
+  "analysis.thisMonth": "This month",
+  "analysis.lastMonth": "Last month",
+  "analysis.change": "Change",
 
   // ── Advanced Analytics (Tier 5) ──
   "analysis.strengthStandards": "STRENGTH STANDARDS",
@@ -1201,6 +1304,13 @@ const en: TranslationMap = {
   "notifications.requestPermission": "Grant permission",
   "notifications.enabled": "Enabled",
   "notifications.restDayMessage": "You haven't trained in a while. Time for a workout?",
+
+  // ── Privacy ──
+  "settings.privacy": "PRIVACY",
+  "settings.privacy.offlineOnly": "Offline only",
+  "settings.privacy.offlineDesc": "Gymdash is 100\u00a0% offline. No data is sent to any server \u2014 everything stays on your device.",
+  "settings.privacy.storageTitle": "Data storage",
+  "settings.privacy.storageDesc": "All data is stored locally in a SQLite database on your device. No account, no cloud, no tracking.",
 };
 
 const translations: Record<Locale, TranslationMap> = { nb, en };

@@ -2,7 +2,7 @@
 // Blurred abstract background matching the purple/orange glassmorphism theme
 
 import React from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
+import { View, StyleSheet, Dimensions, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../theme";
 
@@ -21,18 +21,23 @@ function BlurredOrb({
   left: number;
   opacity?: number;
 }) {
+  const webStyle = Platform.OS === "web" ? { filter: "blur(80px)" } : {};
+
   return (
     <View
-      style={{
-        position: "absolute",
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: color,
-        top,
-        left,
-        opacity,
-      }}
+      style={[
+        {
+          position: "absolute",
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+          top,
+          left,
+          opacity,
+        },
+        webStyle as any,
+      ]}
     />
   );
 }

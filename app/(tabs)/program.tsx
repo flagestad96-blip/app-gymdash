@@ -13,10 +13,10 @@ import {
   isCustomExercise, getCustomExercises, createCustomExercise, deleteCustomExercise,
 } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
-import ProgramStore from "../../src/programStore";
+import ProgramStore, { getEstimatedDuration } from "../../src/programStore";
 import type { Program, ProgramBlock, ProgramDay } from "../../src/programStore";
 import ProgressionStore, { defaultTargetForExercise, type ExerciseTarget } from "../../src/progressionStore";
-import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, type Periodization } from "../../src/periodization";
+import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, toggleManualDeload, type Periodization } from "../../src/periodization";
 import { shareFile, saveBackupFile } from "../../src/fileSystem";
 import { getShareableProgramJson } from "../../src/sharing";
 import AppLoading from "../../components/AppLoading";
@@ -147,6 +147,9 @@ export default function ProgramScreen() {
   const [periodCycleWeeks, setPeriodCycleWeeks] = useState("4");
   const [periodDeloadWeek, setPeriodDeloadWeek] = useState("4");
   const [periodDeloadPercent, setPeriodDeloadPercent] = useState("60");
+
+  const [previewDayIdx, setPreviewDayIdx] = useState<number | null>(null);
+  const [previewDuration, setPreviewDuration] = useState<string | null>(null);
 
   const [importExportOpen, setImportExportOpen] = useState<"export" | "import" | null>(null);
   const [exportText, setExportText] = useState("");
@@ -743,6 +746,16 @@ export default function ProgramScreen() {
 
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <Btn label={t("program.periodization") || "Periodization"} onPress={openPeriodization} />
+            <Btn
+              label={periodConfig?.manualDeload ? t("program.endDeload") : t("program.deloadWeek")}
+              tone={periodConfig?.manualDeload ? "danger" : undefined}
+              onPress={async () => {
+                if (!activeProgramId) return;
+                await toggleManualDeload(activeProgramId);
+                const updated = await getPeriodization(activeProgramId);
+                setPeriodConfig(updated);
+              }}
+            />
           </View>
 
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
@@ -771,7 +784,17 @@ export default function ProgramScreen() {
               const isActive = idx === activeDayIndex;
               const altMap = alternatives[idx] ?? {};
               return (
-                <View key={day.id} style={{ gap: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.glassBorder, backgroundColor: theme.panel2 }}>
+                <Pressable
+                  key={day.id}
+                  onPress={() => {
+                    setPreviewDayIdx(idx);
+                    setPreviewDuration(null);
+                    if (activeProgramId) {
+                      getEstimatedDuration(activeProgramId, idx).then(setPreviewDuration).catch(() => {});
+                    }
+                  }}
+                  style={{ gap: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.glassBorder, backgroundColor: theme.panel2 }}
+                >
                   <View style={{ gap: 6 }}>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Text
@@ -853,12 +876,74 @@ export default function ProgramScreen() {
                       })
                     )}
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </View>
         </Card>
       </ScrollView>
+
+      {/* Day Preview Modal */}
+      <Modal visible={previewDayIdx != null} transparent animationType="fade" onRequestClose={() => setPreviewDayIdx(null)}>
+        <Pressable onPress={() => setPreviewDayIdx(null)} style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 20 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalGlass, borderRadius: 18, borderWidth: 1, borderColor: theme.glassBorder, padding: 18, gap: 12, maxHeight: "80%" }}>
+            {previewDayIdx != null && activeProgram?.days[previewDayIdx] ? (() => {
+              const day = activeProgram.days[previewDayIdx];
+              const altMap = alternatives[previewDayIdx] ?? {};
+              return (
+                <>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 18 }}>{day.name}</Text>
+                    <Pressable onPress={() => setPreviewDayIdx(null)}>
+                      <MaterialIcons name="close" size={22} color={theme.muted} />
+                    </Pressable>
+                  </View>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
+                    {t("program.preview")}
+                  </Text>
+                  <ScrollView style={{ maxHeight: 400 }}>
+                    <View style={{ gap: 10 }}>
+                      {day.blocks.map((block, bi) => {
+                        const exIds = block.type === "single" ? [block.exId] : [block.a, block.b];
+                        return (
+                          <View key={`prev_${bi}`} style={{ gap: 4 }}>
+                            {exIds.map((exId, ei) => {
+                              const tgt = targets[exId];
+                              return (
+                                <View key={`${exId}_${ei}`} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                  <View style={{ flex: 1, gap: 2 }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                                        {block.type === "superset" && ei === 1 ? "  + " : "\u2022 "}{displayNameFor(exId)}
+                                      </Text>
+                                      <BackImpactDot exerciseId={exId} />
+                                    </View>
+                                  </View>
+                                  {tgt ? (
+                                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                                      {tgt.targetSets}×{tgt.repMin}–{tgt.repMax}
+                                    </Text>
+                                  ) : null}
+                                </View>
+                              );
+                            })}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                  <View style={{ borderTopWidth: 1, borderTopColor: theme.glassBorder, paddingTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <MaterialIcons name="schedule" size={16} color={theme.muted} />
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                      {t("program.estDuration")}: {previewDuration ?? t("program.noHistory")}
+                    </Text>
+                  </View>
+                </>
+              );
+            })() : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={dayEditorOpen} transparent animationType="slide" onRequestClose={() => setDayEditorOpen(false)}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>

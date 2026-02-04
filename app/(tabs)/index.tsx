@@ -61,7 +61,7 @@ export default function HomeScreen() {
 
   const [ready, setReady] = useState(false);
   const [todayWorkout, setTodayWorkout] = useState<TodayWorkout | null>(null);
-  const [weekStats, setWeekStats] = useState({ days: 0, sets: 0, volume: 0 });
+  const [weekStats, setWeekStats] = useState({ days: 0, sets: 0, volume: 0, avgRpe: null as number | null });
   const [streak, setStreak] = useState(0);
   const [recentPRs, setRecentPRs] = useState<PrRow[]>([]);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
@@ -111,7 +111,15 @@ export default function HomeScreen() {
            WHERE w.date >= ?`,
           [monday]
         );
-        if (ws) setWeekStats({ days: ws.days ?? 0, sets: ws.sets ?? 0, volume: Math.round(ws.vol ?? 0) });
+        const rpeRow = db.getFirstSync<{ avg: number | null }>(
+          `SELECT AVG(s.rpe) as avg
+           FROM sets s
+           JOIN workouts w ON s.workout_id = w.id
+           WHERE w.date >= ? AND s.rpe IS NOT NULL AND s.is_warmup != 1`,
+          [monday]
+        );
+        const avgRpe = rpeRow?.avg != null ? Math.round(rpeRow.avg * 10) / 10 : null;
+        if (ws) setWeekStats({ days: ws.days ?? 0, sets: ws.sets ?? 0, volume: Math.round(ws.vol ?? 0), avgRpe });
       } catch {}
 
       // Streak
@@ -290,6 +298,14 @@ export default function HomeScreen() {
             <StatBadge label={t("common.workouts")} value={String(weekStats.days)} theme={theme} accent />
             <StatBadge label={t("common.sets")} value={String(weekStats.sets)} theme={theme} />
             <StatBadge label={t("common.volume")} value={wu.formatWeight(weekStats.volume)} theme={theme} />
+            {weekStats.avgRpe != null && (
+              <StatBadge
+                label={t("home.avgRpe")}
+                value={weekStats.avgRpe.toFixed(1)}
+                theme={theme}
+                accentColor={weekStats.avgRpe <= 7 ? "#22c55e" : weekStats.avgRpe <= 8.5 ? "#F97316" : "#ef4444"}
+              />
+            )}
           </View>
         </Card>
 
@@ -437,22 +453,24 @@ export default function HomeScreen() {
   );
 }
 
-function StatBadge({ label, value, theme, accent }: { label: string; value: string; theme: any; accent?: boolean }) {
+function StatBadge({ label, value, theme, accent, accentColor }: { label: string; value: string; theme: any; accent?: boolean; accentColor?: string }) {
+  const highlighted = accent || !!accentColor;
+  const color = accentColor ?? theme.accent;
   return (
     <View style={{
       flex: 1,
       minWidth: 80,
-      backgroundColor: accent
-        ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+      backgroundColor: highlighted
+        ? (theme.isDark ? `${color}26` : `${color}1A`)
         : theme.glass,
       borderRadius: 12,
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderWidth: 1,
-      borderColor: accent ? theme.accent : theme.glassBorder,
+      borderColor: highlighted ? color : theme.glassBorder,
       alignItems: "center",
     }}>
-      <Text style={{ color: accent ? theme.accent : theme.text, fontFamily: theme.fontFamily.bold, fontSize: 18 }}>
+      <Text style={{ color: highlighted ? color : theme.text, fontFamily: theme.fontFamily.bold, fontSize: 18 }}>
         {value}
       </Text>
       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9 }}>{label}</Text>

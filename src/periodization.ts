@@ -7,6 +7,7 @@ export type Periodization = {
   deloadEvery: number;    // e.g. 4 (deload on week N)
   deloadPercent: number;  // e.g. 60 (use 60% of normal weight)
   currentWeek: number;    // 1-based
+  manualDeload?: boolean; // manual deload override (drop 1 set per exercise)
 };
 
 const DEFAULT_PERIODIZATION: Periodization = {
@@ -36,6 +37,7 @@ export async function getPeriodization(programId: string): Promise<Periodization
       deloadEvery: Number(parsed.deloadEvery) || 4,
       deloadPercent: Number(parsed.deloadPercent) || 60,
       currentWeek: Number(parsed.currentWeek) || 1,
+      manualDeload: !!parsed.manualDeload,
     };
   } catch {
     return null;
@@ -71,6 +73,7 @@ export async function advanceWeek(programId: string): Promise<Periodization | nu
  * Check if the current week is a deload week.
  */
 export function isDeloadWeek(config: Periodization): boolean {
+  if (config.manualDeload) return true;
   if (!config.enabled) return false;
   return config.currentWeek === config.deloadEvery;
 }
@@ -81,6 +84,21 @@ export function isDeloadWeek(config: Periodization): boolean {
 export function deloadWeight(weight: number, config: Periodization): number {
   if (!config.enabled || !isDeloadWeek(config)) return weight;
   return Math.round((weight * config.deloadPercent) / 100 * 2) / 2; // Round to 0.5
+}
+
+/**
+ * Toggle manual deload on/off for a program.
+ * Creates a periodization entry if none exists.
+ */
+export async function toggleManualDeload(programId: string): Promise<boolean> {
+  let config = await getPeriodization(programId);
+  if (!config) {
+    config = { ...DEFAULT_PERIODIZATION, manualDeload: true };
+  } else {
+    config = { ...config, manualDeload: !config.manualDeload };
+  }
+  await savePeriodization(programId, config);
+  return !!config.manualDeload;
 }
 
 /**

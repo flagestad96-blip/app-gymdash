@@ -437,6 +437,9 @@ function ExerciseHalf({
           />
         </Pressable>
       </View>
+      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9, textAlign: "right", marginTop: 2, opacity: 0.7 }}>
+        {t("log.rpeHoldHint")}
+      </Text>
 
       {/* RPE helper modal */}
       <Modal visible={rpeHelperOpen} transparent animationType="fade">

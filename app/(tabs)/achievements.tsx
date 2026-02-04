@@ -29,6 +29,9 @@ import {
   type AchievementTier,
 } from "../../src/achievements";
 import { shareAchievementText } from "../../src/sharing";
+import { getDb } from "../../src/db";
+import { displayNameFor } from "../../src/exerciseLibrary";
+import { useWeightUnit } from "../../src/units";
 
 type AchievementWithStatus = Achievement & {
   unlocked: boolean;
@@ -36,9 +39,26 @@ type AchievementWithStatus = Achievement & {
   progress?: number;
 };
 
+type PrRecord = {
+  exercise_id: string;
+  type: string;
+  value: number;
+  reps: number | null;
+  weight: number | null;
+  date: string | null;
+};
+
+type PrCabinetEntry = {
+  exerciseId: string;
+  label: string;
+  latestDate: string;
+  prs: { type: string; value: number; reps: number | null; weight: number | null; date: string | null }[];
+};
+
 export default function AchievementsScreen() {
   const theme = useTheme();
   const { t } = useI18n();
+  const wu = useWeightUnit();
   const navigation = useNavigation();
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -58,6 +78,7 @@ export default function AchievementsScreen() {
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementWithStatus | null>(null);
   const [filterTier, setFilterTier] = useState<AchievementTier | "all">("all");
   const [showUnlockedOnly, setShowUnlockedOnly] = useState(false);
+  const [prCabinet, setPrCabinet] = useState<PrCabinetEntry[]>([]);
 
   const loadAchievements = useCallback(async () => {
     try {
@@ -85,6 +106,41 @@ export default function AchievementsScreen() {
       setAchievements(withStatus);
       setTotalPoints(points);
       setProgress(progressData);
+
+      // Load PR Cabinet
+      try {
+        const prRows = getDb().getAllSync<PrRecord>(
+          `SELECT exercise_id, type, value, reps, weight, date FROM pr_records ORDER BY exercise_id, type`
+        );
+        // Group by exercise, keep best per type across programs
+        const byExercise = new Map<string, Map<string, PrRecord>>();
+        for (const row of prRows ?? []) {
+          if (!byExercise.has(row.exercise_id)) byExercise.set(row.exercise_id, new Map());
+          const existing = byExercise.get(row.exercise_id)!.get(row.type);
+          if (!existing || row.value > existing.value) {
+            byExercise.get(row.exercise_id)!.set(row.type, row);
+          }
+        }
+        const entries: PrCabinetEntry[] = [];
+        for (const [exId, typeMap] of byExercise) {
+          const prs = Array.from(typeMap.values()).map((r) => ({
+            type: r.type, value: r.value, reps: r.reps, weight: r.weight, date: r.date,
+          }));
+          const dates = prs.map((p) => p.date).filter(Boolean) as string[];
+          const latestDate = dates.length ? dates.sort().reverse()[0] : "";
+          entries.push({
+            exerciseId: exId,
+            label: displayNameFor(exId),
+            latestDate,
+            prs: prs.sort((a, b) => {
+              const order = ["heaviest", "e1rm", "volume"];
+              return order.indexOf(a.type) - order.indexOf(b.type);
+            }),
+          });
+        }
+        entries.sort((a, b) => (b.latestDate > a.latestDate ? 1 : b.latestDate < a.latestDate ? -1 : 0));
+        setPrCabinet(entries);
+      } catch {}
     } catch (error) {
       console.error("Failed to load achievements:", error);
     }
@@ -264,6 +320,57 @@ export default function AchievementsScreen() {
               />
             ))}
           </View>
+        </View>
+        {/* PR Cabinet */}
+        <View style={{ gap: theme.space.sm }}>
+          <Text style={{ color: theme.text, fontSize: theme.fontSize.md, fontFamily: theme.fontFamily.semibold }}>
+            {t("achievements.prCabinet")}
+          </Text>
+          {prCabinet.length === 0 ? (
+            <GlassCard>
+              <Text style={{ color: theme.muted }}>{t("achievements.noPrs")}</Text>
+            </GlassCard>
+          ) : (
+            prCabinet.map((entry) => (
+              <GlassCard key={entry.exerciseId} shadow="sm">
+                <View style={{ gap: 6 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ color: theme.text, fontSize: 14, fontFamily: theme.fontFamily.semibold, flex: 1 }} numberOfLines={1}>
+                      {entry.label}
+                    </Text>
+                    {entry.latestDate ? (
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                        {entry.latestDate}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {entry.prs.map((pr) => {
+                    const typeLabel = pr.type === "heaviest" ? t("achievements.prHeaviest")
+                      : pr.type === "e1rm" ? t("achievements.prE1rm")
+                      : t("achievements.prVolume");
+                    const setInfo = pr.weight != null && pr.reps != null
+                      ? `(${wu.formatWeight(pr.weight)}\u00d7${pr.reps})`
+                      : "";
+                    return (
+                      <View key={pr.type} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 8 }}>
+                        <Text style={{ color: "#FFD700", fontFamily: theme.mono, fontSize: 11, width: 60 }}>
+                          {typeLabel}
+                        </Text>
+                        <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13, flex: 1 }}>
+                          {wu.formatWeight(pr.value)} {setInfo}
+                        </Text>
+                        {pr.date ? (
+                          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                            {pr.date}
+                          </Text>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              </GlassCard>
+            ))
+          )}
         </View>
       </ScrollView>
 

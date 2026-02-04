@@ -739,11 +739,15 @@ export default function Logg() {
     });
   }, [lastSets]);
 
+  const isDeload = periodization ? isDeloadWeek(periodization) : false;
+
   function getTargetFor(exId: string) {
     const target = targets[exId];
-    if (target) return target;
-    const fallback = defaultTargetForExercise(exId);
-    return { programId: program?.id ?? "", exerciseId: exId, repMin: fallback.repMin, repMax: fallback.repMax, targetSets: fallback.targetSets, incrementKg: fallback.incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
+    const base = target ?? { programId: program?.id ?? "", exerciseId: exId, repMin: defaultTargetForExercise(exId).repMin, repMax: defaultTargetForExercise(exId).repMax, targetSets: defaultTargetForExercise(exId).targetSets, incrementKg: defaultTargetForExercise(exId).incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
+    if (isDeload) {
+      return { ...base, targetSets: Math.max(1, base.targetSets - 1) };
+    }
+    return base;
   }
 
   function getIncrementForExercise(exId: string) {
@@ -1239,7 +1243,7 @@ export default function Logg() {
             <Chip text={activeWorkoutId ? t("log.activeWorkout") : t("log.noWorkout")} />
           </View>
 
-          {periodization && periodization.enabled && isDeloadWeek(periodization) ? (
+          {periodization && isDeload ? (
             <View style={{
               backgroundColor: theme.warn + "22",
               borderColor: theme.warn,
@@ -1249,7 +1253,7 @@ export default function Logg() {
               alignItems: "center",
             }}>
               <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 14, fontWeight: "600" }}>
-                {t("periodization.deloadBanner") || `DELOAD \u2014 ${periodization.deloadPercent}% intensitet`}
+                {t("periodization.deloadBannerSets")}
               </Text>
             </View>
           ) : null}
