@@ -372,9 +372,9 @@ export default function CalendarScreen() {
 
         <Card title={t("calendar.month")}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <BtnSmall label="\u2039" onPress={() => setMonthOffset((v) => v - 1)} />
+            <BtnSmall label="‹" onPress={() => setMonthOffset((v) => v - 1)} />
             <Text style={{ color: theme.text, fontFamily: theme.mono }}>{monthKey}</Text>
-            <BtnSmall label="\u203A" onPress={() => setMonthOffset((v) => v + 1)} />
+            <BtnSmall label="›" onPress={() => setMonthOffset((v) => v + 1)} />
           </View>
 
           {/* Legend */}
@@ -716,12 +716,12 @@ function BtnSmall({ label, onPress }: { label: string; onPress: () => void }) {
         borderColor: theme.glassBorder,
         borderWidth: 1,
         borderRadius: theme.radius.md,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
         backgroundColor: theme.panel2,
       }}
     >
-      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: theme.textSize.sm }}>{label}</Text>
+      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: theme.textSize.md }}>{label}</Text>
     </Pressable>
   );
 }

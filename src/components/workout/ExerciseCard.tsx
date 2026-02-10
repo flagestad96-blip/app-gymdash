@@ -8,11 +8,10 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
-import { displayNameFor, getExercise } from "../../exerciseLibrary";
+import { displayNameFor, getExercise, isPerSideExercise } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 import SetEntryRow from "./SetEntryRow";
 import type { SetRow } from "./SetEntryRow";
-import { RestTimerInline } from "./RestTimer";
 import type { ExerciseTarget } from "../../progressionStore";
 
 export type SetType = "normal" | "warmup" | "dropset" | "restpause";
@@ -60,7 +59,7 @@ function AddSetButton({
         onPress={async () => {
           runPressAnim();
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          await onPress();
+          try { await onPress(); } catch {}
         }}
         style={({ pressed }) => ({
           opacity: pressed ? 0.92 : 1,
@@ -169,9 +168,6 @@ type ExerciseHalfProps = {
   currentSetType: SetType;
   exerciseNote: string;
   isFocused: boolean;
-  restEnabled: boolean;
-  restRunning: boolean;
-  restLabel: string;
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
@@ -184,7 +180,7 @@ type ExerciseHalfProps = {
   onDeleteSet: (row: SetRow) => void;
   onFocusExercise: (exId: string) => void;
   onOpenAltPicker: (baseExId: string) => void;
-  onRestToggle: () => void;
+  onSetAsDefault?: (baseExId: string, newDefaultExId: string) => void;
   onExerciseNoteChange: (exId: string, note: string) => void;
   onExerciseNoteBlur: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
@@ -205,9 +201,6 @@ function ExerciseHalf({
   currentSetType,
   exerciseNote,
   isFocused,
-  restEnabled,
-  restRunning,
-  restLabel,
   lastAddedSetId,
   lastAddedAnim,
   onSetInput,
@@ -220,7 +213,7 @@ function ExerciseHalf({
   onDeleteSet,
   onFocusExercise,
   onOpenAltPicker,
-  onRestToggle,
+  onSetAsDefault,
   onExerciseNoteChange,
   onExerciseNoteBlur,
   onOpenPlateCalc,
@@ -245,29 +238,54 @@ function ExerciseHalf({
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
-          <Text style={{ color: theme.text, fontSize: prefix ? undefined : theme.fontSize.md, fontWeight: prefix ? undefined : theme.fontWeight.semibold }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, flexWrap: "wrap" }}>
+          <Text
+            style={{ color: theme.text, fontSize: prefix ? undefined : theme.fontSize.md, fontWeight: prefix ? undefined : theme.fontWeight.semibold }}
+            numberOfLines={2}
+          >
             {prefix ? `${prefix}: ` : ""}{displayNameFor(exId)}
           </Text>
-          {(() => { const eq = getExercise(exId)?.equipment; return eq ? (
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
-          ) : null; })()}
-          <BackImpactDot exerciseId={exId} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            {(() => { const eq = getExercise(exId)?.equipment; return eq ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
+            ) : null; })()}
+            <BackImpactDot exerciseId={exId} />
+          </View>
         </View>
         {altList.length ? (
-          <Pressable
-            onPress={() => onOpenAltPicker(baseExId)}
-            style={{
-              borderColor: theme.accent,
-              borderWidth: 1,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.15)" : "rgba(124, 58, 237, 0.08)",
-            }}
-          >
-            <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {baseExId !== exId && onSetAsDefault ? (
+              <Pressable
+                onPress={() => {
+                  onSetAsDefault(baseExId, exId);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }}
+                style={{
+                  borderColor: theme.success,
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  backgroundColor: theme.isDark ? "rgba(34, 197, 94, 0.15)" : "rgba(34, 197, 94, 0.08)",
+                }}
+              >
+                <Text style={{ color: theme.success, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>{t("log.setAsDefault")}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => onOpenAltPicker(baseExId)}
+              style={{
+                borderColor: theme.accent,
+                borderWidth: 1,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.15)" : "rgba(124, 58, 237, 0.08)",
+              }}
+            >
+              <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
       {baseExId !== exId ? (
@@ -362,6 +380,7 @@ function ExerciseHalf({
           borderWidth: 1,
           borderRadius: prefix ? 12 : theme.radius.md,
           padding: 10,
+          fontSize: 14,
           fontFamily: theme.mono,
         }}
       />
@@ -375,7 +394,7 @@ function ExerciseHalf({
             placeholder={prefix ? wu.unitLabel().toLowerCase() : "0"}
             placeholderTextColor={theme.muted}
             keyboardType="numeric"
-            suffix={prefix ? undefined : wu.unitLabel()}
+            suffix={prefix ? undefined : (isPerSideExercise(exId) ? `${wu.unitLabel()} each` : wu.unitLabel())}
             style={{
               flex: 1,
               color: theme.text,
@@ -384,6 +403,7 @@ function ExerciseHalf({
               borderWidth: 1,
               borderRadius: 12,
               padding: 10,
+              fontSize: 15,
               fontFamily: theme.mono,
             }}
           />
@@ -412,6 +432,7 @@ function ExerciseHalf({
             borderWidth: 1,
             borderRadius: 12,
             padding: 10,
+            fontSize: 15,
             fontFamily: theme.mono,
           }}
         />
@@ -432,6 +453,7 @@ function ExerciseHalf({
               borderWidth: 1,
               borderRadius: 12,
               padding: 10,
+              fontSize: 15,
               fontFamily: theme.mono,
             }}
           />
@@ -519,20 +541,12 @@ function ExerciseHalf({
       </View>
 
       {isFocused ? (
-        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-          <RestTimerInline
-            restEnabled={restEnabled}
-            restRunning={restRunning}
-            restLabel={restLabel}
-            onToggle={onRestToggle}
-          />
-          <AddSetButton
-            label={t("log.addSetBtn")}
-            onPress={async () => {
-              await onAddSet(exId);
-            }}
-          />
-        </View>
+        <AddSetButton
+          label={t("log.addSetBtn")}
+          onPress={async () => {
+            await onAddSet(exId);
+          }}
+        />
       ) : null}
 
       <View style={{ gap: theme.space.sm }}>
@@ -561,7 +575,8 @@ export type ExerciseCardCallbacks = {
   onDeleteSet: (row: SetRow) => void;
   onFocusExercise: (exId: string) => void;
   onOpenAltPicker: (baseExId: string) => void;
-  onRestToggle: () => void;
+  onSetAsDefault?: (baseExId: string, newDefaultExId: string) => void;
+  onActivateExercise: (exId: string) => void;
   onExerciseNoteChange: (exId: string, note: string) => void;
   onExerciseNoteBlur: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
@@ -583,9 +598,6 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   currentSetType: SetType;
   exerciseNote: string;
   isFocused: boolean;
-  restEnabled: boolean;
-  restRunning: boolean;
-  restLabel: string;
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
@@ -595,11 +607,12 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
   const theme = useTheme();
 
   return (
-    <View
+    <Pressable
+      onPress={() => props.onActivateExercise(props.exId)}
       onLayout={props.onLayout}
       style={{
-        borderColor: theme.glassBorder,
-        borderWidth: 1,
+        borderColor: props.isFocused ? theme.accent : theme.glassBorder,
+        borderWidth: props.isFocused ? 2 : 1,
         borderRadius: theme.radius.xl,
         backgroundColor: theme.glass,
         padding: 16,
@@ -625,9 +638,6 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         currentSetType={props.currentSetType}
         exerciseNote={props.exerciseNote}
         isFocused={props.isFocused}
-        restEnabled={props.restEnabled}
-        restRunning={props.restRunning}
-        restLabel={props.restLabel}
         lastAddedSetId={props.lastAddedSetId}
         lastAddedAnim={props.lastAddedAnim}
         onSetInput={props.onSetInput}
@@ -640,12 +650,12 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onDeleteSet={props.onDeleteSet}
         onFocusExercise={props.onFocusExercise}
         onOpenAltPicker={props.onOpenAltPicker}
-        onRestToggle={props.onRestToggle}
+        onSetAsDefault={props.onSetAsDefault}
         onExerciseNoteChange={props.onExerciseNoteChange}
         onExerciseNoteBlur={props.onExerciseNoteBlur}
         onOpenPlateCalc={props.onOpenPlateCalc}
       />
-    </View>
+    </Pressable>
   );
 }
 
@@ -676,9 +686,6 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   exerciseNoteA: string;
   exerciseNoteB: string;
   focusedExerciseId: string | null;
-  restEnabled: boolean;
-  restRunning: boolean;
-  restLabel: string;
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   nextLabel: string;
@@ -689,13 +696,15 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
 export function SupersetCard(props: SupersetCardProps) {
   const theme = useTheme();
   const { t } = useI18n();
+  const isFocused = props.focusedExerciseId === props.exIdA || props.focusedExerciseId === props.exIdB;
 
   return (
-    <View
+    <Pressable
+      onPress={() => props.onActivateExercise(props.exIdA)}
       onLayout={props.onLayout}
       style={{
-        borderColor: theme.glassBorder,
-        borderWidth: 1,
+        borderColor: isFocused ? theme.accent : theme.glassBorder,
+        borderWidth: isFocused ? 2 : 1,
         borderRadius: theme.radius.xl,
         backgroundColor: theme.glass,
         padding: 16,
@@ -725,9 +734,6 @@ export function SupersetCard(props: SupersetCardProps) {
           currentSetType={props.setTypeA}
           exerciseNote={props.exerciseNoteA}
           isFocused={props.focusedExerciseId === props.exIdA}
-          restEnabled={props.restEnabled}
-          restRunning={props.restRunning}
-          restLabel={props.restLabel}
           lastAddedSetId={props.lastAddedSetId}
           lastAddedAnim={props.lastAddedAnim}
           onSetInput={props.onSetInput}
@@ -740,7 +746,7 @@ export function SupersetCard(props: SupersetCardProps) {
           onDeleteSet={props.onDeleteSet}
           onFocusExercise={props.onFocusExercise}
           onOpenAltPicker={props.onOpenAltPicker}
-          onRestToggle={props.onRestToggle}
+          onSetAsDefault={props.onSetAsDefault}
           onExerciseNoteChange={props.onExerciseNoteChange}
           onExerciseNoteBlur={props.onExerciseNoteBlur}
           onOpenPlateCalc={props.onOpenPlateCalc}
@@ -761,9 +767,6 @@ export function SupersetCard(props: SupersetCardProps) {
           currentSetType={props.setTypeB}
           exerciseNote={props.exerciseNoteB}
           isFocused={props.focusedExerciseId === props.exIdB}
-          restEnabled={props.restEnabled}
-          restRunning={props.restRunning}
-          restLabel={props.restLabel}
           lastAddedSetId={props.lastAddedSetId}
           lastAddedAnim={props.lastAddedAnim}
           onSetInput={props.onSetInput}
@@ -776,7 +779,7 @@ export function SupersetCard(props: SupersetCardProps) {
           onDeleteSet={props.onDeleteSet}
           onFocusExercise={props.onFocusExercise}
           onOpenAltPicker={props.onOpenAltPicker}
-          onRestToggle={props.onRestToggle}
+          onSetAsDefault={props.onSetAsDefault}
           onExerciseNoteChange={props.onExerciseNoteChange}
           onExerciseNoteBlur={props.onExerciseNoteBlur}
           onOpenPlateCalc={props.onOpenPlateCalc}
@@ -789,7 +792,7 @@ export function SupersetCard(props: SupersetCardProps) {
         </Text>
         <Btn label="+" onPress={props.onAddSuperset} tone="accent" />
       </View>
-    </View>
+    </Pressable>
   );
 }
 

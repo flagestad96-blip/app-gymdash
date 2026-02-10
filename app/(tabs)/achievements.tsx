@@ -1,7 +1,7 @@
 // app/(tabs)/achievements.tsx
 // Achievement gallery and tracking screen
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Modal,
   StyleSheet,
 } from "react-native";
-import { useNavigation } from "expo-router";
+import { useNavigation, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -59,6 +59,11 @@ export default function AchievementsScreen() {
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
+  const { scrollTo } = useLocalSearchParams<{ scrollTo?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const cardPositions = useRef<Record<string, number>>({});
+  const hasScrolledTo = useRef<string | null>(null);
+
   const navigation = useNavigation();
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -158,6 +163,26 @@ export default function AchievementsScreen() {
     }, [loadAchievements])
   );
 
+  // Scroll to achievement if navigated from toast
+  useEffect(() => {
+    if (scrollTo && achievements.length > 0 && hasScrolledTo.current !== scrollTo) {
+      hasScrolledTo.current = scrollTo;
+      // Auto-open the achievement detail
+      const target = achievements.find((a) => a.id === scrollTo);
+      if (target) {
+        setSelectedAchievement(target);
+        // Also scroll to its position if we have it
+        const timer = setTimeout(() => {
+          const y = cardPositions.current[scrollTo];
+          if (y != null && scrollRef.current) {
+            scrollRef.current.scrollTo({ y: Math.max(0, y - 60), animated: true });
+          }
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [scrollTo, achievements]);
+
   const filteredAchievements = achievements.filter((a) => {
     if (showUnlockedOnly && !a.unlocked) return false;
     if (filterTier !== "all" && a.tier !== filterTier) return false;
@@ -186,6 +211,7 @@ export default function AchievementsScreen() {
         left={<IconButton icon="menu" onPress={openDrawer} />}
       />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: theme.space.md, gap: theme.space.md }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -312,12 +338,16 @@ export default function AchievementsScreen() {
           </Text>
           <View style={{ gap: theme.space.sm }}>
             {filteredAchievements.map((achievement) => (
-              <AchievementCard
+              <View
                 key={achievement.id}
-                achievement={achievement}
-                tierColor={tierColors[achievement.tier]}
-                onPress={() => setSelectedAchievement(achievement)}
-              />
+                onLayout={(e) => { cardPositions.current[achievement.id] = e.nativeEvent.layout.y; }}
+              >
+                <AchievementCard
+                  achievement={achievement}
+                  tierColor={tierColors[achievement.tier]}
+                  onPress={() => setSelectedAchievement(achievement)}
+                />
+              </View>
             ))}
           </View>
         </View>

@@ -8,7 +8,6 @@ import {
   Switch,
   Alert,
   Modal,
-  Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme, setThemeMode, getThemeMode, type ThemeMode as ThemeModeSetting } from "../../src/theme";
@@ -26,7 +25,8 @@ import {
   scheduleRestDayCheck,
   cancelRestDayCheck,
 } from "../../src/notifications";
-import AppLoading from "../../components/AppLoading";
+import * as Clipboard from "expo-clipboard";
+import { SkeletonCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNotes";
@@ -293,12 +293,8 @@ export default function Settings() {
   }
 
   async function copyText(text: string) {
-    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      Alert.alert(t("settings.copied"), t("settings.copiedMsg"));
-      return;
-    }
-    Alert.alert(t("settings.copyManual"), t("settings.copyManualMsg"));
+    await Clipboard.setStringAsync(text);
+    Alert.alert(t("settings.copied"), t("settings.copiedMsg"));
   }
 
   async function openExport() {
@@ -332,7 +328,8 @@ export default function Settings() {
 
       const altList: Array<{ dayIndex: number; exerciseId: string; alternatives: string[] }> = [];
       for (const dayKey of Object.keys(alternatives)) {
-        const di = parseInt(dayKey, 10);
+        const diParsed = parseInt(dayKey, 10);
+        const di = Number.isFinite(diParsed) ? diParsed : 0;
         const byExercise = alternatives[di] ?? {};
         for (const exId of Object.keys(byExercise)) {
           altList.push({ dayIndex: di, exerciseId: exId, alternatives: byExercise[exId] ?? [] });
@@ -801,7 +798,16 @@ export default function Settings() {
   }, [historyRows, historySearch]);
 
   if (!ready) {
-    return <AppLoading />;
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar title={t("settings.title")} subtitle={t("settings.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
+        </ScrollView>
+      </Screen>
+    );
   }
 
   return (
@@ -1121,28 +1127,32 @@ export default function Settings() {
 
       <Modal visible={backupOpen !== null} transparent animationType="fade" onRequestClose={() => setBackupOpen(null)}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "80%" }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
               {backupOpen === "export" ? t("settings.modal.backupExport") : backupOpen === "csv" ? t("settings.modal.csvExport") : t("settings.modal.backupImport")}
             </Text>
 
             {backupOpen === "export" ? (
               <>
-                <TextField
-                  value={backupText}
-                  editable={false}
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 180,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={backupText}
+                    editable={false}
+                    selectTextOnFocus
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 180,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn label={t("common.copy")} onPress={() => copyText(backupText)} tone="accent" />
                   <Btn label={t("common.close")} onPress={() => setBackupOpen(null)} />
@@ -1150,21 +1160,25 @@ export default function Settings() {
               </>
             ) : backupOpen === "csv" ? (
               <>
-                <TextField
-                  value={backupCsvText}
-                  editable={false}
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 180,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={backupCsvText}
+                    editable={false}
+                    selectTextOnFocus
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 180,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn label={t("common.copy")} onPress={() => copyText(backupCsvText)} tone="accent" />
                   <Btn label={t("common.close")} onPress={() => setBackupOpen(null)} />
@@ -1172,23 +1186,26 @@ export default function Settings() {
               </>
             ) : (
               <>
-                <TextField
-                  value={importText}
-                  onChangeText={setImportText}
-                  placeholder={t("settings.paste")}
-                  placeholderTextColor={theme.muted}
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 180,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={importText}
+                    onChangeText={setImportText}
+                    placeholder={t("settings.paste")}
+                    placeholderTextColor={theme.muted}
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 180,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 {importError ? <Text style={{ color: theme.danger }}>{importError}</Text> : null}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ color: theme.text }}>{t("settings.newProfile")}</Text>
@@ -1310,6 +1327,7 @@ export default function Settings() {
                 <TextField
                   value={shareText}
                   editable={false}
+                  selectTextOnFocus
                   multiline
                   style={{
                     color: theme.text,

@@ -69,7 +69,9 @@ export default function HomeScreen() {
   const [suggestions, setSuggestions] = useState<ProgressionSuggestion[]>([]);
 
   useEffect(() => {
+    let alive = true;
     ensureDb().then(async () => {
+      if (!alive) return;
       const db = getDb();
       const today = isoDateOnly();
       const monday = getMonday();
@@ -162,30 +164,34 @@ export default function HomeScreen() {
       // Next workout preview (only when no workout today)
       try {
         const hasToday = db.getFirstSync<{ id: string }>(`SELECT id FROM workouts WHERE date = ? LIMIT 1`, [today]);
-        if (!hasToday) {
+        if (!hasToday && alive) {
           const programMode = (await getSettingAsync("programMode")) || "normal";
           const programId = await getSettingAsync(`activeProgramId_${programMode}`);
-          if (programId) {
+          if (programId && alive) {
             const nextIdxStr = await getSettingAsync(`nextSuggestedDayIndex_${programId}`);
-            const nextIdx = nextIdxStr ? parseInt(nextIdxStr, 10) : 0;
+            const parsed = parseInt(nextIdxStr ?? "", 10);
+            const nextIdx = Number.isFinite(parsed) ? parsed : 0;
             const preview = await getNextWorkoutPreview(programId, nextIdx);
-            setNextWorkout(preview);
+            if (alive) setNextWorkout(preview);
           }
         }
       } catch {}
 
       // Load progression suggestions
       try {
-        const programMode = (await getSettingAsync("programMode")) || "normal";
-        const programId = await getSettingAsync(`activeProgramId_${programMode}`);
-        if (programId) {
-          const pending = await getPendingSuggestions(programId);
-          setSuggestions(pending);
+        if (alive) {
+          const programMode = (await getSettingAsync("programMode")) || "normal";
+          const programId = await getSettingAsync(`activeProgramId_${programMode}`);
+          if (programId && alive) {
+            const pending = await getPendingSuggestions(programId);
+            if (alive) setSuggestions(pending);
+          }
         }
       } catch {}
 
-      setReady(true);
+      if (alive) setReady(true);
     });
+    return () => { alive = false; };
   }, []);
 
   const greeting = useMemo(() => {
@@ -344,8 +350,10 @@ export default function HomeScreen() {
                   </View>
                   <Pressable
                     onPress={async () => {
-                      await applySuggestion(s.id);
-                      setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+                      try {
+                        await applySuggestion(s.id);
+                        setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+                      } catch {}
                     }}
                     style={{ borderColor: theme.accent, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 }}
                   >
@@ -353,8 +361,10 @@ export default function HomeScreen() {
                   </Pressable>
                   <Pressable
                     onPress={async () => {
-                      await dismissSuggestion(s.id);
-                      setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+                      try {
+                        await dismissSuggestion(s.id);
+                        setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+                      } catch {}
                     }}
                     style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 }}
                   >

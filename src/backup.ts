@@ -193,7 +193,7 @@ export async function importBackup(
   try {
     await ensureDb();
     const db = getDb();
-    const verb = mode === "fresh" ? "INSERT INTO" : "INSERT OR IGNORE INTO";
+    const verb = mode === "fresh" ? "INSERT INTO" : "INSERT OR REPLACE INTO";
 
     await db.execAsync("BEGIN");
 

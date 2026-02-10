@@ -1,5 +1,6 @@
 // src/units.ts — Weight unit conversion + hook
 import React, { useState, useEffect } from "react";
+import * as Localization from "expo-localization";
 import { getSettingAsync, setSettingAsync } from "./db";
 
 export type WeightUnit = "kg" | "lbs";
@@ -51,13 +52,25 @@ export function setWeightUnit(unit: WeightUnit) {
   notify();
 }
 
+// Countries that primarily use imperial units for body weight
+const IMPERIAL_REGIONS = ["US", "LR", "MM", "GB", "UK"];
+
 export async function loadWeightUnit() {
   try {
-    const raw = await getSettingAsync("weightUnit");
-    if (raw === "kg" || raw === "lbs") {
-      currentUnit = raw;
+    const saved = await getSettingAsync("weightUnit");
+    if (saved === "kg" || saved === "lbs") {
+      currentUnit = saved;
+      return;
     }
-  } catch {}
+    // No saved setting - detect from device region
+    const deviceLocale = Localization.getLocales()[0];
+    const regionCode = deviceLocale?.regionCode ?? "";
+    currentUnit = IMPERIAL_REGIONS.includes(regionCode) ? "lbs" : "kg";
+    // Save the detected default so it persists
+    await setSettingAsync("weightUnit", currentUnit);
+  } catch {
+    currentUnit = "kg";
+  }
 }
 
 // ── React hook ──

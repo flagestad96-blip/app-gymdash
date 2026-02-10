@@ -1,10 +1,21 @@
 // src/components/modals/PlateCalcModal.tsx
-import React from "react";
-import { View, Text, Pressable, Modal } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, Pressable, Modal, ScrollView } from "react-native";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { calculatePlates, plateColor } from "../../plateCalculator";
+import { getSettingAsync, setSettingAsync } from "../../db";
+
+type BarOption = { label: string; kg: number };
+
+const BAR_OPTIONS: BarOption[] = [
+  { label: "Olympic", kg: 20 },
+  { label: "Women's", kg: 15 },
+  { label: "EZ Bar", kg: 10 },
+  { label: "Smith", kg: 15 },
+  { label: "Trap Bar", kg: 25 },
+];
 
 export type PlateCalcModalProps = {
   visible: boolean;
@@ -18,9 +29,25 @@ export default function PlateCalcModal({ visible, onClose, weightStr }: PlateCal
   const { t } = useI18n();
   const wu = useWeightUnit();
 
+  const [selectedBar, setSelectedBar] = useState("Olympic");
+
+  // Load saved bar preference
+  useEffect(() => {
+    getSettingAsync("plateCalcBar").then((v) => {
+      if (v && BAR_OPTIONS.some((b) => b.label === v)) setSelectedBar(v);
+    }).catch(() => {});
+  }, []);
+
+  function selectBar(label: string) {
+    setSelectedBar(label);
+    setSettingAsync("plateCalcBar", label).catch(() => {});
+  }
+
+  const barKg = BAR_OPTIONS.find((b) => b.label === selectedBar)?.kg ?? 20;
+
   const displayVal = parseFloat(weightStr);
   const targetKg = Number.isFinite(displayVal) ? wu.toKg(displayVal) : 0;
-  const result = calculatePlates(targetKg);
+  const result = calculatePlates(targetKg, barKg);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -44,6 +71,33 @@ export default function PlateCalcModal({ visible, onClose, weightStr }: PlateCal
             {t("log.plateCalc")}
           </Text>
           <View style={{ gap: 10 }}>
+            {/* Bar selection */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {BAR_OPTIONS.map((bar) => {
+                const active = selectedBar === bar.label;
+                return (
+                  <Pressable
+                    key={bar.label}
+                    onPress={() => selectBar(bar.label)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: theme.radius.md,
+                      borderWidth: 1,
+                      borderColor: active ? theme.accent : theme.glassBorder,
+                      backgroundColor: active
+                        ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)")
+                        : theme.glass,
+                    }}
+                  >
+                    <Text style={{ color: active ? theme.accent : theme.text, fontFamily: theme.mono, fontSize: 12 }}>
+                      {bar.label} ({wu.formatWeight(bar.kg)})
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
                 {t("log.bar")}: {wu.formatWeight(result.barWeight)}
@@ -60,9 +114,9 @@ export default function PlateCalcModal({ visible, onClose, weightStr }: PlateCal
               </Text>
             ) : (
               <View style={{ gap: 8 }}>
-                {result.plates.map((p) => (
+                {result.plates.map((p, idx) => (
                   <View
-                    key={p.weight}
+                    key={`${p.weight}_${idx}`}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",

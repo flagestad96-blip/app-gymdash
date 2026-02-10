@@ -39,6 +39,7 @@ export type ExerciseDef = {
   defaultIncrementKg: number;
   isBodyweight?: boolean;
   bodyweightFactor?: number;
+  isPerSide?: boolean; // true if weight is entered per arm/leg (volume = weight × reps × 2)
   aliases?: string[];
   alternatives?: string[]; // Array of exercise IDs that can substitute this exercise
   backImpact?: BackImpact; // Lower-back impact: red = high risk, yellow = caution, green = back-friendly, undefined = not relevant
@@ -61,6 +62,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["chest", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["incline_barbell_press", "flat_db_press", "machine_chest_press", "bench_press"],
   },
   {
@@ -69,6 +71,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["chest", "upper", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     aliases: ["flat dumbbell press", "db bench press", "dumbbell bench press"],
     alternatives: ["bench_press", "incline_db_press", "machine_chest_press", "dip"],
   },
@@ -123,6 +126,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["overhead_press", "machine_shoulder_press"],
   },
   {
@@ -139,6 +143,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "isolation"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["cable_lateral_raise", "machine_lateral_raise"],
   },
   {
@@ -257,6 +262,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["back", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     backImpact: "yellow",
     alternatives: ["cable_row", "machine_row", "chest_supported_row", "barbell_row"],
   },
@@ -276,6 +282,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["ez_bar_curl", "cable_curl", "hammer_curl", "preacher_curl", "incline_db_curl"],
   },
   {
@@ -292,6 +299,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["db_curl", "cable_curl", "ez_bar_curl", "zottman_curl"],
   },
 
@@ -477,6 +485,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["chest", "isolation"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     aliases: ["dumbbell fly"],
     alternatives: ["cable_fly", "pec_deck", "cable_crossover", "db_pullover"],
   },
@@ -525,6 +534,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "upper", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["db_shoulder_press", "overhead_press", "machine_shoulder_press"],
   },
   {
@@ -533,6 +543,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["shoulders", "isolation"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["cable_lateral_raise", "lateral_raise", "overhead_press"],
   },
   {
@@ -694,6 +705,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "upper", "isolation"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["db_curl", "ez_bar_curl", "cable_curl", "spider_curl"],
   },
   {
@@ -710,6 +722,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 1,
+    isPerSide: true,
     alternatives: ["db_curl", "cable_curl", "spider_curl", "preacher_curl"],
   },
   {
@@ -726,6 +739,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["triceps", "isolation"],
     defaultIncrementKg: 1,
+    isPerSide: true,
     alternatives: ["rope_pushdown", "cable_triceps_ext", "overhead_db_extension"],
   },
   {
@@ -786,6 +800,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     backImpact: "yellow",
     aliases: ["bss"],
     alternatives: ["walking_lunge", "reverse_lunge", "step_up", "goblet_squat"],
@@ -796,6 +811,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     backImpact: "green",
     alternatives: ["bulgarian_split_squat", "reverse_lunge", "step_up"],
   },
@@ -805,6 +821,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     backImpact: "green",
     alternatives: ["bulgarian_split_squat", "walking_lunge", "reverse_lunge"],
   },
@@ -916,6 +933,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["hamstrings", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["romanian_deadlift", "good_morning", "glute_ham_raise"],
   },
   {
@@ -1365,6 +1383,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 1,
+    isPerSide: true,
     alternatives: ["hammer_curl", "db_curl", "cable_curl"],
   },
   {
@@ -1373,6 +1392,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     backImpact: "green",
     alternatives: ["walking_lunge", "bulgarian_split_squat", "step_up"],
   },
@@ -1382,6 +1402,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["quads", "glutes", "lower", "compound"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     backImpact: "green",
     alternatives: ["walking_lunge", "reverse_lunge", "goblet_squat"],
   },
@@ -1391,6 +1412,7 @@ export const EXERCISES: ExerciseDef[] = [
     equipment: "dumbbell",
     tags: ["chest", "upper", "compound", "lower_back_friendly"],
     defaultIncrementKg: 2.5,
+    isPerSide: true,
     alternatives: ["decline_bench_press", "flat_db_press", "bench_press", "dip"],
   },
 
@@ -1706,6 +1728,10 @@ export function tagsFor(id: string): ExerciseTag[] {
 
 export function isBodyweight(id: string): boolean {
   return !!byId[id]?.isBodyweight;
+}
+
+export function isPerSideExercise(id: string): boolean {
+  return !!byId[id]?.isPerSide;
 }
 
 export function bodyweightFactorFor(id: string): number {

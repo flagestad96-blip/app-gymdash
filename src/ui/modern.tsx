@@ -418,7 +418,7 @@ export function SkeletonLoader({
   const shimmerAnim = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(shimmerAnim, {
           toValue: 1,
@@ -433,7 +433,9 @@ export function SkeletonLoader({
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    anim.start();
+    return () => anim.stop();
   }, [shimmerAnim]);
 
   const opacity = shimmerAnim.interpolate({
@@ -475,6 +477,7 @@ type AchievementToastProps = {
   points: number;
   tier: "common" | "rare" | "epic" | "legendary";
   onDismiss: () => void;
+  onTap?: () => void;
 };
 
 export function AchievementToast({
@@ -484,10 +487,13 @@ export function AchievementToast({
   points,
   tier,
   onDismiss,
+  onTap,
 }: AchievementToastProps) {
   const theme = useTheme();
   const translateY = React.useRef(new Animated.Value(-200)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
+  const onDismissRef = React.useRef(onDismiss);
+  onDismissRef.current = onDismiss;
 
   const tierColors = {
     common: theme.muted,
@@ -530,12 +536,12 @@ export function AchievementToast({
             duration: theme.animation.normal,
             useNativeDriver: true,
           }),
-        ]).start(() => onDismiss());
+        ]).start(() => onDismissRef.current());
       }, 4000);
 
       return () => clearTimeout(timeout);
     }
-  }, [visible, translateY, opacity, onDismiss, theme.animation]);
+  }, [visible, translateY, opacity, theme.animation]);
 
   if (!visible) return null;
 
@@ -549,7 +555,7 @@ export function AchievementToast({
         },
       ]}
     >
-      <Pressable onPress={onDismiss}>
+      <Pressable onPress={() => { onDismiss(); onTap?.(); }}>
         <LinearGradient
           colors={tier === "legendary" ? ["#FFD700", "#FFA500"] : theme.successGradient}
           start={{ x: 0, y: 0 }}
@@ -653,7 +659,7 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
           shadowRadius: 8,
         }}
       >
-        <Text style={{ color: theme.text, fontFamily: "Inter_500Medium", fontSize: 14, flex: 1 }}>
+        <Text style={{ color: theme.text, fontFamily: "Manrope_500Medium", fontSize: 14, flex: 1 }}>
           {message}
         </Text>
         <Pressable
@@ -666,7 +672,7 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
             marginLeft: 12,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+          <Text style={{ color: "#FFFFFF", fontFamily: "Manrope_600SemiBold", fontSize: 13 }}>
             {undoLabel}
           </Text>
         </Pressable>
@@ -695,7 +701,7 @@ const styles = StyleSheet.create({
   gradientButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Manrope_600SemiBold",
   },
   glassCard: {
     borderWidth: 1,

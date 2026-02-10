@@ -20,12 +20,13 @@ export default function TemplatePickerModal({ visible, onClose, onSelect }: Prop
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (visible) {
-      setLoading(true);
-      listTemplates()
-        .then(setTemplates)
-        .finally(() => setLoading(false));
-    }
+    if (!visible) return;
+    let alive = true;
+    setLoading(true);
+    listTemplates()
+      .then((t) => { if (alive) setTemplates(t); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, [visible]);
 
   function handleDelete(id: string) {
@@ -43,15 +44,17 @@ export default function TemplatePickerModal({ visible, onClose, onSelect }: Prop
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable
         style={{
           flex: 1,
           backgroundColor: "rgba(0,0,0,0.6)",
           justifyContent: "flex-end",
         }}
+        onPress={onClose}
       >
         <View
+          onStartShouldSetResponder={() => true}
           style={{
             backgroundColor: theme.bg,
             borderTopLeftRadius: 20,
@@ -152,7 +155,7 @@ export default function TemplatePickerModal({ visible, onClose, onSelect }: Prop
             />
           )}
         </View>
-      </View>
+      </Pressable>
     </Modal>
   );
 }

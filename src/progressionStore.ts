@@ -158,7 +158,7 @@ export async function analyzeWorkoutForProgression(
 
   const sets = await db.getAllAsync<SetRow>(
     `SELECT exercise_id, weight, reps FROM sets
-     WHERE workout_id = ? AND (is_warmup = 0 OR is_warmup IS NULL) AND set_type IS NULL OR set_type = 'normal'
+     WHERE workout_id = ? AND (is_warmup = 0 OR is_warmup IS NULL) AND (set_type IS NULL OR set_type = 'normal')
      ORDER BY exercise_id, created_at`,
     [workoutId]
   );

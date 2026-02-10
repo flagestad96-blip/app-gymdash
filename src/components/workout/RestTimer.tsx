@@ -1,9 +1,9 @@
 // src/components/workout/RestTimer.tsx
-import React from "react";
-import { View, Text, Pressable, Switch, Modal, ScrollView } from "react-native";
+import React, { useState } from "react";
+import { View, Text, Pressable, Switch, Modal, Alert, TextInput } from "react-native";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
-import { Chip, Btn } from "../../ui";
+import { Btn } from "../../ui";
 
 function mmss(totalSec: number) {
   const s = Math.max(0, Math.floor(totalSec));
@@ -57,7 +57,18 @@ export type RestSettingsModalProps = {
   recommendedSeconds: number | null;
   onUseRecommended: () => void;
   onReset: () => void;
+  // Custom presets
+  presets: number[];
+  onAddPreset: (seconds: number) => void;
+  onRemovePreset: (seconds: number) => void;
+  // Per-exercise override
+  focusedExerciseName: string | null;
+  focusedExerciseRest: number | null;
+  focusedExerciseType: string | null;
+  onSetExerciseRest: (seconds: number | null) => void;
 };
+
+const DEFAULT_PRESETS = [60, 90, 120, 150, 180];
 
 /** Modal for configuring rest timer settings */
 export default function RestSettingsModal({
@@ -74,14 +85,44 @@ export default function RestSettingsModal({
   recommendedSeconds,
   onUseRecommended,
   onReset,
+  presets,
+  onAddPreset,
+  onRemovePreset,
+  focusedExerciseName,
+  focusedExerciseRest,
+  focusedExerciseType,
+  onSetExerciseRest,
 }: RestSettingsModalProps) {
   const theme = useTheme();
   const { t } = useI18n();
+  const [addingPreset, setAddingPreset] = useState(false);
+  const [newPresetText, setNewPresetText] = useState("");
+  const [exerciseRestText, setExerciseRestText] = useState("");
+
+  const sortedPresets = [...presets].sort((a, b) => a - b);
+
+  function handleAddPreset() {
+    const sec = parseInt(newPresetText, 10);
+    if (Number.isFinite(sec) && sec >= 10 && sec <= 600 && !presets.includes(sec)) {
+      onAddPreset(sec);
+    }
+    setNewPresetText("");
+    setAddingPreset(false);
+  }
+
+  function handleSetExerciseRest() {
+    const sec = parseInt(exerciseRestText, 10);
+    if (Number.isFinite(sec) && sec >= 10 && sec <= 600) {
+      onSetExerciseRest(sec);
+    }
+    setExerciseRestText("");
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+      <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={onClose}>
         <View
+          onStartShouldSetResponder={() => true}
           style={{
             backgroundColor: theme.modalGlass,
             borderColor: theme.glassBorder,
@@ -89,6 +130,7 @@ export default function RestSettingsModal({
             borderRadius: theme.radius.xl,
             padding: 18,
             gap: 14,
+            maxHeight: "85%",
             shadowColor: theme.shadow.lg.color,
             shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius,
@@ -113,18 +155,89 @@ export default function RestSettingsModal({
             <Switch value={restVibrate} onValueChange={onRestVibrateChange} />
           </View>
 
+          {/* Preset chips */}
           <Text style={{ color: theme.muted, marginTop: 6 }}>{t("log.restLength")}</Text>
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-            {[60, 90, 120, 150, 180].map((sec) => (
-              <Chip
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {sortedPresets.map((sec) => (
+              <Pressable
                 key={`rest_${sec}`}
-                text={`${sec}s`}
-                active={restSeconds === sec}
                 onPress={() => onRestSecondsChange(sec)}
-              />
+                onLongPress={() => {
+                  if (!DEFAULT_PRESETS.includes(sec)) {
+                    Alert.alert(t("log.restRemovePreset"), `${sec}s`, [
+                      { text: t("common.cancel"), style: "cancel" },
+                      { text: t("program.remove"), style: "destructive", onPress: () => onRemovePreset(sec) },
+                    ]);
+                  }
+                }}
+              >
+                <View
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: theme.radius.md,
+                    borderWidth: 1,
+                    borderColor: restSeconds === sec ? theme.accent : theme.glassBorder,
+                    backgroundColor: restSeconds === sec ? theme.accent + "22" : theme.glass,
+                  }}
+                >
+                  <Text style={{
+                    color: restSeconds === sec ? theme.accent : theme.text,
+                    fontFamily: theme.mono,
+                    fontSize: 13,
+                  }}>
+                    {sec}s
+                  </Text>
+                </View>
+              </Pressable>
             ))}
+            {/* Add custom preset */}
+            {addingPreset ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <TextInput
+                  value={newPresetText}
+                  onChangeText={setNewPresetText}
+                  keyboardType="number-pad"
+                  placeholder={t("log.restCustomSeconds")}
+                  placeholderTextColor={theme.muted}
+                  autoFocus
+                  style={{
+                    color: theme.text,
+                    fontFamily: theme.mono,
+                    fontSize: 13,
+                    borderWidth: 1,
+                    borderColor: theme.glassBorder,
+                    borderRadius: theme.radius.md,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    width: 60,
+                    backgroundColor: theme.glass,
+                  }}
+                  onSubmitEditing={handleAddPreset}
+                />
+                <Pressable onPress={handleAddPreset}>
+                  <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 13 }}>{t("log.restAddPreset")}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => setAddingPreset(true)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: theme.radius.md,
+                  borderWidth: 1,
+                  borderColor: theme.glassBorder,
+                  borderStyle: "dashed",
+                  backgroundColor: theme.glass,
+                }}
+              >
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 13 }}>+</Text>
+              </Pressable>
+            )}
           </View>
 
+          {/* Recommended for current exercise */}
           {recommendedSeconds != null ? (
             <Pressable
               onPress={onUseRecommended}
@@ -144,12 +257,57 @@ export default function RestSettingsModal({
             </Pressable>
           ) : null}
 
+          {/* Per-exercise override */}
+          {focusedExerciseName ? (
+            <View style={{ borderTopWidth: 1, borderTopColor: theme.glassBorder, paddingTop: 12, gap: 8 }}>
+              <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
+                {t("log.restForExercise", { name: focusedExerciseName })}
+              </Text>
+              {focusedExerciseType ? (
+                <Text style={{ color: theme.muted, fontSize: 12 }}>
+                  {t("log.restExerciseType", {
+                    type: focusedExerciseType,
+                    seconds: recommendedSeconds ?? 120,
+                  })}
+                </Text>
+              ) : null}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <TextInput
+                  value={exerciseRestText || (focusedExerciseRest != null ? String(focusedExerciseRest) : "")}
+                  onChangeText={setExerciseRestText}
+                  keyboardType="number-pad"
+                  placeholder={String(recommendedSeconds ?? 120)}
+                  placeholderTextColor={theme.muted}
+                  style={{
+                    color: theme.text,
+                    fontFamily: theme.mono,
+                    fontSize: 14,
+                    borderWidth: 1,
+                    borderColor: focusedExerciseRest != null ? theme.accent : theme.glassBorder,
+                    borderRadius: theme.radius.md,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    width: 70,
+                    backgroundColor: theme.glass,
+                    textAlign: "center",
+                  }}
+                  onSubmitEditing={handleSetExerciseRest}
+                />
+                <Text style={{ color: theme.muted, fontSize: 12 }}>s</Text>
+                <Btn label={t("common.save")} onPress={handleSetExerciseRest} small />
+                {focusedExerciseRest != null ? (
+                  <Btn label={t("log.restUseDefault")} onPress={() => { onSetExerciseRest(null); setExerciseRestText(""); }} small />
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Btn label={t("common.close")} onPress={onClose} />
             <Btn label={t("log.reset")} onPress={onReset} />
           </View>
         </View>
-      </View>
+      </Pressable>
     </Modal>
   );
 }

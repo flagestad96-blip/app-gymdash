@@ -46,11 +46,14 @@ export default function BodyScreen() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       const h = await getSettingAsync("height_cm");
+      if (!alive) return;
       if (h) setHeightCm(h);
       await refresh();
     })();
+    return () => { alive = false; };
   }, [refresh]);
 
   useFocusEffect(

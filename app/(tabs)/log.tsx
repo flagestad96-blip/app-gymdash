@@ -11,12 +11,11 @@ import {
   Platform,
   Modal,
   Switch,
-  Vibration,
   Alert,
-  AppState,
   Animated,
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -28,8 +27,11 @@ import {
   tagsFor,
   alternativesFor,
   getExercise,
+  createCustomExercise,
   type ExerciseTag,
+  type Equipment,
   isBodyweight,
+  isPerSideExercise,
   bodyweightFactorFor,
 } from "../../src/exerciseLibrary";
 import ProgramStore from "../../src/programStore";
@@ -38,15 +40,11 @@ import ProgressionStore, {
   defaultTargetForExercise,
   type ExerciseTarget,
 } from "../../src/progressionStore";
-import AppLoading from "../../components/AppLoading";
+import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
-import {
-  setupNotificationHandler,
-  scheduleRestNotification,
-  cancelRestNotification,
-  cancelAllRestNotifications,
-} from "../../src/notifications";
+import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
+import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
 import { AchievementToast, UndoToast } from "../../src/ui/modern";
 import { useI18n } from "../../src/i18n";
@@ -57,7 +55,6 @@ import { calculatePlates, plateColor } from "../../src/plateCalculator";
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
 import type { SetType, InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
 import type { SetRow } from "../../src/components/workout/SetEntryRow";
-import RestSettingsModal from "../../src/components/workout/RestTimer";
 import PlateCalcModal from "../../src/components/modals/PlateCalcModal";
 import ExerciseSwapModal from "../../src/components/modals/ExerciseSwapModal";
 import { advanceWeek, getPeriodization, isDeloadWeek, deloadWeight, type Periodization } from "../../src/periodization";
@@ -122,12 +119,6 @@ function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function mmss(totalSec: number) {
-  const s = Math.max(0, Math.floor(totalSec));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-}
 
 function parseTimeMs(iso: string | null | undefined) {
   if (!iso) return NaN;
@@ -172,11 +163,6 @@ function shortLabel(name: string) {
   return `${parts[0].slice(0, 3)}${parts[1].slice(0, 3)}`.toUpperCase();
 }
 
-function recommendedRestSeconds(tags: ExerciseTag[]) {
-  if (tags.includes("compound")) return 150;
-  if (tags.includes("isolation")) return 90;
-  return 120;
-}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -197,11 +183,14 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
+// Module-level flag - persists across component remounts (tab switches)
+let _logTabInitialized = false;
+
 export default function Logg() {
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(_logTabInitialized);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
@@ -235,6 +224,7 @@ export default function Logg() {
     exercises: number;
     topE1rm: { name: string; value: number } | null;
     prs: string[];
+    volumePrs: string[];
   } | null>(null);
 
   const [undoSet, setUndoSet] = useState<{ row: SetRow; exerciseId: string; prSetId?: string } | null>(null);
@@ -248,15 +238,8 @@ export default function Logg() {
   const [editRpe, setEditRpe] = useState("");
   const [editType, setEditType] = useState<SetType>("normal");
 
-  const [restEnabled, setRestEnabled] = useState(true);
-  const [restSeconds, setRestSeconds] = useState(120);
-  const [restRemaining, setRestRemaining] = useState(120);
-  const [restRunning, setRestRunning] = useState(false);
-  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
-  const [restVibrate, setRestVibrate] = useState(false);
-  const [restHaptics, setRestHaptics] = useState(true);
-  const [restSettingsOpen, setRestSettingsOpen] = useState(false);
-  const [restNotificationId, setRestNotificationId] = useState<string | null>(null);
+  // Rest timer state comes from useRestTimer context
+  const restTimer = useRestTimer();
 
   const [supersetAlternate, setSupersetAlternate] = useState(true);
   const [supersetNext, setSupersetNext] = useState<Record<string, "a" | "b">>({});
@@ -276,12 +259,11 @@ export default function Logg() {
   const [periodization, setPeriodization] = useState<Periodization | null>(null);
 
   const navigation = useNavigation();
+  const router = useRouter();
   const scrollRef = useRef<ScrollView | null>(null);
   const anchorPositionsRef = useRef<Record<string, number>>({});
   const anchorLayoutRef = useRef<Record<string, { y: number; height: number }>>({});
   const scrollYRef = useRef(0);
-  const restDoneRef = useRef(false);
-  const appStateRef = useRef(AppState.currentState);
   const scrollViewHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
   const pendingAutoScrollRef = useRef<{ cardBottom: number } | null>(null);
@@ -324,34 +306,14 @@ export default function Logg() {
       const pmRaw = await getSettingAsync("programMode");
       const pm: ProgramMode = pmRaw === "back" ? "back" : "normal";
 
-      const reRaw = await getSettingAsync("restEnabled");
-      const rsRaw = await getSettingAsync("restSeconds");
-      const rvRaw = await getSettingAsync("restVibrate");
       const ssRaw = await getSettingAsync("supersetAlternate");
-      const rhRaw = await getSettingAsync("restHaptics");
-      const reAtRaw = await getSettingAsync("restEndsAt");
       const onboardingRaw = await getSettingAsync("hasSeenOnboarding");
 
       setProgramMode(pm);
-
-      setRestEnabled(reRaw === null ? true : reRaw === "1");
-      setRestSeconds(clampInt(parseInt(rsRaw ?? "120", 10), 10, 600));
-      setRestVibrate(rvRaw === "1");
-      setRestHaptics(rhRaw === null ? true : rhRaw === "1");
-
       setSupersetAlternate(ssRaw === null ? true : ssRaw === "1");
       setShowOnboarding(onboardingRaw !== "1");
 
-      const endsAt = reAtRaw ? Number(reAtRaw) : NaN;
-      if (Number.isFinite(endsAt) && endsAt > Date.now()) {
-        setRestEndsAt(endsAt);
-        setRestRunning(true);
-        setRestRemaining(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
-      } else {
-        setRestEndsAt(null);
-        setRestRunning(false);
-        setRestRemaining(clampInt(parseInt(rsRaw ?? "120", 10), 10, 600));
-      }
+      // Rest timer settings are now loaded by RestTimerContext
 
       const activeId = await getSettingAsync("activeWorkoutId");
       let activeRow: WorkoutRow | null = null;
@@ -374,6 +336,7 @@ export default function Logg() {
         setActiveWorkoutId(null);
         setWorkoutStartedAt(null);
       }
+      // Note: restTimer.setActiveWorkoutId is handled by the context loading from settings
 
       const prog = activeRow?.program_id
         ? (await ProgramStore.getProgram(activeRow.program_id)) ?? (await ProgramStore.getActiveProgram(pm))
@@ -429,7 +392,27 @@ export default function Logg() {
       setAlternatives(mergedAlts);
       setSuggestedDayIndex(suggested);
       setActiveDayIndex(day);
-      setSelectedAlternatives({});
+
+      // Restore persisted exercise swaps if a workout is active
+      if (activeRow) {
+        try {
+          const savedAlts = await getSettingAsync("selectedAlternatives");
+          if (savedAlts) {
+            const parsed = JSON.parse(savedAlts);
+            if (parsed && typeof parsed === "object") {
+              setSelectedAlternatives(parsed);
+            } else {
+              setSelectedAlternatives({});
+            }
+          } else {
+            setSelectedAlternatives({});
+          }
+        } catch {
+          setSelectedAlternatives({});
+        }
+      } else {
+        setSelectedAlternatives({});
+      }
 
       // Load periodization
       try {
@@ -452,19 +435,27 @@ export default function Logg() {
 
   useEffect(() => {
     setupNotificationHandler();
+    // Skip loading screen if already initialized (tab re-focus)
+    if (_logTabInitialized) {
+      setReady(true);
+      loadSession().catch(() => {}); // Silent refresh
+      return;
+    }
     loadSession()
       .catch((err) => console.warn("[loadSession] unhandled", err))
-      .finally(() => setReady(true));
+      .finally(() => {
+        setReady(true);
+        _logTabInitialized = true;
+      });
   }, [loadSession]);
 
   useFocusEffect(
     useCallback(() => {
+      // Skip if not ready yet (initial load handles it)
       if (!ready) return () => {};
+      // Silently refresh data on tab re-focus without resetting ready state
       let alive = true;
-      (async () => {
-        await loadSession();
-        if (!alive) return;
-      })();
+      loadSession().catch(() => {});
       return () => {
         alive = false;
       };
@@ -529,42 +520,20 @@ export default function Logg() {
     return map;
   }, [workoutSets]);
 
-  const recommendedForFocus = useMemo(() => {
-    const exId = focusedExerciseId ?? exerciseIds[0];
-    if (!exId) return null;
-    const seconds = recommendedRestSeconds(tagsFor(exId));
-    return { exId, seconds };
-  }, [focusedExerciseId, exerciseIds]);
-
-  function stopRestTimer() {
-    setRestRunning(false);
-    setRestEndsAt(null);
-    restDoneRef.current = false;
-    setRestRemaining(restSeconds);
-    setSettingAsync("restEndsAt", "").catch(() => {});
-    if (restNotificationId) {
-      cancelRestNotification(restNotificationId);
-      setRestNotificationId(null);
-    }
-  }
-
-  async function startRestTimer(seconds = restSeconds) {
-    if (!restEnabled) return;
-    const end = Date.now() + Math.max(0, Math.floor(seconds)) * 1000;
-    setRestEndsAt(end);
-    setRestRunning(true);
-    restDoneRef.current = false;
-    setRestRemaining(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
-    setSettingAsync("restEndsAt", String(end)).catch(() => {});
-    if (restNotificationId) {
-      await cancelRestNotification(restNotificationId);
-    }
-    const notificationId = await scheduleRestNotification(seconds);
-    setRestNotificationId(notificationId);
-  }
+  // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
 
   useEffect(() => { setSupersetNext({}); }, [activeDayIndex, program?.id, programMode]);
-  useEffect(() => { setSelectedAlternatives({}); }, [activeDayIndex, program?.id]);
+  // Only clear alternatives when NOT in an active workout - during a session, alternatives should persist
+  const prevDayRef = useRef<{ day: number; prog: string | null }>({ day: activeDayIndex, prog: program?.id ?? null });
+  useEffect(() => {
+    const prevDay = prevDayRef.current.day;
+    const prevProg = prevDayRef.current.prog;
+    prevDayRef.current = { day: activeDayIndex, prog: program?.id ?? null };
+    // Skip if same values (initial mount) or if there's an active workout
+    if ((prevDay === activeDayIndex && prevProg === (program?.id ?? null)) || activeWorkoutId) return;
+    setSelectedAlternatives({});
+    setSettingAsync("selectedAlternatives", "").catch(() => {});
+  }, [activeDayIndex, program?.id, activeWorkoutId]);
 
   const refreshWorkoutSets = useCallback(() => {
     if (!activeWorkoutId) { setWorkoutSets([]); return; }
@@ -589,56 +558,12 @@ export default function Logg() {
     return () => clearInterval(id);
   }, [workoutStartedAt]);
 
+  // Rest timer effects (countdown, app state, haptics) are now in restTimerContext
+
   const fireHapticLight = useCallback(async () => {
-    if (!restHaptics || Platform.OS === "web") return;
+    if (!restTimer.restHaptics || Platform.OS === "web") return;
     try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
-  }, [restHaptics]);
-
-  const fireHapticDone = useCallback(async () => {
-    if (!restHaptics || Platform.OS === "web") return;
-    try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
-    catch { try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); } catch {} }
-  }, [restHaptics]);
-
-  useEffect(() => {
-    if (!restRunning || !restEndsAt) return;
-    const id = setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
-      setRestRemaining(remaining);
-      if (remaining === 0 && !restDoneRef.current) {
-        restDoneRef.current = true;
-        setRestRunning(false);
-        setRestEndsAt(null);
-        setRestNotificationId(null);
-        setSettingAsync("restEndsAt", "").catch(() => {});
-        if (restVibrate && Platform.OS !== "web") Vibration.vibrate(300);
-        fireHapticDone();
-      }
-    }, 500);
-    return () => clearInterval(id);
-  }, [restRunning, restEndsAt, restVibrate, fireHapticDone]);
-
-  useEffect(() => { if (!restRunning) setRestRemaining(restSeconds); }, [restSeconds, restRunning]);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
-        if (restEndsAt) {
-          const remaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
-          setRestRemaining(remaining);
-          if (remaining === 0 && !restDoneRef.current) {
-            restDoneRef.current = true;
-            setRestRunning(false);
-            setRestEndsAt(null);
-            setRestNotificationId(null);
-            setSettingAsync("restEndsAt", "").catch(() => {});
-          }
-        }
-      }
-      appStateRef.current = nextState;
-    });
-    return () => sub.remove();
-  }, [restEndsAt]);
+  }, [restTimer.restHaptics]);
 
   const exerciseIdsKey = useMemo(() => exerciseIds.join("|"), [exerciseIds]);
 
@@ -802,10 +727,116 @@ export default function Logg() {
       const next = { ...prev };
       if (exId === baseExId) delete next[baseExId];
       else next[baseExId] = exId;
+      // Persist so swaps survive tab navigation
+      setSettingAsync("selectedAlternatives", JSON.stringify(next)).catch(() => {});
       return next;
     });
     setAltPickerOpen(false);
     setAltPickerBase(null);
+  }
+
+  async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment) {
+    if (!program?.id) return;
+    const base = getExercise(baseExId);
+    const newId = await createCustomExercise({
+      displayName: name,
+      equipment,
+      tags: tagsFor(baseExId),
+      defaultIncrementKg: base?.defaultIncrementKg ?? 2.5,
+    });
+
+    // Add as a permanent alternative for this exercise on this day
+    const currentAlts = alternatives[activeDayIndex]?.[baseExId] ?? [];
+    await ProgramStore.setAlternatives({
+      programId: program.id,
+      dayIndex: activeDayIndex,
+      exerciseId: baseExId,
+      alternatives: [...currentAlts, newId],
+    });
+
+    // Reload alternatives
+    const reloaded = await ProgramStore.getAlternativesForProgram(program.id);
+    setAlternatives(reloaded);
+
+    // Auto-select the new exercise
+    chooseAlternative(baseExId, newId);
+  }
+
+  async function handleSetAlternativeAsDefault(baseExId: string, newDefaultExId: string) {
+    if (!program || !program.id) return;
+    const programId = program.id;
+    const dayIdx = activeDayIndex;
+
+    // Close modal immediately for better UX
+    setAltPickerOpen(false);
+    setAltPickerBase(null);
+
+    try {
+      const currentDay = program.days[dayIdx];
+      if (!currentDay) return;
+
+      // Find and update the block with this exercise
+      const updatedBlocks = currentDay.blocks.map((block) => {
+        if (block.type === "single" && block.exId === baseExId) {
+          return { ...block, exId: newDefaultExId };
+        }
+        if (block.type === "superset") {
+          if (block.a === baseExId) return { ...block, a: newDefaultExId };
+          if (block.b === baseExId) return { ...block, b: newDefaultExId };
+        }
+        return block;
+      });
+
+      // Update the program
+      const updatedProgram: Program = {
+        ...program,
+        days: program.days.map((day, i) =>
+          i === dayIdx ? { ...day, blocks: updatedBlocks } : day
+        ),
+      };
+
+      // Update alternatives: add old base, remove new default
+      const currentAlts = alternatives[dayIdx]?.[baseExId] ?? [];
+      const newAlts = [baseExId, ...currentAlts.filter((id) => id !== newDefaultExId)];
+
+      // Save program first
+      await ProgramStore.saveProgram(programMode, updatedProgram);
+
+      // Update alternatives for the new default exercise
+      if (newAlts.length > 0) {
+        await ProgramStore.setAlternatives({
+          programId,
+          dayIndex: dayIdx,
+          exerciseId: newDefaultExId,
+          alternatives: newAlts,
+        });
+      }
+
+      // Clear old alternatives entry (just delete, don't insert)
+      const db = getDb();
+      await db.runAsync(
+        `DELETE FROM program_exercise_alternatives WHERE program_id = ? AND day_index = ? AND exercise_id = ?`,
+        [programId, dayIdx, baseExId]
+      );
+
+      // Reload program and alternatives
+      const reloaded = await ProgramStore.getProgram(programId);
+      if (reloaded) setProgram(reloaded);
+      const reloadedAlts = await ProgramStore.getAlternativesForProgram(programId);
+      setAlternatives(reloadedAlts);
+
+      // Clear selection since base changed
+      setSelectedAlternatives((prev) => {
+        const next = { ...prev };
+        delete next[baseExId];
+        return next;
+      });
+
+      Alert.alert(t("log.setAsDefaultDone"));
+    } catch (err) {
+      console.error("Failed to set alternative as default:", err);
+      Alert.alert("Error", String(err));
+    }
   }
 
   function dayKeyForIndex(idx: number) { return `day_${idx + 1}`; }
@@ -840,6 +871,7 @@ export default function Logg() {
     );
     await setSettingAsync("activeWorkoutId", id);
     setActiveWorkoutId(id);
+    restTimer.setActiveWorkoutId(id); // Show floating timer
     setWorkoutStartedAt(startedAt);
     setWorkoutSets([]);
     setWorkoutNotes("");
@@ -864,8 +896,48 @@ export default function Logg() {
         }
       }
     }
+    // ── Volume PRs (session-total per exercise) ──
+    const volumeByExercise: Record<string, number> = {};
+    for (const s of nonWarmup) {
+      const exId = s.exercise_id ?? s.exercise_name;
+      const isBw = isBodyweight(exId);
+      const effectiveWeight = isBw && s.est_total_load_kg != null ? s.est_total_load_kg : (s.weight ?? 0);
+      const perSideMultiplier = isPerSideExercise(exId) ? 2 : 1;
+      volumeByExercise[exId] = (volumeByExercise[exId] ?? 0) + effectiveWeight * (s.reps ?? 0) * perSideMultiplier;
+    }
+    const dateOnly = isoDateOnly();
+    const volumePrs: string[] = [];
+    const updatedPrRecords = { ...prRecords };
+    for (const [exId, sessionVolume] of Object.entries(volumeByExercise)) {
+      const vol = round1(sessionVolume);
+      const current = prRecords[exId]?.volume;
+      if (!current || vol > (current.value ?? 0)) {
+        // Check baseline — skip banner if this is the very first session for this exercise
+        let isBaseline = false;
+        if (!prRecords[exId]?.heaviest && !prRecords[exId]?.e1rm && !current) {
+          try {
+            const prior = getDb().getFirstSync<{ c: number }>(
+              `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND (s.is_warmup IS NULL OR s.is_warmup = 0) AND w.id != ? LIMIT 1`,
+              [exId, activeWorkoutId ?? ""]
+            );
+            isBaseline = !(prior && prior.c > 0);
+          } catch {}
+        }
+        const record: PrRecord = { value: vol, date: dateOnly, reps: null, weight: null, setId: null };
+        updatedPrRecords[exId] = { ...updatedPrRecords[exId], volume: record };
+        try {
+          await getDb().runAsync(
+            `INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'volume', ?, NULL, NULL, NULL, ?, ?)`,
+            [exId, vol, dateOnly, programId]
+          );
+        } catch {}
+        if (!isBaseline) volumePrs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(vol))} ${wu.unitLabel()}`);
+      }
+    }
+    setPrRecords(updatedPrRecords);
+
     const prs: string[] = [];
-    for (const [exId, rec] of Object.entries(prRecords)) {
+    for (const [exId, rec] of Object.entries(updatedPrRecords)) {
       if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
     }
 
@@ -876,6 +948,7 @@ export default function Logg() {
       exercises: exerciseIds.size,
       topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
       prs,
+      volumePrs,
     });
 
     try {
@@ -900,7 +973,9 @@ export default function Logg() {
       } catch {}
     }
     await setSettingAsync("activeWorkoutId", "");
+    await setSettingAsync("selectedAlternatives", "").catch(() => {});
     setActiveWorkoutId(null);
+    restTimer.setActiveWorkoutId(null); // Hide floating timer
     setWorkoutStartedAt(null);
     setWorkoutElapsedSec(0);
     setWorkoutSets([]);
@@ -916,9 +991,9 @@ export default function Logg() {
       await saveWorkoutAsTemplate(activeWorkoutId, name);
       setSaveTemplateOpen(false);
       setTemplateName("");
-      Alert.alert(t("templates.saved") || "Saved", t("templates.savedMsg") || "Template saved successfully.");
+      Alert.alert(t("templates.saved"), t("templates.savedMsg"));
     } catch {
-      Alert.alert(t("common.error"), t("templates.saveFailed") || "Could not save template.");
+      Alert.alert(t("common.error"), t("templates.saveFailed"));
     }
   }
 
@@ -935,8 +1010,8 @@ export default function Logg() {
     // For now we just close the picker - the template data is available via template.exercises
     // The exercises in the template match the program blocks already loaded
     Alert.alert(
-      t("templates.loaded") || "Template Loaded",
-      `${template.name}: ${template.exercises.length} ${t("templates.exercises", { count: template.exercises.length }) || "exercises"}`
+      t("templates.loaded"),
+      `${template.name}: ${template.exercises.length} ${t("templates.exercises", { count: template.exercises.length })}`
     );
   }
 
@@ -987,7 +1062,7 @@ export default function Logg() {
     setWorkoutSets((prev) => [...prev, row]);
     flashSetRow(row.id);
     fireHapticLight();
-    startRestTimer(restSeconds);
+    restTimer.startRestTimer(restTimer.getRestForExercise(exId));
     Keyboard.dismiss();
 
     if (!isWarmup) {
@@ -995,7 +1070,6 @@ export default function Logg() {
       const dateOnly = row.created_at ? row.created_at.slice(0, 10) : isoDateOnly();
       const prWeight = isBw && row.est_total_load_kg != null ? row.est_total_load_kg : weight;
       const e1rm = round1(epley1RM(prWeight, reps));
-      const volume = round1(prWeight * reps);
       const current = prRecords[exId] ?? {};
       const nextMap: Partial<Record<PrType, PrRecord>> = { ...current };
       const messages: string[] = [];
@@ -1019,11 +1093,6 @@ export default function Logg() {
         nextMap.e1rm = { value: e1rm, date: dateOnly, reps, weight: prWeight, setId: row.id };
         if (!isBaseline) messages.push(t("log.newE1rm", { weight: formatWeight(wu.toDisplay(e1rm)) }));
       }
-      if (!current.volume || volume > (current.volume.value ?? 0)) {
-        nextMap.volume = { value: volume, date: dateOnly, reps, weight: prWeight, setId: row.id };
-        if (!isBaseline) messages.push(t("log.newVolume", { weight: formatWeight(wu.toDisplay(volume)) }));
-      }
-
       try {
         const db = getDb();
         if (nextMap.heaviest && (!current.heaviest || nextMap.heaviest.value !== current.heaviest.value)) {
@@ -1031,9 +1100,6 @@ export default function Logg() {
         }
         if (nextMap.e1rm && (!current.e1rm || nextMap.e1rm.value !== current.e1rm.value)) {
           await db.runAsync(`INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'e1rm', ?, ?, ?, ?, ?, ?)`, [exId, nextMap.e1rm.value, reps, prWeight, row.id, dateOnly, programId]);
-        }
-        if (nextMap.volume && (!current.volume || nextMap.volume.value !== current.volume.value)) {
-          await db.runAsync(`INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'volume', ?, ?, ?, ?, ?, ?)`, [exId, nextMap.volume.value, reps, prWeight, row.id, dateOnly, programId]);
         }
       } catch {}
 
@@ -1067,7 +1133,7 @@ export default function Logg() {
     setUndoSet({ row, exerciseId: exId, prSetId: row.id });
     setUndoVisible(true);
 
-    if (restEnabled) startRestTimer(restSeconds);
+    if (restTimer.restEnabled) restTimer.startRestTimer(restTimer.getRestForExercise(exId));
   }
 
   async function addSetForSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
@@ -1147,7 +1213,6 @@ export default function Logg() {
     ]);
   }
 
-  const restLabel = restEnabled ? mmss(restRemaining) : t("log.restOff");
   const quickExerciseId = focusedExerciseId ?? exerciseIds[0];
 
   function completeOnboarding() {
@@ -1165,12 +1230,15 @@ export default function Logg() {
     onAddSetMultiple: addSetMultiple,
     onEditSet: openEditSet,
     onDeleteSet: deleteSet,
-    onFocusExercise: (exId: string) => focusExercise(exId),
+    onFocusExercise: (exId: string) => {
+      focusExercise(exId);
+      restTimer.setFocusedExerciseId(exId);
+    },
     onOpenAltPicker: openAltPicker,
-    onRestToggle: () => {
-      if (!restEnabled) return;
-      if (restRunning) stopRestTimer();
-      else startRestTimer(restSeconds);
+    onSetAsDefault: handleSetAlternativeAsDefault,
+    onActivateExercise: (exId: string) => {
+      focusExercise(exId);
+      restTimer.setFocusedExerciseId(exId);
     },
     onExerciseNoteChange: (exId: string, note: string) => {
       setExerciseNotes((prev) => ({ ...prev, [exId]: note }));
@@ -1184,7 +1252,20 @@ export default function Logg() {
   };
 
   if (!ready || !program || !dayPlan) {
-    return <AppLoading />;
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar
+            title={t("log.title")}
+            subtitle={t("log.readyForWorkout")}
+            left={<IconButton icon="menu" onPress={openDrawer} />}
+          />
+          <SkeletonExerciseCard />
+          <SkeletonExerciseCard />
+          <SkeletonExerciseCard />
+        </ScrollView>
+      </Screen>
+    );
   }
 
   return (
@@ -1225,7 +1306,7 @@ export default function Logg() {
                 {activeWorkoutId ? (
                   <IconButton icon="share" onPress={handleShareWorkout} />
                 ) : null}
-                <IconButton icon="settings" onPress={() => setRestSettingsOpen(true)} />
+                <IconButton icon="settings" onPress={() => restTimer.setRestSettingsOpen(true)} />
               </View>
             }
           />
@@ -1264,15 +1345,17 @@ export default function Logg() {
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.duration")}</Text>
                 <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>{mmss(workoutElapsedSec)}</Text>
               </View>
+            </View>
+            <View style={{ marginTop: 12 }}>
               {activeWorkoutId ? (
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <Btn label={t("log.endWorkout")} onPress={endWorkout} tone="danger" />
-                  <Btn label={t("templates.saveAsTemplate") || "Save Template"} onPress={() => { setTemplateName(""); setSaveTemplateOpen(true); }} />
+                  <Btn label={t("templates.save")} onPress={() => { setTemplateName(""); setSaveTemplateOpen(true); }} />
                 </View>
               ) : (
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <Btn label={t("log.startWorkout")} onPress={startWorkout} tone="accent" />
-                  <Btn label={t("templates.title") || "Templates"} onPress={() => setTemplatePickerOpen(true)} />
+                  <Btn label={t("templates.title")} onPress={() => setTemplatePickerOpen(true)} />
                 </View>
               )}
             </View>
@@ -1335,9 +1418,6 @@ export default function Logg() {
                     currentSetType={setTypes[exId] ?? "normal"}
                     exerciseNote={exerciseNotes[exId] ?? ""}
                     isFocused={quickExerciseId === exId}
-                    restEnabled={restEnabled}
-                    restRunning={restRunning}
-                    restLabel={restLabel}
                     lastAddedSetId={lastAddedSetId}
                     lastAddedAnim={lastAddedAnim}
                     onLayout={(e) => {
@@ -1379,9 +1459,6 @@ export default function Logg() {
                   exerciseNoteA={exerciseNotes[block.a] ?? ""}
                   exerciseNoteB={exerciseNotes[block.b] ?? ""}
                   focusedExerciseId={quickExerciseId}
-                  restEnabled={restEnabled}
-                  restRunning={restRunning}
-                  restLabel={restLabel}
                   lastAddedSetId={lastAddedSetId}
                   lastAddedAnim={lastAddedAnim}
                   nextLabel={nextLabel}
@@ -1408,13 +1485,15 @@ export default function Logg() {
         alternativeIds={altPickerBase ? [altPickerBase, ...(alternatives[activeDayIndex]?.[altPickerBase] ?? [])] : []}
         resolvedExId={altPickerBase ? resolveSelectedExId(altPickerBase) : null}
         onChoose={chooseAlternative}
+        onSetDefault={handleSetAlternativeAsDefault}
+        onCreateCustom={handleCreateCustomFromAlt}
         lastSets={lastSets}
       />
 
       {/* Day Picker Modal */}
       <Modal visible={dayPickerOpen} transparent animationType="fade" onRequestClose={() => setDayPickerOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
-          <View style={{
+        <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setDayPickerOpen(false)}>
+          <View onStartShouldSetResponder={() => true} style={{
             backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
             borderRadius: theme.radius.xl, padding: 18, gap: 14,
             shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
@@ -1431,13 +1510,13 @@ export default function Logg() {
               <Btn label={t("common.close")} onPress={() => setDayPickerOpen(false)} />
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* Edit Set Modal */}
       <Modal visible={editSetOpen} transparent animationType="fade" onRequestClose={() => setEditSetOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
-          <View style={{
+        <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setEditSetOpen(false)}>
+          <View onStartShouldSetResponder={() => true} style={{
             backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
             borderRadius: theme.radius.xl, padding: 18, gap: 14,
             shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
@@ -1458,41 +1537,21 @@ export default function Logg() {
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TextField value={editWeight} onChangeText={setEditWeight} placeholder={wu.unitLabel().toLowerCase()} placeholderTextColor={theme.muted} keyboardType="numeric"
-                style={{ flex: 1, color: theme.text, backgroundColor: theme.glass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, padding: 10, fontFamily: theme.mono }} />
+                style={{ flex: 1, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
               <TextField value={editReps} onChangeText={setEditReps} placeholder="reps" placeholderTextColor={theme.muted} keyboardType="numeric"
-                style={{ flex: 1, color: theme.text, backgroundColor: theme.glass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, padding: 10, fontFamily: theme.mono }} />
+                style={{ flex: 1, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
               <TextField value={editRpe} onChangeText={setEditRpe} placeholder="rpe" placeholderTextColor={theme.muted} keyboardType="numeric"
-                style={{ width: 70, color: theme.text, backgroundColor: theme.glass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, padding: 10, fontFamily: theme.mono }} />
+                style={{ width: 80, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
             </View>
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Btn label={t("common.save")} onPress={saveEditSet} tone="accent" />
               <Btn label={t("common.cancel")} onPress={() => setEditSetOpen(false)} />
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
-      {/* Rest Settings Modal */}
-      <RestSettingsModal
-        visible={restSettingsOpen}
-        onClose={() => setRestSettingsOpen(false)}
-        restEnabled={restEnabled}
-        onRestEnabledChange={(v) => { setRestEnabled(v); setSettingAsync("restEnabled", v ? "1" : "0").catch(() => {}); if (!v) stopRestTimer(); }}
-        restHaptics={restHaptics}
-        onRestHapticsChange={(v) => { setRestHaptics(v); setSettingAsync("restHaptics", v ? "1" : "0").catch(() => {}); }}
-        restVibrate={restVibrate}
-        onRestVibrateChange={(v) => { setRestVibrate(v); setSettingAsync("restVibrate", v ? "1" : "0").catch(() => {}); }}
-        restSeconds={restSeconds}
-        onRestSecondsChange={(sec) => { setRestSeconds(sec); setSettingAsync("restSeconds", String(sec)).catch(() => {}); }}
-        recommendedSeconds={recommendedForFocus?.seconds ?? null}
-        onUseRecommended={() => {
-          if (recommendedForFocus) {
-            setRestSeconds(recommendedForFocus.seconds);
-            setSettingAsync("restSeconds", String(recommendedForFocus.seconds)).catch(() => {});
-          }
-        }}
-        onReset={stopRestTimer}
-      />
+      {/* Rest Settings Modal is now rendered by FloatingRestTimer in _layout.tsx */}
 
       {/* Plate Calculator Modal */}
       <PlateCalcModal
@@ -1504,7 +1563,7 @@ export default function Logg() {
       {/* Undo Toast */}
       <UndoToast
         visible={undoVisible}
-        message={t("log.setDeleted")}
+        message={t("log.setAdded")}
         undoLabel={t("log.undo")}
         onUndo={handleUndo}
         onDismiss={() => { setUndoVisible(false); setUndoSet(null); }}
@@ -1519,6 +1578,10 @@ export default function Logg() {
           points={achievementToast.achievement.points}
           tier={achievementToast.achievement.tier}
           onDismiss={() => setAchievementToast({ visible: false, achievement: null })}
+          onTap={() => {
+            const achId = achievementToast.achievement?.id;
+            router.push({ pathname: "/achievements", params: achId ? { scrollTo: achId } : {} });
+          }}
         />
       )}
 
@@ -1531,20 +1594,20 @@ export default function Logg() {
 
       {/* Save as Template Modal */}
       <Modal visible={saveTemplateOpen} transparent animationType="fade" onRequestClose={() => setSaveTemplateOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
-          <View style={{
+        <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setSaveTemplateOpen(false)}>
+          <View onStartShouldSetResponder={() => true} style={{
             backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
             borderRadius: theme.radius.xl, padding: 18, gap: 14,
             shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
           }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
-              {t("templates.saveAsTemplate") || "Save as Template"}
+              {t("templates.save")}
             </Text>
             <TextField
               value={templateName}
               onChangeText={setTemplateName}
-              placeholder={t("templates.namePlaceholder") || "Template name"}
+              placeholder={t("templates.namePlaceholder")}
               placeholderTextColor={theme.muted}
               style={{
                 color: theme.text,
@@ -1561,7 +1624,7 @@ export default function Logg() {
               <Btn label={t("common.cancel")} onPress={() => setSaveTemplateOpen(false)} />
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* Finish Workout Summary Modal */}
@@ -1637,6 +1700,26 @@ export default function Logg() {
                   {t("log.prsThisSession")}
                 </Text>
                 {finishSummary.prs.map((pr, i) => (
+                  <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
+                    {pr}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {finishSummary?.volumePrs.length ? (
+              <View style={{
+                borderWidth: 1,
+                borderColor: theme.warn ?? "#F97316",
+                borderRadius: theme.radius.lg,
+                backgroundColor: theme.isDark ? "rgba(249, 115, 22, 0.1)" : "rgba(249, 115, 22, 0.06)",
+                padding: 12,
+                gap: 4,
+              }}>
+                <Text style={{ color: theme.warn ?? "#F97316", fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
+                  {t("log.volumePrsThisSession")}
+                </Text>
+                {finishSummary.volumePrs.map((pr, i) => (
                   <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
                     {pr}
                   </Text>

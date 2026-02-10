@@ -4,8 +4,8 @@
 // Lazy import to avoid circular dependency during db initialization
 function getDbHelpers() {
   // Dynamic import happens at runtime, not module load time
-  const { ensureDb, getDb } = require("./db");
-  return { ensureDb, getDb };
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require("./db") as typeof import("./db");
 }
 
 export type AchievementCategory =
@@ -488,7 +488,7 @@ async function getPRCount(): Promise<number> {
 async function checkWeightThreshold(exerciseId: string, threshold: number): Promise<boolean> {
   const db = getDbHelpers().getDb();
   const row = await db.getFirstAsync<{ max_weight: number | null }>(
-    `SELECT MAX(weight) as max_weight FROM sets WHERE exercise_id = ? AND is_warmup IS NOT 1`,
+    `SELECT MAX(weight) as max_weight FROM sets WHERE exercise_id = ? AND (is_warmup = 0 OR is_warmup IS NULL)`,
     [exerciseId]
   );
   return (row?.max_weight ?? 0) >= threshold;

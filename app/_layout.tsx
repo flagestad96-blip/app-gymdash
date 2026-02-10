@@ -6,8 +6,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, Text, View } from "react-native";
-import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
+import { Pressable, Text, View, InteractionManager } from "react-native";
+import { useFonts, Manrope_400Regular, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
 import { initDb, getSettingAsync } from "../src/db";
 import { ThemeProvider, useTheme, setThemeMode, type ThemeMode } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
@@ -16,6 +16,8 @@ import GymdashLogo from "../src/components/GymdashLogo";
 import ProgramStore from "../src/programStore";
 import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
+import { RestTimerProvider } from "../src/restTimerContext";
+import FloatingRestTimer from "../src/components/FloatingRestTimer";
 
 type DrawerItem = {
   label: string;
@@ -129,10 +131,10 @@ function CustomDrawerContent(props: any) {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    Manrope_400Regular,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
   });
 
   if (!fontsLoaded) return null;
@@ -204,30 +206,53 @@ function RootLayoutInner() {
     return () => clearTimeout(t);
   }, [appReady, minPassed]);
 
+  // Background preload tab data after app is ready (low priority)
+  useEffect(() => {
+    if (!appReady) return;
+
+    const task = InteractionManager.runAfterInteractions(async () => {
+      try {
+        // Preload active program and its data
+        const pmRaw = await getSettingAsync("programMode");
+        const pm = pmRaw === "back" ? "back" : "normal";
+        const activeProgram = await ProgramStore.getActiveProgram(pm);
+        await ProgramStore.getAlternativesForProgram(activeProgram.id);
+        // This warm-loads the data into memory for faster tab opens
+      } catch {
+        // Silent fail - tabs will load their own data
+      }
+    });
+
+    return () => task.cancel();
+  }, [appReady]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style={theme.isDark ? "light" : "dark"} backgroundColor="transparent" translucent />
-        <View style={{ flex: 1, backgroundColor: theme.bg }}>
-          <AppBackground />
-          {appReady ? (
-            <Drawer
-              drawerContent={(props) => <CustomDrawerContent {...props} />}
-              screenOptions={{
-                headerShown: false,
-                drawerStyle: { backgroundColor: theme.isDark ? "rgba(13, 11, 26, 0.92)" : "rgba(248, 245, 255, 0.92)" },
-                sceneStyle: { backgroundColor: "transparent" },
-              }}
-            >
-              <Drawer.Screen name="(tabs)" />
-            </Drawer>
-          ) : null}
-          {showSplash && !appReady ? (
-            <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
-              <SplashScreen fadeOut={fadeOut} onFadeOutEnd={() => setShowSplash(false)} />
-            </View>
-          ) : null}
-        </View>
+        <RestTimerProvider>
+          <StatusBar style={theme.isDark ? "light" : "dark"} backgroundColor="transparent" translucent />
+          <View style={{ flex: 1, backgroundColor: theme.bg }}>
+            <AppBackground />
+            {appReady ? (
+              <Drawer
+                drawerContent={(props) => <CustomDrawerContent {...props} />}
+                screenOptions={{
+                  headerShown: false,
+                  drawerStyle: { backgroundColor: theme.isDark ? "rgba(13, 11, 26, 0.92)" : "rgba(248, 245, 255, 0.92)" },
+                  sceneStyle: { backgroundColor: "transparent" },
+                }}
+              >
+                <Drawer.Screen name="(tabs)" />
+              </Drawer>
+            ) : null}
+            {appReady ? <FloatingRestTimer /> : null}
+            {showSplash && !appReady ? (
+              <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
+                <SplashScreen fadeOut={fadeOut} onFadeOutEnd={() => setShowSplash(false)} />
+              </View>
+            ) : null}
+          </View>
+        </RestTimerProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -1,5 +1,6 @@
 // src/i18n.ts — Internationalization foundation
 import React, { createContext, useContext, useState, useCallback } from "react";
+import * as Localization from "expo-localization";
 import { getSettingAsync, setSettingAsync } from "./db";
 
 export type Locale = "nb" | "en";
@@ -65,7 +66,7 @@ const nb: TranslationMap = {
   "home.andMore": "+ {count} til",
   "home.streak": "STREAK",
   "home.total": "TOTALT",
-  "home.prType.heaviest": "Tungeste",
+  "home.prType.heaviest": "Tyngste",
   "home.prType.e1rm": "e1RM",
   "home.prType.volume": "Volum",
 
@@ -83,6 +84,7 @@ const nb: TranslationMap = {
   "log.deleteSet": "Slett sett",
   "log.deleteSetConfirm": "Slette dette settet?",
   "log.setDeleted": "Sett slettet",
+  "log.setAdded": "Sett lagt til",
   "log.undo": "Angre",
   "log.weight": "Vekt",
   "log.plateCalc": "Skivefordeling",
@@ -148,6 +150,11 @@ const nb: TranslationMap = {
   "log.nextLabel": "Neste: {label}",
   "log.chooseAlternative": "Velg alternativ",
   "log.selected": "\u2713 Valgt",
+  "log.setAsDefault": "Sett som standard",
+  "log.setAsDefaultDone": "Standard oppdatert",
+  "log.createNew": "+ Opprett ny",
+  "log.exerciseName": "Navn på øvelse",
+  "log.selectEquipment": "Utstyr",
   "log.lowerBack": "\u26a0\ufe0f Korsrygg",
   "log.backFriendlyTag": "\u2713 Ryggvennlig",
   "log.rpe6": "Lett \u2013 2\u20133 reps i reserve",
@@ -160,6 +167,7 @@ const nb: TranslationMap = {
   "log.workoutComplete": "\u00d8kt fullf\u00f8rt!",
   "log.topE1rm": "Topp e1RM",
   "log.prsThisSession": "PRs denne \u00f8kten",
+  "log.volumePrsThisSession": "Volum-PRs denne \u00f8kten",
   "log.chooseDay": "Velg dag",
   "log.editSet": "Rediger sett",
   "log.restTimerTitle": "Rest timer",
@@ -169,6 +177,16 @@ const nb: TranslationMap = {
   "log.restLength": "Lengde (sekunder)",
   "log.useRecommended": "Bruk anbefalt ({seconds}s)",
   "log.reset": "Reset",
+  "log.restForExercise": "Hvile for {name}",
+  "log.restUseDefault": "Bruk standard",
+  "log.restAddPreset": "Legg til",
+  "log.restRemovePreset": "Fjern forhåndsvalg?",
+  "log.restCustomSeconds": "Sekunder",
+  "log.restCompound": "Flerleddsøvelse",
+  "log.restIsolation": "Isolasjonsøvelse",
+  "log.restExerciseType": "{type} — anbefalt {seconds}s",
+  "log.each": "hver",
+  "log.perSideHint": "Volum doblet (per side)",
   "log.progression.nextIncrease": "Neste \u00f8kt: \u00f8k vekt litt",
   "log.progression.reduceWeight": "Vurder \u00e5 redusere vekt",
   "log.progression.buildReps": "Bygg reps innen range",
@@ -203,7 +221,11 @@ const nb: TranslationMap = {
   "program.noExercises": "Ingen \u00f8velser.",
   "program.noResults": "Ingen treff.",
   "program.export": "Eksporter",
-  "program.import": "Importer",
+  "program.copyText": "Kopier som tekst",
+  "program.import": "Lim inn program",
+  "program.shareDesc": "Del programmet ditt med andre, eller lim inn et program du har fått.",
+  "program.exportHint": "Kopier teksten under og send den til noen. De kan lime den inn for å få programmet ditt.",
+  "program.importHint": "Lim inn teksten du har fått fra noen som har delt programmet sitt.",
   "program.name": "Navn",
   "program.invalidJson": "Ugyldig JSON",
   "program.invalidFormat": "Ugyldig format",
@@ -227,8 +249,8 @@ const nb: TranslationMap = {
   "program.remove": "Fjern",
   "program.targetBtn": "M\u00e5l",
   "program.clear": "T\u00f8m",
-  "program.exportProgram": "Eksporter program",
-  "program.importProgram": "Importer program",
+  "program.exportProgram": "Del program",
+  "program.importProgram": "Motta program",
   "program.chooseExerciseB": "Velg \u00f8velse B (A er {name}).",
   "program.mustHaveName": "Program m\u00e5 ha name",
   "program.mustHave1to10Days": "Program m\u00e5 ha 1\u201310 dager",
@@ -247,6 +269,14 @@ const nb: TranslationMap = {
   "program.deleteCustomConfirm": "Slette denne egne \u00f8velsen?",
   "program.customExInUse": "Denne \u00f8velsen brukes i programmer.",
   "program.autoProgress": "Auto-progresjon",
+  "program.periodization": "Periodisering",
+  "program.enablePeriodization": "Aktiver periodisering",
+  "program.cycleLength": "Sykluslengde (3–8 uker)",
+  "program.deloadWeekNumber": "Deload-uke nummer",
+  "program.deloadIntensity": "Deload-intensitet %",
+  "program.week": "Uke",
+  "program.shareFile": "Del som fil",
+  "program.exportFailed": "Eksport feilet.",
 
   // ── Progression ──
   "progression.suggestions": "Progresjonsforslag",
@@ -277,7 +307,7 @@ const nb: TranslationMap = {
   "analysis.bestE1rm": "Beste est. 1RM",
   "analysis.avgReps": "Snitt reps",
   "analysis.setsInPeriod": "Sett i perioden",
-  "analysis.prHeaviest": "Tungeste",
+  "analysis.prHeaviest": "Tyngste",
   "analysis.prE1rm": "e1RM",
   "analysis.prVolume": "Volum-sett",
   "analysis.tooLittle": "for lite",
@@ -511,9 +541,35 @@ const nb: TranslationMap = {
   "achievements.toast": "Prestasjon l\u00e5st opp!",
   "achievements.prCabinet": "PR-KABINETT",
   "achievements.noPrs": "Ingen PRs registrert enn\u00e5.",
-  "achievements.prHeaviest": "Tungeste",
+  "achievements.prHeaviest": "Tyngste",
   "achievements.prE1rm": "e1RM",
   "achievements.prVolume": "Volum",
+
+  // ── Onboarding ──
+  "onboarding.back": "Tilbake",
+  "onboarding.next": "Neste",
+  "onboarding.skip": "Hopp over",
+  "onboarding.start": "Kom i gang!",
+  "onboarding.welcome.title": "Velkommen til GymDash",
+  "onboarding.welcome.body": "Din personlige treningsapp. Her kan du lage programmer, logge treningsøkter, følge progresjon og mye mer. La oss vise deg rundt!",
+  "onboarding.program.title": "Lag et treningsprogram",
+  "onboarding.program.body": "Gå til Program-fanen og lag ditt eget program. Velg antall dager, legg til øvelser, og sett mål for sett og reps. Du kan ha flere programmer og bytte mellom dem.",
+  "onboarding.logging.title": "Logg treningsøkten",
+  "onboarding.logging.body": "Trykk Start økt i Logg-fanen. Skriv inn vekt og reps for hvert sett. Appen husker forrige økt og foreslår vekt automatisk. PR-er markeres med gull!",
+  "onboarding.rest.title": "Hviletimer",
+  "onboarding.rest.body": "Hviletimeren starter automatisk etter hvert sett. Flerleddsøvelser får 2:30, isolasjonsøvelser 1:30. Du kan tilpasse hviletid per øvelse og legge til egne forhåndsvalg i innstillingene.",
+  "onboarding.alternatives.title": "Bytt øvelser",
+  "onboarding.alternatives.body": "Under trening kan du bytte til en alternativ øvelse ved å trykke på bytteknappen. Alle øvelser har foreslåtte alternativer. Settene du har logget blir bevart.",
+  "onboarding.body.title": "Kropp og kroppsvekt",
+  "onboarding.body.body": "Legg inn kroppsvekten din i Kropp-fanen. Bodyweight-øvelser (pullups, dips, etc.) bruker dette automatisk for å beregne total belastning og e1RM.",
+  "onboarding.analysis.title": "Analyse og kalender",
+  "onboarding.analysis.body": "Følg progresjonen din over tid i Analyse-fanen. Se styrkenivå, volumtrender og muskelbalanse. Kalenderen viser treningsdagene dine og lar deg markere hviledager.",
+  "onboarding.achievements.title": "Prestasjoner",
+  "onboarding.achievements.body": "Lås opp prestasjoner ved å trene! Fra første økt til 200 kg markløft — det finnes mål for alle nivåer. Sjekk Prestasjoner-fanen for å se hva du kan oppnå.",
+  "onboarding.backup.title": "Backup og deling",
+  "onboarding.backup.body": "Ta backup av all data i Innstillinger. Du kan eksportere som fil eller tekst, og importere på en annen enhet. Du kan også dele programmer med venner.",
+  "onboarding.ready.title": "Klar til å trene!",
+  "onboarding.ready.body": "Det var alt! Start med å lage et program, eller bare trykk Start økt for å begynne å logge. Du finner denne guiden igjen i Innstillinger. Lykke til!",
 
   // ── Patch Notes ──
   "patchNotes.title": "Nyheter",
@@ -521,6 +577,21 @@ const nb: TranslationMap = {
   "patchNotes.new": "Nytt",
   "patchNotes.improved": "Forbedret",
   "patchNotes.fix": "Fiks",
+  "patchNotes.0_9_1.localeDetection": "Automatisk språkdeteksjon — appen starter på norsk eller engelsk basert på enheten",
+  "patchNotes.0_9_1.weightUnitDetection": "Automatisk vektenhet — KG eller LBS basert på land/region",
+  "patchNotes.0_9_1.perSideExercises": "Per-side øvelser — volum beregnes riktig for unilaterale øvelser (×2)",
+  "patchNotes.0_9_1.skeletonLoading": "Raskere tab-bytter — header vises umiddelbart med animerte plassholdere",
+  "patchNotes.0_9_1.backgroundPreload": "Bakgrunns-forhåndsinnlasting av programdata for raskere oppstart",
+  "patchNotes.0_9_0.perExerciseRest": "Hvile per øvelse — flerleddsøvelser 2:30, isolasjonsøvelser 1:15",
+  "patchNotes.0_9_0.customRestPresets": "Egendefinerte hvile-presets — legg til dine favoritt-tidspunkter",
+  "patchNotes.0_9_0.achievementNav": "Trykk på prestasjon-toast for å navigere til prestasjonssiden",
+  "patchNotes.0_9_0.onboarding": "Ny 10-stegs introduksjon som forklarer alle app-funksjoner",
+  "patchNotes.0_9_0.exportImport": "Brukervennlig import/eksport — enklere tekst og beskrivelser",
+  "patchNotes.0_9_0.modalScroll": "Scrollbar i eksport/import/backup-modaler for stort innhold",
+  "patchNotes.0_9_0.exerciseSwap": "Fikset at øvelsesbytte ble tilbakestilt ved tab-navigasjon",
+  "patchNotes.0_9_0.missingI18n": "Fikset manglende oversettelser (periodisering, deling, maler m.m.)",
+  "patchNotes.0_9_0.calendarArrows": "Fikset visning av månedsnavigasjon-piler i kalenderen",
+  "patchNotes.0_9_0.tyngsteTypo": "Fikset skrivefeil «Tungeste» → «Tyngste»",
   "patchNotes.1_0_0.backImpact": "Ryggbelastnings-system \u2014 r\u00f8d/gul/gr\u00f8nn indikator p\u00e5 alle \u00f8velser",
   "patchNotes.1_0_0.rpeHelper": "RPE-hjelper \u2014 hold inne RPE-feltet for skala 6\u201310 med beskrivelser",
   "patchNotes.1_0_0.finishSummary": "Oppsummeringsmodal n\u00e5r \u00f8kten avsluttes (varighet, sett, volum, PRs)",
@@ -574,6 +645,13 @@ const nb: TranslationMap = {
   "back.red": "H\u00f8y ryggbelastning",
   "back.yellow": "Moderat ryggbelastning",
   "back.green": "Ryggvennlig",
+  "back.statusTitle": "RYGG-STATUS",
+  "back.statusGreen": "\ud83d\udfe2 Bra",
+  "back.statusGreenHint": "Normal \u00f8kt",
+  "back.statusYellow": "\ud83d\udfe1 Litt stram",
+  "back.statusYellowHint": "Vurder ryggvennlig",
+  "back.statusRed": "\ud83d\udd34 Ikke bra",
+  "back.statusRedHint": "Ryggvennlig + ingen triggere",
 
   // ── Social Sharing (Tier 4) ──
   "share.workout": "Del \u00f8kt",
@@ -594,7 +672,9 @@ const nb: TranslationMap = {
   "templates.lastUsed": "Sist brukt: {date}",
   "templates.saved": "Mal lagret!",
   "templates.loaded": "Mal lastet inn.",
-  "templates.namePlaceholder": "Navn p\u00e5 mal...",
+  "templates.namePlaceholder": "Navn på mal...",
+  "templates.savedMsg": "Malen ble lagret.",
+  "templates.saveFailed": "Kunne ikke lagre mal.",
 
   // ── Periodization (Tier 5) ──
   "periodization.title": "Periodisering",
@@ -634,6 +714,7 @@ const nb: TranslationMap = {
   "analysis.bodyComposition": "KROPPSSAMMENSETNING",
   "analysis.weightTrend": "Vektutvikling (siste 90 dager)",
   "analysis.muscleBalance": "MUSKELBALANSE",
+  "analysis.balanceHint": "% av optimalt ukentlig settvolum",
   "analysis.noBodyweight": "Ingen vektdata. Legg inn i Kropp.",
   "analysis.strengthLevel": "Niv\u00e5",
   "analysis.e1rmLabel": "e1RM",
@@ -736,6 +817,7 @@ const en: TranslationMap = {
   "log.deleteSet": "Delete set",
   "log.deleteSetConfirm": "Delete this set?",
   "log.setDeleted": "Set deleted",
+  "log.setAdded": "Set added",
   "log.undo": "Undo",
   "log.weight": "Weight",
   "log.plateCalc": "Plate breakdown",
@@ -801,6 +883,11 @@ const en: TranslationMap = {
   "log.nextLabel": "Next: {label}",
   "log.chooseAlternative": "Choose alternative",
   "log.selected": "\u2713 Selected",
+  "log.setAsDefault": "Set as default",
+  "log.setAsDefaultDone": "Default updated",
+  "log.createNew": "+ Create new",
+  "log.exerciseName": "Exercise name",
+  "log.selectEquipment": "Equipment",
   "log.lowerBack": "\u26a0\ufe0f Lower back",
   "log.backFriendlyTag": "\u2713 Back-friendly",
   "log.rpe6": "Light \u2013 2\u20133 reps in reserve",
@@ -813,6 +900,7 @@ const en: TranslationMap = {
   "log.workoutComplete": "Workout Complete!",
   "log.topE1rm": "Top e1RM",
   "log.prsThisSession": "PRs this session",
+  "log.volumePrsThisSession": "Volume PRs this session",
   "log.chooseDay": "Choose day",
   "log.editSet": "Edit set",
   "log.restTimerTitle": "Rest timer",
@@ -822,6 +910,16 @@ const en: TranslationMap = {
   "log.restLength": "Duration (seconds)",
   "log.useRecommended": "Use recommended ({seconds}s)",
   "log.reset": "Reset",
+  "log.restForExercise": "Rest for {name}",
+  "log.restUseDefault": "Use default",
+  "log.restAddPreset": "Add",
+  "log.restRemovePreset": "Remove preset?",
+  "log.restCustomSeconds": "Seconds",
+  "log.restCompound": "Compound",
+  "log.restIsolation": "Isolation",
+  "log.restExerciseType": "{type} — recommended {seconds}s",
+  "log.each": "each",
+  "log.perSideHint": "Volume doubled (per side)",
   "log.progression.nextIncrease": "Next session: increase weight slightly",
   "log.progression.reduceWeight": "Consider reducing weight",
   "log.progression.buildReps": "Build reps within range",
@@ -856,7 +954,11 @@ const en: TranslationMap = {
   "program.noExercises": "No exercises.",
   "program.noResults": "No results.",
   "program.export": "Export",
-  "program.import": "Import",
+  "program.copyText": "Copy as text",
+  "program.import": "Paste program",
+  "program.shareDesc": "Share your program with others, or paste a program you received.",
+  "program.exportHint": "Copy the text below and send it to someone. They can paste it to get your program.",
+  "program.importHint": "Paste the text you received from someone who shared their program.",
   "program.name": "Name",
   "program.invalidJson": "Invalid JSON",
   "program.invalidFormat": "Invalid format",
@@ -880,8 +982,8 @@ const en: TranslationMap = {
   "program.remove": "Remove",
   "program.targetBtn": "Target",
   "program.clear": "Clear",
-  "program.exportProgram": "Export program",
-  "program.importProgram": "Import program",
+  "program.exportProgram": "Share program",
+  "program.importProgram": "Receive program",
   "program.chooseExerciseB": "Choose exercise B (A is {name}).",
   "program.mustHaveName": "Program must have a name",
   "program.mustHave1to10Days": "Program must have 1\u201310 days",
@@ -900,6 +1002,14 @@ const en: TranslationMap = {
   "program.deleteCustomConfirm": "Delete this custom exercise?",
   "program.customExInUse": "This exercise is used in programs.",
   "program.autoProgress": "Auto-Progression",
+  "program.periodization": "Periodization",
+  "program.enablePeriodization": "Enable periodization",
+  "program.cycleLength": "Cycle length (3–8 weeks)",
+  "program.deloadWeekNumber": "Deload week number",
+  "program.deloadIntensity": "Deload intensity %",
+  "program.week": "Week",
+  "program.shareFile": "Share as file",
+  "program.exportFailed": "Export failed.",
 
   // ── Progression ──
   "progression.suggestions": "Progression Suggestions",
@@ -1168,12 +1278,53 @@ const en: TranslationMap = {
   "achievements.prE1rm": "e1RM",
   "achievements.prVolume": "Volume",
 
+  // ── Onboarding ──
+  "onboarding.back": "Back",
+  "onboarding.next": "Next",
+  "onboarding.skip": "Skip",
+  "onboarding.start": "Let's go!",
+  "onboarding.welcome.title": "Welcome to GymDash",
+  "onboarding.welcome.body": "Your personal training app. Create programs, log workouts, track progression and more. Let us show you around!",
+  "onboarding.program.title": "Create a training program",
+  "onboarding.program.body": "Go to the Program tab and create your own program. Choose the number of days, add exercises, and set targets for sets and reps. You can have multiple programs and switch between them.",
+  "onboarding.logging.title": "Log your workout",
+  "onboarding.logging.body": "Tap Start Workout in the Log tab. Enter weight and reps for each set. The app remembers your last session and suggests weight automatically. PRs are highlighted in gold!",
+  "onboarding.rest.title": "Rest timer",
+  "onboarding.rest.body": "The rest timer starts automatically after each set. Compound exercises get 2:30, isolation exercises 1:30. You can customize rest time per exercise and add your own presets in the settings.",
+  "onboarding.alternatives.title": "Swap exercises",
+  "onboarding.alternatives.body": "During a workout you can swap to an alternative exercise by tapping the swap button. All exercises have suggested alternatives. Sets you've already logged are preserved.",
+  "onboarding.body.title": "Body and bodyweight",
+  "onboarding.body.body": "Enter your bodyweight in the Body tab. Bodyweight exercises (pull-ups, dips, etc.) use this automatically to calculate total load and e1RM.",
+  "onboarding.analysis.title": "Analysis and calendar",
+  "onboarding.analysis.body": "Track your progression over time in the Analysis tab. View strength levels, volume trends and muscle balance. The calendar shows your training days and lets you mark rest days.",
+  "onboarding.achievements.title": "Achievements",
+  "onboarding.achievements.body": "Unlock achievements by training! From your first workout to a 200 kg deadlift — there are goals for every level. Check the Achievements tab to see what you can unlock.",
+  "onboarding.backup.title": "Backup and sharing",
+  "onboarding.backup.body": "Back up all your data in Settings. You can export as a file or text, and import on another device. You can also share programs with friends.",
+  "onboarding.ready.title": "Ready to train!",
+  "onboarding.ready.body": "That's it! Start by creating a program, or just tap Start Workout to begin logging. You can find this guide again in Settings. Good luck!",
+
   // ── Patch Notes ──
   "patchNotes.title": "What's New",
   "patchNotes.whatsNew": "What's new in v{version}",
   "patchNotes.new": "New",
   "patchNotes.improved": "Improved",
   "patchNotes.fix": "Fix",
+  "patchNotes.0_9_1.localeDetection": "Auto language detection — app starts in Norwegian or English based on device",
+  "patchNotes.0_9_1.weightUnitDetection": "Auto weight unit — KG or LBS based on country/region",
+  "patchNotes.0_9_1.perSideExercises": "Per-side exercises — volume calculated correctly for unilateral exercises (×2)",
+  "patchNotes.0_9_1.skeletonLoading": "Faster tab switches — header shows immediately with animated placeholders",
+  "patchNotes.0_9_1.backgroundPreload": "Background preloading of program data for faster startup",
+  "patchNotes.0_9_0.perExerciseRest": "Per-exercise rest — compounds 2:30, isolations 1:15",
+  "patchNotes.0_9_0.customRestPresets": "Custom rest presets — add your favorite durations",
+  "patchNotes.0_9_0.achievementNav": "Tap achievement toast to navigate to achievements page",
+  "patchNotes.0_9_0.onboarding": "New 10-step onboarding explaining all app features",
+  "patchNotes.0_9_0.exportImport": "User-friendly import/export — simpler text and descriptions",
+  "patchNotes.0_9_0.modalScroll": "Scrollable export/import/backup modals for large content",
+  "patchNotes.0_9_0.exerciseSwap": "Fixed exercise swap resetting when switching tabs",
+  "patchNotes.0_9_0.missingI18n": "Fixed missing translations (periodization, sharing, templates, etc.)",
+  "patchNotes.0_9_0.calendarArrows": "Fixed month navigation arrows display in calendar",
+  "patchNotes.0_9_0.tyngsteTypo": "Fixed typo «Tungeste» → «Tyngste»",
   "patchNotes.1_0_0.backImpact": "Back impact system \u2014 red/yellow/green indicator on all exercises",
   "patchNotes.1_0_0.rpeHelper": "RPE helper \u2014 long-press RPE field for scale 6\u201310 with descriptions",
   "patchNotes.1_0_0.finishSummary": "Workout summary modal on finish (duration, sets, volume, PRs)",
@@ -1227,6 +1378,13 @@ const en: TranslationMap = {
   "back.red": "High back strain",
   "back.yellow": "Moderate back strain",
   "back.green": "Back-friendly",
+  "back.statusTitle": "BACK STATUS",
+  "back.statusGreen": "\ud83d\udfe2 Good",
+  "back.statusGreenHint": "Normal workout",
+  "back.statusYellow": "\ud83d\udfe1 A bit tight",
+  "back.statusYellowHint": "Consider back-friendly",
+  "back.statusRed": "\ud83d\udd34 Not good",
+  "back.statusRedHint": "Back-friendly + no triggers",
 
   // ── Social Sharing (Tier 4) ──
   "share.workout": "Share workout",
@@ -1248,6 +1406,8 @@ const en: TranslationMap = {
   "templates.saved": "Template saved!",
   "templates.loaded": "Template loaded.",
   "templates.namePlaceholder": "Template name...",
+  "templates.savedMsg": "Template saved successfully.",
+  "templates.saveFailed": "Could not save template.",
 
   // ── Periodization (Tier 5) ──
   "periodization.title": "Periodization",
@@ -1287,6 +1447,7 @@ const en: TranslationMap = {
   "analysis.bodyComposition": "BODY COMPOSITION",
   "analysis.weightTrend": "Weight trend (last 90 days)",
   "analysis.muscleBalance": "MUSCLE BALANCE",
+  "analysis.balanceHint": "% of optimal weekly set volume",
   "analysis.noBodyweight": "No weight data. Add in Body.",
   "analysis.strengthLevel": "Level",
   "analysis.e1rmLabel": "e1RM",
@@ -1316,7 +1477,7 @@ const en: TranslationMap = {
 const translations: Record<Locale, TranslationMap> = { nb, en };
 
 // ── State ──
-let currentLocale: Locale = "nb";
+let currentLocale: Locale = "en";
 let listeners: Array<() => void> = [];
 
 export function getLocale(): Locale {
@@ -1332,11 +1493,21 @@ export function setLocale(locale: Locale) {
 
 export async function loadLocale() {
   try {
-    const raw = await getSettingAsync("locale");
-    if (raw === "en" || raw === "nb") {
-      currentLocale = raw;
+    const saved = await getSettingAsync("locale");
+    if (saved === "en" || saved === "nb") {
+      currentLocale = saved;
+      return;
     }
-  } catch {}
+    // No saved setting - detect from device
+    const deviceLocale = Localization.getLocales()[0];
+    const languageCode = deviceLocale?.languageCode ?? "en";
+    // Default to Norwegian only if device language is Norwegian
+    currentLocale = languageCode === "nb" || languageCode === "no" ? "nb" : "en";
+    // Save the detected default so it persists
+    await setSettingAsync("locale", currentLocale);
+  } catch {
+    currentLocale = "en";
+  }
 }
 
 function subscribe(fn: () => void) {

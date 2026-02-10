@@ -11,9 +11,9 @@ import MuscleGroupBars, { MUSCLE_GROUPS, primaryMuscleGroups } from "../../src/c
 import { getStandard, getStandardExerciseIds, hasStandard, getTargetWeights, type StrengthLevel, type Gender } from "../../src/strengthStandards";
 import RadarChart, { type RadarDataPoint } from "../../src/components/charts/RadarChart";
 import { getGoalsForExercise, createGoal, deleteGoal, getCurrentValueForGoal, type ExerciseGoal, type GoalType } from "../../src/goals";
-import { displayNameFor, EXERCISES, searchExercises, resolveExerciseId, isBodyweight } from "../../src/exerciseLibrary";
+import { displayNameFor, EXERCISES, searchExercises, resolveExerciseId, isBodyweight, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
-import AppLoading from "../../components/AppLoading";
+import { SkeletonCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
 import { useWeightUnit, unitLabel } from "../../src/units";
 
@@ -117,11 +117,14 @@ function weightForSet(row: RowSet): number | null {
   return row.weight;
 }
 
+// Module-level flag - persists across component remounts (tab switches)
+let _analysisTabInitialized = false;
+
 export default function Analysis() {
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(_analysisTabInitialized);
 
   const navigation = useNavigation();
   const openDrawer = useCallback(() => {
@@ -159,30 +162,41 @@ export default function Analysis() {
   const [prevPeriodData, setPrevPeriodData] = useState<{ workouts: number; sets: number; volume: number; bestE1rm: number }>({ workouts: 0, sets: 0, volume: 0, bestE1rm: 0 });
 
   useEffect(() => {
-    ensureDb().then(async () => {
-      const savedRange = (await getSettingAsync("analysisRange")) as RangeKey | null;
-      if (savedRange) setRange(savedRange);
-
-      const savedExerciseKey = await getSettingAsync("analysisExerciseKey");
-      if (savedExerciseKey) setSelectedExerciseKey(savedExerciseKey);
-
+    // Skip loading screen if already initialized (tab re-focus)
+    if (_analysisTabInitialized) {
       setReady(true);
+      return;
+    }
+    let alive = true;
+    ensureDb().then(async () => {
+      if (!alive) return;
+      const savedRange = (await getSettingAsync("analysisRange")) as RangeKey | null;
+      if (!alive) return;
+      if (savedRange) setRange(savedRange);
+      const savedExerciseKey = await getSettingAsync("analysisExerciseKey");
+      if (!alive) return;
+      if (savedExerciseKey) setSelectedExerciseKey(savedExerciseKey);
+      setReady(true);
+      _analysisTabInitialized = true;
     });
+    return () => { alive = false; };
   }, []);
 
   // Load bodyweight and body metrics on mount
   useEffect(() => {
     if (!ready) return;
+    let alive = true;
     (async () => {
       try {
         const latest = await listBodyMetrics(1);
-        if (latest.length > 0) setBodyweight(latest[0].weight_kg);
+        if (alive && latest.length > 0) setBodyweight(latest[0].weight_kg);
       } catch {}
       try {
         const metrics = await listBodyMetrics(90);
-        setBodyMetrics90(metrics);
+        if (alive) setBodyMetrics90(metrics);
       } catch {}
     })();
+    return () => { alive = false; };
   }, [ready]);
 
   // Load all PR records for strength standards
@@ -387,7 +401,8 @@ export default function Analysis() {
         const val = epley1RM(w, row.reps);
         perDay[day] = Math.max(perDay[day] ?? 0, val);
       } else if (chartMetric === "volume") {
-        perDay[day] = (perDay[day] ?? 0) + w * row.reps;
+        const multiplier = row.exercise_id && isPerSideExercise(row.exercise_id) ? 2 : 1;
+        perDay[day] = (perDay[day] ?? 0) + w * row.reps * multiplier;
       } else if (chartMetric === "repsPr") {
         perDay[day] = Math.max(perDay[day] ?? 0, row.reps);
       } else if (chartMetric === "topSet") {
@@ -428,7 +443,8 @@ export default function Analysis() {
       if (chartMetric === "e1rm") {
         perDay[day] = Math.max(perDay[day] ?? 0, epley1RM(w, row.reps));
       } else if (chartMetric === "volume") {
-        perDay[day] = (perDay[day] ?? 0) + w * row.reps;
+        const multiplier = row.exercise_id && isPerSideExercise(row.exercise_id) ? 2 : 1;
+        perDay[day] = (perDay[day] ?? 0) + w * row.reps * multiplier;
       } else if (chartMetric === "repsPr") {
         perDay[day] = Math.max(perDay[day] ?? 0, row.reps);
       } else if (chartMetric === "topSet") {
@@ -506,7 +522,8 @@ export default function Analysis() {
       const day = isoDateOnly(new Date(row.created_at));
       const w = weightForSet(row);
       if (w == null) continue;
-      const vol = w * row.reps;
+      const multiplier = row.exercise_id && isPerSideExercise(row.exercise_id) ? 2 : 1;
+      const vol = w * row.reps * multiplier;
       volumeByDay[day] = (volumeByDay[day] ?? 0) + vol;
     }
 
@@ -661,9 +678,9 @@ export default function Analysis() {
       const bestByEx: Record<string, number> = {};
       for (const r of rows) {
         const exKey = (r.exercise_id && String(r.exercise_id)) || r.exercise_name;
-        const w = weightForSet(r);
-        if (w == null) continue;
-        const val = epley1RM(w, r.reps);
+        const wt = weightForSet(r);
+        if (wt == null) continue;
+        const val = epley1RM(wt, r.reps);
         bestByEx[exKey] = Math.max(bestByEx[exKey] ?? 0, val);
       }
       const vals = Object.values(bestByEx);
@@ -787,43 +804,61 @@ export default function Analysis() {
     return { labels, values: weights, current, min, max, change };
   }, [bodyMetrics90]);
 
-  // ── Muscle Balance Radar ──────────────────────────────────────────
+  // ── Muscle Balance Radar (Relative Effort Score) ──────────────────
   const RADAR_GROUPS = ["chest", "back", "shoulders", "biceps", "triceps", "quads", "hamstrings"] as const;
 
+  // Optimal weekly sets per muscle group (midpoint of recommended range)
+  const OPTIMAL_SETS: Record<string, number> = {
+    chest: 15, back: 15, shoulders: 15,
+    quads: 15, hamstrings: 15, glutes: 15,
+    biceps: 12, triceps: 12, core: 12, calves: 12,
+  };
+
   const radarData = useMemo((): RadarDataPoint[] => {
-    // Use last 4 weeks of sets
+    // Use last 7 days for weekly snapshot
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 28);
+    cutoff.setDate(cutoff.getDate() - 7);
     const cutoffIso = isoDateOnly(cutoff);
 
-    const volumeByGroup: Record<string, number> = {};
-    for (const g of RADAR_GROUPS) volumeByGroup[g] = 0;
+    const setsByGroup: Record<string, number> = {};
+    for (const g of RADAR_GROUPS) setsByGroup[g] = 0;
 
     for (const row of sets) {
       if (isWarmup(row)) continue;
       const d = isoDateOnly(new Date(row.created_at));
       if (d < cutoffIso) continue;
-      const w = weightForSet(row);
-      if (w == null) continue;
-      const vol = w * row.reps;
       const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
       for (const g of groups) {
-        if (g in volumeByGroup) {
-          volumeByGroup[g] += vol;
+        if (g in setsByGroup) {
+          setsByGroup[g] += 1;
         }
       }
     }
 
-    const maxVol = Math.max(...Object.values(volumeByGroup), 1);
-    return RADAR_GROUPS.map((g) => ({
-      label: g.charAt(0).toUpperCase() + g.slice(1),
-      value: volumeByGroup[g],
-      max: maxVol,
-    }));
+    // Score = % of optimal sets (capped at 100%)
+    return RADAR_GROUPS.map((g) => {
+      const count = setsByGroup[g];
+      const optimal = OPTIMAL_SETS[g] ?? 15;
+      const score = Math.min(100, (count / optimal) * 100);
+      return {
+        label: g.charAt(0).toUpperCase() + g.slice(1),
+        value: Math.round(score),
+        max: 100,
+      };
+    });
   }, [sets]);
 
   if (!ready) {
-    return <AppLoading />;
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar title={t("analysis.title")} subtitle={t("analysis.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={4} />
+          <SkeletonCard lines={3} />
+        </ScrollView>
+      </Screen>
+    );
   }
 
   return (
@@ -1048,7 +1083,7 @@ export default function Analysis() {
                         <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 13 }}>
                           {isReps ? `${goal.currentValue}` : wu.formatWeight(goal.currentValue)} / {isReps ? `${goal.targetValue}` : wu.formatWeight(goal.targetValue)}
                         </Text>
-                        <Pressable onPress={async () => { await deleteGoal(goal.id); loadGoals(); }}>
+                        <Pressable onPress={async () => { try { await deleteGoal(goal.id); loadGoals(); } catch {} }}>
                           <Text style={{ color: theme.muted, fontSize: 16 }}>{"\u00D7"}</Text>
                         </Pressable>
                       </View>

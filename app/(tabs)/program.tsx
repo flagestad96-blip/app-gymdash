@@ -1,8 +1,9 @@
 // app/(tabs)/program.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Platform, Switch } from "react-native";
+import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Switch } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
@@ -19,7 +20,7 @@ import ProgressionStore, { defaultTargetForExercise, type ExerciseTarget } from 
 import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, toggleManualDeload, type Periodization } from "../../src/periodization";
 import { shareFile, saveBackupFile } from "../../src/fileSystem";
 import { getShareableProgramJson } from "../../src/sharing";
-import AppLoading from "../../components/AppLoading";
+import { SkeletonProgramCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 
 type PickerMode = "addSingle" | "addSupersetA" | "addSupersetB";
@@ -101,10 +102,13 @@ function validateImport(payload: unknown): { ok: true; program: ImportPayload } 
   return { ok: true, program: p };
 }
 
+// Module-level flag - persists across component remounts (tab switches)
+let _programTabInitialized = false;
+
 export default function ProgramScreen() {
   const theme = useTheme();
   const { t } = useI18n();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(_programTabInitialized);
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
@@ -243,10 +247,22 @@ export default function ProgramScreen() {
   }, []);
 
   useEffect(() => {
-    ensureDb().then(async () => {
-      await loadAll();
+    // Skip loading screen if already initialized (tab re-focus)
+    if (_programTabInitialized) {
       setReady(true);
+      loadAll().catch(() => {}); // Silent refresh
+      return;
+    }
+    let alive = true;
+    ensureDb().then(async () => {
+      if (!alive) return;
+      await loadAll();
+      if (alive) {
+        setReady(true);
+        _programTabInitialized = true;
+      }
     });
+    return () => { alive = false; };
   }, [loadAll]);
 
   useFocusEffect(
@@ -622,12 +638,8 @@ export default function ProgramScreen() {
   }
 
   async function copyText(text: string) {
-    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      Alert.alert(t("settings.copied"), t("settings.copiedMsg"));
-      return;
-    }
-    Alert.alert(t("settings.copyManual"), t("settings.copyManualMsg"));
+    await Clipboard.setStringAsync(text);
+    Alert.alert(t("settings.copied"), t("settings.copiedMsg"));
   }
 
   async function handleImport() {
@@ -649,6 +661,16 @@ export default function ProgramScreen() {
 
     const base = res.program;
     const now = isoNow();
+
+    // Check if a program with the same name already exists — replace it
+    const existing = await ProgramStore.listPrograms(programMode);
+    const duplicate = existing.find(
+      (p) => p.name.toLowerCase() === base.name.toLowerCase()
+    );
+    if (duplicate) {
+      await ProgramStore.deleteProgram(duplicate.id);
+    }
+
     const program: Program = {
       id: newProgramId(),
       name: base.name,
@@ -672,7 +694,19 @@ export default function ProgramScreen() {
   }
 
   if (!ready || !activeProgram) {
-    return <AppLoading />;
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar
+            title={t("program.title")}
+            left={<IconButton icon="menu" onPress={openDrawer} />}
+          />
+          <SkeletonProgramCard />
+          <SkeletonProgramCard />
+          <SkeletonProgramCard />
+        </ScrollView>
+      </Screen>
+    );
   }
 
   return (
@@ -745,22 +779,25 @@ export default function ProgramScreen() {
           </View>
 
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <Btn label={t("program.periodization") || "Periodization"} onPress={openPeriodization} />
+            <Btn label={t("program.periodization")} onPress={openPeriodization} />
             <Btn
               label={periodConfig?.manualDeload ? t("program.endDeload") : t("program.deloadWeek")}
               tone={periodConfig?.manualDeload ? "danger" : undefined}
               onPress={async () => {
                 if (!activeProgramId) return;
-                await toggleManualDeload(activeProgramId);
-                const updated = await getPeriodization(activeProgramId);
-                setPeriodConfig(updated);
+                try {
+                  await toggleManualDeload(activeProgramId);
+                  const updated = await getPeriodization(activeProgramId);
+                  setPeriodConfig(updated);
+                } catch {}
               }}
             />
           </View>
 
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <Btn label={t("program.export")} onPress={openExport} />
-            <Btn label={t("program.shareFile") || "Share File"} onPress={handleShareExport} />
+          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 10 }}>{t("program.shareDesc")}</Text>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+            <Btn label={t("program.copyText")} onPress={openExport} />
+            <Btn label={t("program.shareFile")} onPress={handleShareExport} />
             <Btn
               label={t("program.import")}
               onPress={() => {
@@ -1376,27 +1413,32 @@ export default function ProgramScreen() {
 
       <Modal visible={importExportOpen !== null} transparent animationType="fade" onRequestClose={() => setImportExportOpen(null)}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "80%" }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
               {importExportOpen === "export" ? t("program.exportProgram") : t("program.importProgram")}
             </Text>
             {importExportOpen === "export" ? (
               <>
-                <TextField
-                  value={exportText}
-                  editable={false}
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 160,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <Text style={{ color: theme.muted, fontSize: 12 }}>{t("program.exportHint")}</Text>
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={exportText}
+                    editable={false}
+                    selectTextOnFocus
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 160,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn label={t("common.copy")} onPress={() => copyText(exportText)} tone="accent" />
                   <Btn label={t("common.close")} onPress={() => setImportExportOpen(null)} />
@@ -1404,23 +1446,27 @@ export default function ProgramScreen() {
               </>
             ) : (
               <>
-                <TextField
-                  value={importText}
-                  onChangeText={setImportText}
-                  placeholder={t("settings.paste")}
-                  placeholderTextColor={theme.muted}
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 160,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <Text style={{ color: theme.muted, fontSize: 12 }}>{t("program.importHint")}</Text>
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={importText}
+                    onChangeText={setImportText}
+                    placeholder={t("settings.paste")}
+                    placeholderTextColor={theme.muted}
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 160,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 {importError ? <Text style={{ color: theme.danger }}>{importError}</Text> : null}
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn label={t("program.import")} onPress={handleImport} tone="accent" />
@@ -1508,10 +1554,10 @@ export default function ProgramScreen() {
       <Modal visible={periodizationOpen} transparent animationType="fade" onRequestClose={() => setPeriodizationOpen(false)}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
-            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.periodization") || "Periodization"}</Text>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.periodization")}</Text>
 
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ color: theme.muted }}>{t("program.enablePeriodization") || "Enable"}</Text>
+              <Text style={{ color: theme.muted }}>{t("program.enablePeriodization")}</Text>
               <Switch
                 value={periodEnabled}
                 onValueChange={setPeriodEnabled}
@@ -1520,7 +1566,7 @@ export default function ProgramScreen() {
             </View>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>{t("program.cycleLength") || "Cycle length (3-8 weeks)"}</Text>
+              <Text style={{ color: theme.muted }}>{t("program.cycleLength")}</Text>
               <TextField
                 value={periodCycleWeeks}
                 onChangeText={setPeriodCycleWeeks}
@@ -1539,7 +1585,7 @@ export default function ProgramScreen() {
             </View>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>{t("program.deloadWeekNumber") || "Deload week number"}</Text>
+              <Text style={{ color: theme.muted }}>{t("program.deloadWeekNumber")}</Text>
               <TextField
                 value={periodDeloadWeek}
                 onChangeText={setPeriodDeloadWeek}
@@ -1558,7 +1604,7 @@ export default function ProgramScreen() {
             </View>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>{t("program.deloadIntensity") || "Deload intensity %"}</Text>
+              <Text style={{ color: theme.muted }}>{t("program.deloadIntensity")}</Text>
               <TextField
                 value={periodDeloadPercent}
                 onChangeText={setPeriodDeloadPercent}
@@ -1580,7 +1626,7 @@ export default function ProgramScreen() {
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
                 {isDeloadWeek(periodConfig)
                   ? "DELOAD"
-                  : `${t("program.week") || "Week"} ${periodConfig.currentWeek}/${periodConfig.cycleWeeks}`}
+                  : `${t("program.week")} ${periodConfig.currentWeek}/${periodConfig.cycleWeeks}`}
               </Text>
             ) : null}
 

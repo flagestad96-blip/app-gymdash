@@ -1,7 +1,7 @@
 // src/sharing.ts — Social sharing utilities
 import { Share, Platform } from "react-native";
 import { ensureDb, getDb, formatDuration } from "./db";
-import { displayNameFor } from "./exerciseLibrary";
+import { displayNameFor, isPerSideExercise } from "./exerciseLibrary";
 
 /**
  * Generate and share a workout summary via native share sheet.
@@ -39,19 +39,23 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
   );
 
   // Group by exercise
-  const byExercise: Record<string, { name: string; sets: { weight: number; reps: number }[] }> = {};
+  const byExercise: Record<string, { name: string; exId: string | null; sets: { weight: number; reps: number }[] }> = {};
   for (const s of workingSets) {
     const key = s.exercise_id ?? s.exercise_name;
     if (!byExercise[key]) {
       byExercise[key] = {
         name: s.exercise_id ? displayNameFor(s.exercise_id) : s.exercise_name,
+        exId: s.exercise_id ?? null,
         sets: [],
       };
     }
     byExercise[key].sets.push({ weight: s.weight, reps: s.reps });
   }
 
-  const totalVolume = workingSets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+  const totalVolume = workingSets.reduce((sum, s) => {
+    const multiplier = s.exercise_id && isPerSideExercise(s.exercise_id) ? 2 : 1;
+    return sum + s.weight * s.reps * multiplier;
+  }, 0);
   const totalSets = workingSets.length;
   const duration = formatDuration(workout.started_at, workout.ended_at);
 
@@ -63,7 +67,8 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
   lines.push("");
 
   for (const [, ex] of Object.entries(byExercise)) {
-    const setsStr = ex.sets.map((s) => `${s.weight}kg x ${s.reps}`).join(", ");
+    const perSide = ex.exId && isPerSideExercise(ex.exId);
+    const setsStr = ex.sets.map((s) => `${s.weight}kg${perSide ? " each" : ""} x ${s.reps}`).join(", ");
     lines.push(`${ex.name}: ${setsStr}`);
   }
 

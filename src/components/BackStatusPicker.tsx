@@ -1,27 +1,31 @@
 import React from "react";
 import { View, Text, Pressable } from "react-native";
-import { theme } from "../theme";
+import { useTheme } from "../theme";
+import { useI18n } from "../i18n";
 
 export type BackStatus = "green" | "yellow" | "red";
 
-const items: { key: BackStatus; label: string; hint: string }[] = [
-  { key: "green", label: "🟢 Bra", hint: "Normal økt" },
-  { key: "yellow", label: "🟡 Litt stram", hint: "Vurder ryggvennlig" },
-  { key: "red", label: "🔴 Ikke bra", hint: "Ryggvennlig + ingen triggere" },
+const STATUS_KEYS: { key: BackStatus; labelKey: string; hintKey: string }[] = [
+  { key: "green", labelKey: "back.statusGreen", hintKey: "back.statusGreenHint" },
+  { key: "yellow", labelKey: "back.statusYellow", hintKey: "back.statusYellowHint" },
+  { key: "red", labelKey: "back.statusRed", hintKey: "back.statusRedHint" },
 ];
 
 export function BackStatusPicker(props: {
   value: BackStatus;
   onChange: (v: BackStatus) => void;
 }) {
+  const theme = useTheme();
+  const { t } = useI18n();
+
   return (
     <View style={{ gap: 10 }}>
       <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
-        RYGG-STATUS
+        {t("back.statusTitle")}
       </Text>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
-        {items.map((it) => {
+        {STATUS_KEYS.map((it) => {
           const active = props.value === it.key;
           return (
             <Pressable
@@ -37,10 +41,10 @@ export function BackStatusPicker(props: {
               }}
             >
               <Text style={{ color: theme.text, fontSize: 14 }}>
-                {it.label}
+                {t(it.labelKey)}
               </Text>
               <Text style={{ color: theme.muted, marginTop: 6, fontSize: 12 }}>
-                {it.hint}
+                {t(it.hintKey)}
               </Text>
             </Pressable>
           );

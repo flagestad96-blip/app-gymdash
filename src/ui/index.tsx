@@ -322,7 +322,6 @@ export function TextField({
           placeholderTextColor={theme.muted}
           selectionColor={theme.accent}
           style={[
-            style,
             {
               color: theme.text,
               backgroundColor: theme.glass,
@@ -335,6 +334,7 @@ export function TextField({
               fontSize: theme.fontSize.md,
               lineHeight: theme.lineHeight.md,
             },
+            style,
           ]}
         />
         {suffix ? (

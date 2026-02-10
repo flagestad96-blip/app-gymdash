@@ -1,12 +1,13 @@
 // src/components/modals/ExerciseSwapModal.tsx
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, Pressable, Modal, ScrollView } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
-import { Btn } from "../../ui";
-import { displayNameFor, getExercise, tagsFor, backImpactFor } from "../../exerciseLibrary";
+import { TextField, Btn } from "../../ui";
+import { displayNameFor, getExercise } from "../../exerciseLibrary";
+import type { Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 
 function formatWeight(n: number) {
@@ -14,6 +15,10 @@ function formatWeight(n: number) {
   const r = Math.round(n * 10) / 10;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
+
+const EQUIPMENT_OPTIONS: Equipment[] = [
+  "barbell", "dumbbell", "machine", "cable", "bodyweight", "smith", "trapbar", "other",
+];
 
 export type LastSetInfo = {
   weight: number;
@@ -33,6 +38,10 @@ export type ExerciseSwapModalProps = {
   resolvedExId: string | null;
   /** Called when user picks an alternative */
   onChoose: (baseExId: string, exId: string) => void;
+  /** Called when user wants to make the current selection the new default */
+  onSetDefault?: (baseExId: string, newDefaultExId: string) => void;
+  /** Called when user creates a new custom exercise from the picker */
+  onCreateCustom?: (baseExId: string, name: string, equipment: Equipment) => void;
   /** Last sets lookup for showing history */
   lastSets: Record<string, LastSetInfo>;
 };
@@ -44,16 +53,42 @@ export default function ExerciseSwapModal({
   alternativeIds,
   resolvedExId,
   onChoose,
+  onSetDefault,
+  onCreateCustom,
   lastSets,
 }: ExerciseSwapModalProps) {
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
 
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEquipment, setNewEquipment] = useState<Equipment>("machine");
+
+  function resetForm() {
+    setCreating(false);
+    setNewName("");
+    setNewEquipment("machine");
+  }
+
+  function handleSaveCustom() {
+    const name = newName.trim();
+    if (!name || !baseExId || !onCreateCustom) return;
+    onCreateCustom(baseExId, name, newEquipment);
+    resetForm();
+  }
+
+  // Reset form when modal closes
+  function handleClose() {
+    resetForm();
+    onClose();
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={handleClose}>
         <View
+          onStartShouldSetResponder={() => true}
           style={{
             backgroundColor: theme.modalGlass,
             borderColor: theme.glassBorder,
@@ -66,7 +101,7 @@ export default function ExerciseSwapModal({
             shadowRadius: theme.shadow.lg.radius,
             shadowOffset: theme.shadow.lg.offset,
             elevation: theme.shadow.lg.elevation,
-            maxHeight: "70%",
+            maxHeight: "80%",
           }}
         >
           <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.chooseAlternative")}</Text>
@@ -139,12 +174,106 @@ export default function ExerciseSwapModal({
                 </Pressable>
               );
             })}
+
+            {/* Create new custom exercise */}
+            {onCreateCustom && baseExId ? (
+              creating ? (
+                <View
+                  style={{
+                    padding: 14,
+                    borderRadius: theme.radius.lg,
+                    borderWidth: 1,
+                    borderColor: theme.accent,
+                    borderStyle: "dashed",
+                    backgroundColor: theme.glass,
+                    gap: 10,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13 }}>
+                    {t("log.exerciseName")}
+                  </Text>
+                  <TextField
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder={t("log.exerciseName")}
+                    placeholderTextColor={theme.muted}
+                    autoFocus
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.panel2,
+                      borderColor: theme.line,
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      padding: 10,
+                      fontSize: 14,
+                      fontFamily: theme.mono,
+                    }}
+                  />
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                    {t("log.selectEquipment")}
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                    {EQUIPMENT_OPTIONS.map((eq) => (
+                      <Pressable
+                        key={`eq_${eq}`}
+                        onPress={() => setNewEquipment(eq)}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: theme.radius.md,
+                          borderWidth: 1,
+                          borderColor: newEquipment === eq ? theme.accent : theme.glassBorder,
+                          backgroundColor: newEquipment === eq
+                            ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)")
+                            : theme.glass,
+                        }}
+                      >
+                        <Text style={{ color: newEquipment === eq ? theme.accent : theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                          {eq}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Btn label={t("common.save")} tone="accent" onPress={handleSaveCustom} />
+                    <Btn label={t("common.cancel")} onPress={resetForm} />
+                  </View>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => setCreating(true)}
+                  style={{
+                    padding: 14,
+                    borderRadius: theme.radius.lg,
+                    borderWidth: 1,
+                    borderColor: theme.accent,
+                    borderStyle: "dashed",
+                    backgroundColor: theme.glass,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 14 }}>
+                    {t("log.createNew")}
+                  </Text>
+                </Pressable>
+              )
+            ) : null}
           </ScrollView>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <Btn label={t("common.close")} onPress={onClose} />
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+            <Btn label={t("common.close")} onPress={handleClose} />
+            {onSetDefault && resolvedExId && baseExId && resolvedExId !== baseExId && (
+              <Btn
+                label={t("log.setAsDefault")}
+                tone="accent"
+                onPress={() => {
+                  onSetDefault(baseExId, resolvedExId);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }}
+              />
+            )}
           </View>
         </View>
-      </View>
+      </Pressable>
     </Modal>
   );
 }

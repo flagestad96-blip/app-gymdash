@@ -12,6 +12,33 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
+    version: "0.9.1-beta",
+    date: "2026-02-05",
+    changes: [
+      { type: "new", key: "patchNotes.0_9_1.localeDetection" },
+      { type: "new", key: "patchNotes.0_9_1.weightUnitDetection" },
+      { type: "new", key: "patchNotes.0_9_1.perSideExercises" },
+      { type: "improved", key: "patchNotes.0_9_1.skeletonLoading" },
+      { type: "improved", key: "patchNotes.0_9_1.backgroundPreload" },
+    ],
+  },
+  {
+    version: "0.9.0-beta",
+    date: "2026-02-04",
+    changes: [
+      { type: "new", key: "patchNotes.0_9_0.perExerciseRest" },
+      { type: "new", key: "patchNotes.0_9_0.customRestPresets" },
+      { type: "new", key: "patchNotes.0_9_0.achievementNav" },
+      { type: "new", key: "patchNotes.0_9_0.onboarding" },
+      { type: "improved", key: "patchNotes.0_9_0.exportImport" },
+      { type: "improved", key: "patchNotes.0_9_0.modalScroll" },
+      { type: "fix", key: "patchNotes.0_9_0.exerciseSwap" },
+      { type: "fix", key: "patchNotes.0_9_0.missingI18n" },
+      { type: "fix", key: "patchNotes.0_9_0.calendarArrows" },
+      { type: "fix", key: "patchNotes.0_9_0.tyngsteTypo" },
+    ],
+  },
+  {
     version: "1.0.0",
     date: "2026-02-03",
     changes: [

@@ -1,7 +1,7 @@
 {
   "name": "gymdash",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "0.9.0-beta",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -15,13 +15,14 @@
     "verify": "npm run typecheck && npm run test && npm run lint"
   },
   "dependencies": {
-    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/manrope": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.10.1",
     "@react-navigation/drawer": "^7.7.13",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.28",
     "expo": "~54.0.33",
+    "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.21",
@@ -31,6 +32,7 @@
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "^15.0.8",
     "expo-linking": "~8.0.11",
+    "expo-localization": "~17.0.8",
     "expo-notifications": "~0.32.16",
     "expo-router": "~6.0.23",
     "expo-sharing": "~14.0.8",
