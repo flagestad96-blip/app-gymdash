@@ -152,13 +152,13 @@ export default function BodyScreen() {
 
   return (
     <Screen>
-      <TopBar title={t("body.title")} subtitle={t("body.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
+          <TopBar title={t("body.title")} subtitle={t("body.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
           <Card title={t("body.register")}>
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>

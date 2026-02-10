@@ -603,27 +603,38 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   onLayout: (e: any) => void;
 };
 
+function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boolean }) {
+  const base = isDark ? "rgba(182, 104, 245," : "rgba(124, 58, 237,";
+  return (
+    <>
+      <View style={{ position: "absolute", top: -10, left: -10, right: -10, bottom: -10, borderRadius: borderRadius + 10, backgroundColor: base + " 0.06)" }} />
+      <View style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: -6, borderRadius: borderRadius + 6, backgroundColor: base + " 0.09)" }} />
+      <View style={{ position: "absolute", top: -3, left: -3, right: -3, bottom: -3, borderRadius: borderRadius + 3, backgroundColor: base + " 0.12)" }} />
+    </>
+  );
+}
+
 export function SingleExerciseCard(props: SingleExerciseCardProps) {
   const theme = useTheme();
 
   return (
-    <Pressable
-      onPress={() => props.onActivateExercise(props.exId)}
-      onLayout={props.onLayout}
-      style={{
-        borderColor: props.isFocused ? theme.accent : theme.glassBorder,
-        borderWidth: props.isFocused ? 2 : 1,
-        borderRadius: theme.radius.xl,
-        backgroundColor: theme.glass,
-        padding: 16,
-        gap: 12,
-        shadowColor: theme.shadow.sm.color,
-        shadowOpacity: theme.shadow.sm.opacity,
-        shadowRadius: theme.shadow.sm.radius,
-        shadowOffset: theme.shadow.sm.offset,
-        elevation: theme.shadow.sm.elevation,
-      }}
-    >
+    <View onLayout={props.onLayout} style={{ position: "relative" }}>
+      {props.isFocused && <FocusGlow borderRadius={theme.radius.xl} isDark={theme.isDark} />}
+      <Pressable
+        onPress={() => props.onActivateExercise(props.exId)}
+        style={{
+          borderColor: props.isFocused ? theme.accent : theme.glassBorder,
+          borderWidth: 1,
+          borderRadius: theme.radius.xl,
+          backgroundColor: theme.glass,
+          padding: 16,
+          gap: 12,
+          shadowColor: props.isFocused ? theme.accent : theme.shadow.sm.color,
+          shadowOpacity: props.isFocused ? 0.45 : theme.shadow.sm.opacity,
+          shadowRadius: props.isFocused ? 16 : theme.shadow.sm.radius,
+          shadowOffset: props.isFocused ? { width: 0, height: 0 } : theme.shadow.sm.offset,
+        }}
+      >
       <ExerciseHalf
         exId={props.exId}
         baseExId={props.baseExId}
@@ -656,6 +667,7 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onOpenPlateCalc={props.onOpenPlateCalc}
       />
     </Pressable>
+    </View>
   );
 }
 
@@ -699,23 +711,23 @@ export function SupersetCard(props: SupersetCardProps) {
   const isFocused = props.focusedExerciseId === props.exIdA || props.focusedExerciseId === props.exIdB;
 
   return (
-    <Pressable
-      onPress={() => props.onActivateExercise(props.exIdA)}
-      onLayout={props.onLayout}
-      style={{
-        borderColor: isFocused ? theme.accent : theme.glassBorder,
-        borderWidth: isFocused ? 2 : 1,
-        borderRadius: theme.radius.xl,
-        backgroundColor: theme.glass,
-        padding: 16,
-        gap: 12,
-        shadowColor: theme.shadow.sm.color,
-        shadowOpacity: theme.shadow.sm.opacity,
-        shadowRadius: theme.shadow.sm.radius,
-        shadowOffset: theme.shadow.sm.offset,
-        elevation: theme.shadow.sm.elevation,
-      }}
-    >
+    <View onLayout={props.onLayout} style={{ position: "relative" }}>
+      {isFocused && <FocusGlow borderRadius={theme.radius.xl} isDark={theme.isDark} />}
+      <Pressable
+        onPress={() => props.onActivateExercise(props.exIdA)}
+        style={{
+          borderColor: isFocused ? theme.accent : theme.glassBorder,
+          borderWidth: 1,
+          borderRadius: theme.radius.xl,
+          backgroundColor: theme.glass,
+          padding: 16,
+          gap: 12,
+          shadowColor: isFocused ? theme.accent : theme.shadow.sm.color,
+          shadowOpacity: isFocused ? 0.45 : theme.shadow.sm.opacity,
+          shadowRadius: isFocused ? 16 : theme.shadow.sm.radius,
+          shadowOffset: isFocused ? { width: 0, height: 0 } : theme.shadow.sm.offset,
+        }}
+      >
       <Text style={{ color: theme.text, fontFamily: theme.mono }}>{t("log.superset")}</Text>
 
       <View style={{ gap: 10 }}>
@@ -793,6 +805,7 @@ export function SupersetCard(props: SupersetCardProps) {
         <Btn label="+" onPress={props.onAddSuperset} tone="accent" />
       </View>
     </Pressable>
+    </View>
   );
 }
 

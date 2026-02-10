@@ -34,23 +34,18 @@ function DrawerRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const activeBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.1)";
+  const activeBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.08)";
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        borderColor: active ? theme.accent : theme.glassBorder,
-        borderWidth: 1,
-        borderRadius: theme.radius.xl,
+        borderColor: active ? theme.accent : "transparent",
+        borderWidth: active ? 1 : 0,
+        borderRadius: theme.radius.lg,
         paddingVertical: 14,
         paddingHorizontal: 18,
-        backgroundColor: active ? activeBg : theme.glass,
-        opacity: pressed ? 0.85 : 1,
-        shadowColor: theme.shadow.sm.color,
-        shadowOpacity: active ? theme.shadow.md.opacity : 0,
-        shadowRadius: active ? theme.shadow.md.radius : 0,
-        shadowOffset: theme.shadow.sm.offset,
-        elevation: active ? theme.shadow.sm.elevation : 0,
+        backgroundColor: active ? activeBg : "transparent",
+        opacity: pressed ? 0.7 : 1,
       })}
     >
       <Text

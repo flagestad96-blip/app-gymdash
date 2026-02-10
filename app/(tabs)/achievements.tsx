@@ -205,16 +205,16 @@ export default function AchievementsScreen() {
 
   return (
     <Screen>
-      <TopBar
-        title={t("achievements.title")}
-        subtitle={t("achievements.subtitle", { n: progress.unlocked, total: progress.total })}
-        left={<IconButton icon="menu" onPress={openDrawer} />}
-      />
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={{ padding: theme.space.md, gap: theme.space.md }}
+        contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <TopBar
+          title={t("achievements.title")}
+          subtitle={t("achievements.subtitle", { n: progress.unlocked, total: progress.total })}
+          left={<IconButton icon="menu" onPress={openDrawer} />}
+        />
         {/* Header Card */}
         <GlassCard gradient shadow="lg">
           <View style={{ gap: theme.space.sm }}>

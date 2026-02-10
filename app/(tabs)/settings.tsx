@@ -409,12 +409,12 @@ export default function Settings() {
 
     try {
       await ensureDb();
-      const base = ProgramStore.createBlankProgram(name, daysCount);
+      const base = ProgramStore.createBlankProgram(name, daysCount, t("common.day"));
       const mappedDays = days
         .slice(0, daysCount)
         .map((d: any, idx: number) => ({
           id: base.days[idx]?.id ?? newId("day"),
-          name: typeof d.name === "string" ? d.name : `Dag ${idx + 1}`,
+          name: typeof d.name === "string" ? d.name : `${t("common.day")} ${idx + 1}`,
           blocks: Array.isArray(d.blocks)
             ? d.blocks.map((b: any) => {
                 if (b.type === "single" && typeof b.exerciseId === "string") {

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 100 100">
+  <defs>
+    <!-- Purple → Orange gradient diagonal -->
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9C44DC" />
+      <stop offset="100%" stop-color="#F97316" />
+    </linearGradient>
+    <!-- Subtle glass highlight -->
+    <linearGradient id="glass" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Solid dark background (no transparency for Play Store) -->
+  <rect x="0" y="0" width="100" height="100" rx="22" fill="#0D0B1A" />
+
+  <!-- Subtle glass panel overlay -->
+  <rect x="0" y="0" width="100" height="100" rx="22" fill="rgba(45, 30, 75, 0.35)" />
+  <rect x="0" y="0" width="100" height="100" rx="22" fill="url(#glass)" />
+
+  <!-- Border -->
+  <rect x="0.75" y="0.75" width="98.5" height="98.5" rx="21.5" fill="none" stroke="rgba(120, 80, 200, 0.22)" stroke-width="1.5" />
+
+  <!-- Dumbbell -->
+  <g>
+    <!-- Center bar -->
+    <rect x="28" y="45" width="44" height="10" rx="5" fill="url(#grad)" />
+
+    <!-- Left inner plate -->
+    <rect x="21" y="32" width="7" height="36" rx="3" fill="url(#grad)" />
+    <!-- Left outer plate -->
+    <rect x="12" y="37" width="5" height="26" rx="2.5" fill="url(#grad)" opacity="0.75" />
+
+    <!-- Right inner plate -->
+    <rect x="72" y="32" width="7" height="36" rx="3" fill="url(#grad)" />
+    <!-- Right outer plate -->
+    <rect x="81" y="37" width="5" height="26" rx="2.5" fill="url(#grad)" opacity="0.75" />
+  </g>
+
+  <!-- Upward arrow accent — represents progress -->
+  <path d="M 44 40 L 50 34 L 56 40" stroke="#F97316" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9" />
+</svg>

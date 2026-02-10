@@ -285,27 +285,27 @@ function createTheme(mode: "light" | "dark"): Theme {
 
     // Base colors - Warm light with purple tint
     bg: "#F8F5FF",
-    panel: "rgba(255, 255, 255, 0.55)",
-    panel2: "rgba(243, 237, 255, 0.40)",
+    panel: "rgba(245, 240, 255, 0.55)",
+    panel2: "rgba(238, 232, 252, 0.35)",
     text: "#1A0E2E",
     muted: "#6E5C8E",
-    line: "rgba(100, 60, 160, 0.1)",
-    divider: "rgba(100, 60, 160, 0.06)",
+    line: "rgba(100, 60, 160, 0.07)",
+    divider: "rgba(100, 60, 160, 0.04)",
 
-    // Glass effects - uniform purple-tinted glass
-    glass: "rgba(160, 120, 220, 0.18)",
-    glassBorder: "rgba(140, 100, 200, 0.22)",
+    // Glass effects - subtle purple-tinted glass
+    glass: "rgba(160, 120, 220, 0.10)",
+    glassBorder: "rgba(140, 100, 200, 0.12)",
     modalOverlay: "rgba(0, 0, 0, 0.85)",
     modalGlass: "rgba(248, 245, 255, 0.95)",
 
     // Accent: purple-to-orange gradient
     accent: "#7C3AED",
     accentGradient: ["#7C3AED", "#F97316"],
-    success: "#22C55E",
-    successGradient: ["#22C55E", "#16A34A"],
-    warn: "#F59E0B",
-    danger: "#EF4444",
-    dangerGradient: ["#EF4444", "#DC2626"],
+    success: "#16A34A",
+    successGradient: ["#16A34A", "#15803D"],
+    warn: "#D97706",
+    danger: "#DC2626",
+    dangerGradient: ["#DC2626", "#B91C1C"],
 
     // Typography
     fontFamily: TOKENS.fontFamily,

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 108 108">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9C44DC" />
+      <stop offset="100%" stop-color="#F97316" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dumbbell centered in 108×108 adaptive icon safe zone -->
+  <g transform="translate(54, 54)">
+    <!-- Center bar -->
+    <rect x="-22" y="-5" width="44" height="10" rx="5" fill="url(#grad)" />
+
+    <!-- Left inner plate -->
+    <rect x="-29" y="-18" width="7" height="36" rx="3" fill="url(#grad)" />
+    <!-- Left outer plate -->
+    <rect x="-38" y="-13" width="5" height="26" rx="2.5" fill="url(#grad)" opacity="0.75" />
+
+    <!-- Right inner plate -->
+    <rect x="22" y="-18" width="7" height="36" rx="3" fill="url(#grad)" />
+    <!-- Right outer plate -->
+    <rect x="31" y="-13" width="5" height="26" rx="2.5" fill="url(#grad)" opacity="0.75" />
+
+    <!-- Upward arrow accent -->
+    <path d="M -6 -10 L 0 -16 L 6 -10" stroke="#F97316" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9" />
+  </g>
+</svg>

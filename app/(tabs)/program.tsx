@@ -526,7 +526,7 @@ export default function ProgramScreen() {
     const name = nameValue.trim();
     if (!name) return;
     if (nameAction === "new") {
-      const p = ProgramStore.createBlankProgram(name, clampInt(newProgramDays, 1, 10));
+      const p = ProgramStore.createBlankProgram(name, clampInt(newProgramDays, 1, 10), t("common.day"));
       const created: Program = { ...p, id: newProgramId(), createdAt: isoNow(), updatedAt: isoNow() };
       await ProgramStore.saveProgram(programMode, created);
       await ProgramStore.setActiveProgram(programMode, created.id);

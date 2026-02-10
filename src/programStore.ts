@@ -802,11 +802,11 @@ export async function setAlternatives(args: {
   }
 }
 
-export function createBlankProgram(name: string, daysCount = 5): Program {
+export function createBlankProgram(name: string, daysCount = 5, dayLabel = "Day"): Program {
   const days: ProgramDay[] = [];
   const count = Math.max(1, daysCount);
   for (let i = 0; i < count; i += 1) {
-    days.push(createDay(`Dag ${i + 1}`, []));
+    days.push(createDay(`${dayLabel} ${i + 1}`, []));
   }
   return baseProgram(name, days);
 }
