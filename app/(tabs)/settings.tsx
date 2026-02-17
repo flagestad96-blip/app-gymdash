@@ -31,28 +31,14 @@ import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNotes";
 import { useWeightUnit, type WeightUnit } from "../../src/units";
+import { uid, isoDateOnly } from "../../src/storage";
+import { clampInt } from "../../src/format";
 
 type ProgramMode = "normal" | "back";
 type ExerciseHistoryRow = {
   exercise_id: string;
   setCount: number;
   lastDate: string | null;
-};
-
-function clampInt(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
-
-function newId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function isoDateOnly(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${da}`;
 }
 
 function WeightUnitCard() {
@@ -413,7 +399,7 @@ export default function Settings() {
       const mappedDays = days
         .slice(0, daysCount)
         .map((d: any, idx: number) => ({
-          id: base.days[idx]?.id ?? newId("day"),
+          id: base.days[idx]?.id ?? uid("day"),
           name: typeof d.name === "string" ? d.name : `${t("common.day")} ${idx + 1}`,
           blocks: Array.isArray(d.blocks)
             ? d.blocks.map((b: any) => {
@@ -472,7 +458,7 @@ export default function Settings() {
         await db.runAsync(
           `INSERT OR REPLACE INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, increment_kg, updated_at)
            VALUES(?, ?, ?, ?, ?, ?, ?)` ,
-          [newId("target"), nextProgram.id, t.exerciseId, t.repMin, t.repMax, t.incrementKg, new Date().toISOString()]
+          [uid("target"), nextProgram.id, t.exerciseId, t.repMin, t.repMax, t.incrementKg, new Date().toISOString()]
         );
       }
 

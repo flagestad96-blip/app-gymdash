@@ -15,6 +15,9 @@ import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
 import { getNextWorkoutPreview } from "../../src/programStore";
 import { getPendingSuggestions, applySuggestion, dismissSuggestion, type ProgressionSuggestion } from "../../src/progressionStore";
+import { isoDateOnly } from "../../src/storage";
+
+const BACKUP_REMINDER_DAYS = 14;
 
 type TodayWorkout = {
   id: string;
@@ -32,11 +35,6 @@ type PrRow = {
   value: number;
   date: string;
 };
-
-function isoDateOnly() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function getMonday(): string {
   const d = new Date();
@@ -67,6 +65,8 @@ export default function HomeScreen() {
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [nextWorkout, setNextWorkout] = useState<{ dayName: string; exercises: string[] } | null>(null);
   const [suggestions, setSuggestions] = useState<ProgressionSuggestion[]>([]);
+  const [backupDaysAgo, setBackupDaysAgo] = useState<number | null>(null);
+  const [backupDismissed, setBackupDismissed] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -85,7 +85,7 @@ export default function HomeScreen() {
         if (w?.id) {
           const stats = db.getFirstSync<{ c: number; vol: number; ex: number }>(
             `SELECT COUNT(1) as c,
-                    COALESCE(SUM(CASE WHEN is_warmup = 1 THEN 0 ELSE weight * reps END), 0) as vol,
+                    COALESCE(SUM(weight * reps), 0) as vol,
                     COUNT(DISTINCT exercise_id) as ex
              FROM sets WHERE workout_id = ?`,
             [w.id]
@@ -107,7 +107,7 @@ export default function HomeScreen() {
         const ws = db.getFirstSync<{ days: number; sets: number; vol: number }>(
           `SELECT COUNT(DISTINCT w.date) as days,
                   COUNT(s.id) as sets,
-                  COALESCE(SUM(CASE WHEN s.is_warmup = 1 THEN 0 ELSE s.weight * s.reps END), 0) as vol
+                  COALESCE(SUM(s.weight * s.reps), 0) as vol
            FROM workouts w
            LEFT JOIN sets s ON s.workout_id = w.id
            WHERE w.date >= ?`,
@@ -117,7 +117,7 @@ export default function HomeScreen() {
           `SELECT AVG(s.rpe) as avg
            FROM sets s
            JOIN workouts w ON s.workout_id = w.id
-           WHERE w.date >= ? AND s.rpe IS NOT NULL AND s.is_warmup != 1`,
+           WHERE w.date >= ? AND s.rpe IS NOT NULL`,
           [monday]
         );
         const avgRpe = rpeRow?.avg != null ? Math.round(rpeRow.avg * 10) / 10 : null;
@@ -189,6 +189,20 @@ export default function HomeScreen() {
         }
       } catch {}
 
+      // Backup reminder
+      try {
+        const wCount = db.getFirstSync<{ c: number }>(`SELECT COUNT(1) as c FROM workouts`);
+        if (alive && (wCount?.c ?? 0) >= 3) {
+          const lastBackup = await getSettingAsync("last_backup_at");
+          if (!lastBackup) {
+            setBackupDaysAgo(-1); // never backed up
+          } else {
+            const diff = Math.floor((Date.now() - Date.parse(lastBackup)) / 86_400_000);
+            if (diff >= BACKUP_REMINDER_DAYS) setBackupDaysAgo(diff);
+          }
+        }
+      } catch {}
+
       if (alive) setReady(true);
     });
     return () => { alive = false; };
@@ -221,6 +235,45 @@ export default function HomeScreen() {
           subtitle={greeting}
           left={<IconButton icon="menu" onPress={openDrawer} />}
         />
+
+        {/* Backup Reminder */}
+        {backupDaysAgo != null && !backupDismissed && (
+          <View style={{
+            backgroundColor: theme.isDark ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.08)",
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: theme.warn,
+            padding: 14,
+            gap: 8,
+          }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <MaterialIcons name="cloud-off" size={20} color={theme.warn} />
+                <Text style={{ color: theme.warn, fontFamily: theme.fontFamily.semibold, fontSize: 13, flex: 1 }}>
+                  {backupDaysAgo < 0
+                    ? t("home.backupNever")
+                    : t("home.backupReminder", { days: String(backupDaysAgo) })}
+                </Text>
+              </View>
+              <Pressable onPress={() => setBackupDismissed(true)} hitSlop={10}>
+                <MaterialIcons name="close" size={18} color={theme.muted} />
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={() => router.push("/settings")}
+              style={{
+                backgroundColor: theme.warn,
+                borderRadius: 10,
+                paddingVertical: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
+                {t("home.backupNow")}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Today's Workout */}
         <Card>

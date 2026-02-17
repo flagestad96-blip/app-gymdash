@@ -1,0 +1,38 @@
+import type { TranslationMap } from "../types";
+
+const calendar: TranslationMap = {
+  "calendar.title": "Calendar",
+  "calendar.subtitle": "Training history",
+  "calendar.month": "MONTH",
+  "calendar.days": "DAYS",
+  "calendar.workouts": "WORKOUTS",
+  "calendar.selectDate": "Select a date to view workouts.",
+  "calendar.noWorkouts": "No workouts on {date}.",
+  "calendar.noSetsLogged": "No sets logged in this workout.",
+  "calendar.dayAbbr.mon": "M",
+  "calendar.dayAbbr.tue": "T",
+  "calendar.dayAbbr.wed": "W",
+  "calendar.dayAbbr.thu": "T",
+  "calendar.dayAbbr.fri": "F",
+  "calendar.dayAbbr.sat": "S",
+  "calendar.dayAbbr.sun": "S",
+  "calendar.started": "Started {time}",
+  "calendar.note": "NOTE",
+  "calendar.orderChanged": "Different order than last session",
+  "calendar.type.push": "Push",
+  "calendar.type.pull": "Pull",
+  "calendar.type.legs": "Legs",
+  "calendar.type.other": "Other",
+  "calendar.daySummary": "SUMMARY",
+  "calendar.markDay": "Mark day",
+  "calendar.markDayMsg": "Choose a status for this day.",
+  "calendar.markRest": "Rest day",
+  "calendar.markSkipped": "Skipped",
+  "calendar.markSick": "Sick",
+  "calendar.clearMark": "Clear mark",
+  "calendar.mark.rest": "Rest day",
+  "calendar.mark.skipped": "Skipped",
+  "calendar.mark.sick": "Sick",
+};
+
+export default calendar;

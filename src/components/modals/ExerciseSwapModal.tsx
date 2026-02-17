@@ -6,18 +6,19 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
-import { displayNameFor, getExercise } from "../../exerciseLibrary";
-import type { Equipment } from "../../exerciseLibrary";
+import { displayNameFor, getExercise, tagsFor } from "../../exerciseLibrary";
+import type { Equipment, ExerciseTag } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
-
-function formatWeight(n: number) {
-  if (!Number.isFinite(n)) return "";
-  const r = Math.round(n * 10) / 10;
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
+import { formatWeight } from "../../format";
 
 const EQUIPMENT_OPTIONS: Equipment[] = [
   "barbell", "dumbbell", "machine", "cable", "bodyweight", "smith", "trapbar", "other",
+];
+
+const TAG_OPTIONS: ExerciseTag[] = [
+  "chest", "back", "shoulders", "biceps", "triceps", "forearms",
+  "quads", "hamstrings", "glutes", "calves", "core",
+  "compound", "isolation",
 ];
 
 export type LastSetInfo = {
@@ -41,9 +42,11 @@ export type ExerciseSwapModalProps = {
   /** Called when user wants to make the current selection the new default */
   onSetDefault?: (baseExId: string, newDefaultExId: string) => void;
   /** Called when user creates a new custom exercise from the picker */
-  onCreateCustom?: (baseExId: string, name: string, equipment: Equipment) => void;
+  onCreateCustom?: (baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[]) => void;
   /** Last sets lookup for showing history */
   lastSets: Record<string, LastSetInfo>;
+  /** Exercise notes lookup */
+  exerciseNotes?: Record<string, string>;
 };
 
 export default function ExerciseSwapModal({
@@ -56,6 +59,7 @@ export default function ExerciseSwapModal({
   onSetDefault,
   onCreateCustom,
   lastSets,
+  exerciseNotes = {},
 }: ExerciseSwapModalProps) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -64,17 +68,26 @@ export default function ExerciseSwapModal({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEquipment, setNewEquipment] = useState<Equipment>("machine");
+  const [newTags, setNewTags] = useState<ExerciseTag[]>([]);
+
+  function startCreating() {
+    // Pre-populate tags from base exercise (only user-facing tags)
+    const baseTags = baseExId ? tagsFor(baseExId).filter((t) => TAG_OPTIONS.includes(t)) : [];
+    setNewTags(baseTags);
+    setCreating(true);
+  }
 
   function resetForm() {
     setCreating(false);
     setNewName("");
     setNewEquipment("machine");
+    setNewTags([]);
   }
 
   function handleSaveCustom() {
     const name = newName.trim();
     if (!name || !baseExId || !onCreateCustom) return;
-    onCreateCustom(baseExId, name, newEquipment);
+    onCreateCustom(baseExId, name, newEquipment, newTags);
     resetForm();
   }
 
@@ -171,6 +184,11 @@ export default function ExerciseSwapModal({
                       {t("log.lastSet", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps, date: lastSet.created_at.slice(0, 10) })}
                     </Text>
                   )}
+                  {exerciseNotes[exId] ? (
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, fontStyle: "italic" }}>
+                      {exerciseNotes[exId]}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -234,6 +252,38 @@ export default function ExerciseSwapModal({
                       </Pressable>
                     ))}
                   </ScrollView>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                    {t("log.selectTags")}
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                    {TAG_OPTIONS.map((tag) => {
+                      const active = newTags.includes(tag);
+                      return (
+                        <Pressable
+                          key={`tag_${tag}`}
+                          onPress={() => {
+                            setNewTags((prev) =>
+                              prev.includes(tag) ? prev.filter((t) => t !== tag) : prev.length < 4 ? [...prev, tag] : prev
+                            );
+                          }}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: theme.radius.md,
+                            borderWidth: 1,
+                            borderColor: active ? theme.accent : theme.glassBorder,
+                            backgroundColor: active
+                              ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)")
+                              : theme.glass,
+                          }}
+                        >
+                          <Text style={{ color: active ? theme.accent : theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                            {tag}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     <Btn label={t("common.save")} tone="accent" onPress={handleSaveCustom} />
                     <Btn label={t("common.cancel")} onPress={resetForm} />
@@ -241,7 +291,7 @@ export default function ExerciseSwapModal({
                 </View>
               ) : (
                 <Pressable
-                  onPress={() => setCreating(true)}
+                  onPress={startCreating}
                   style={{
                     padding: 14,
                     borderRadius: theme.radius.lg,

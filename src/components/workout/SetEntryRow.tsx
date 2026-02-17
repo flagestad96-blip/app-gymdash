@@ -6,6 +6,7 @@ import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { IconButton } from "../../ui";
 import { isBodyweight, bodyweightFactorFor } from "../../exerciseLibrary";
+import { formatWeight } from "../../format";
 
 export type SetRow = {
   id: string;
@@ -23,20 +24,8 @@ export type SetRow = {
   bodyweight_kg_used?: number | null;
   bodyweight_factor?: number | null;
   est_total_load_kg?: number | null;
+  rest_seconds?: number | null;
 };
-
-function formatWeight(n: number) {
-  if (!Number.isFinite(n)) return "";
-  const r = Math.round(n * 10) / 10;
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
-
-function setTypeLabel(setType?: string | null, isWarmup?: number | null) {
-  if (isWarmup === 1 || setType === "warmup") return "WU";
-  if (setType === "dropset") return "DS";
-  if (setType === "restpause") return "RP";
-  return "";
-}
 
 export type SetEntryRowProps = {
   set: SetRow;
@@ -51,7 +40,6 @@ export default function SetEntryRow({ set: s, highlight, highlightBg, onEdit, on
   const { t } = useI18n();
   const wu = useWeightUnit();
 
-  const badge = setTypeLabel(s.set_type ?? null, s.is_warmup ?? null);
   const isBw = s.exercise_id ? isBodyweight(s.exercise_id) : false;
   const bwFactor = s.bodyweight_factor ?? (s.exercise_id ? bodyweightFactorFor(s.exercise_id) : 1);
   const ext = Number.isFinite(s.external_load_kg ?? NaN) ? (s.external_load_kg as number) : s.weight ?? 0;
@@ -96,26 +84,6 @@ export default function SetEntryRow({ set: s, highlight, highlightBg, onEdit, on
             @{s.rpe}
           </Text>
         ) : null}
-      </View>
-      <View style={{ width: 48, alignItems: "flex-start" }}>
-        {badge ? (
-          <View
-            style={{
-              paddingHorizontal: 6,
-              paddingVertical: 3,
-              borderRadius: theme.radius.pill,
-              backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)",
-              borderWidth: 1,
-              borderColor: theme.accent,
-            }}
-          >
-            <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-              {badge}
-            </Text>
-          </View>
-        ) : (
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>—</Text>
-        )}
       </View>
       <View style={{ flexDirection: "row", gap: 6 }}>
         <IconButton icon="edit" onPress={() => onEdit(s)} />

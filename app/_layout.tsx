@@ -18,6 +18,7 @@ import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
 import FloatingRestTimer from "../src/components/FloatingRestTimer";
+import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
 
 type DrawerItem = {
   label: string;
@@ -79,6 +80,7 @@ function CustomDrawerContent(props: any) {
     { label: t("nav.achievements"), path: "/achievements" },
     { label: t("nav.body"), path: "/body" },
     { label: t("nav.calendar"), path: "/calendar" },
+    { label: t("nav.history"), path: "/history" },
     { label: t("nav.settings"), path: "/settings" },
     { label: t("nav.backup"), path: "/settings" },
   ];
@@ -135,11 +137,15 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <ThemeProvider>
-      <I18nProvider>
-        <RootLayoutInner />
-      </I18nProvider>
-    </ThemeProvider>
+    <ErrorBoundary fallbackColors={DARK_FALLBACK_COLORS}>
+      <ThemeProvider>
+        <I18nProvider>
+          <ErrorBoundary>
+            <RootLayoutInner />
+          </ErrorBoundary>
+        </I18nProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

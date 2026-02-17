@@ -21,26 +21,20 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
   );
   if (!workout) return;
 
-  const sets = await db.getAllAsync<{
+  const allSets = await db.getAllAsync<{
     exercise_id: string | null;
     exercise_name: string;
     weight: number;
     reps: number;
-    is_warmup: number | null;
-    set_type: string | null;
   }>(
-    `SELECT exercise_id, exercise_name, weight, reps, is_warmup, set_type
+    `SELECT exercise_id, exercise_name, weight, reps
      FROM sets WHERE workout_id = ? ORDER BY created_at`,
     [workoutId]
   );
 
-  const workingSets = (sets ?? []).filter(
-    (s) => s.is_warmup !== 1 && s.set_type !== "warmup"
-  );
-
   // Group by exercise
   const byExercise: Record<string, { name: string; exId: string | null; sets: { weight: number; reps: number }[] }> = {};
-  for (const s of workingSets) {
+  for (const s of allSets ?? []) {
     const key = s.exercise_id ?? s.exercise_name;
     if (!byExercise[key]) {
       byExercise[key] = {
@@ -52,11 +46,11 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
     byExercise[key].sets.push({ weight: s.weight, reps: s.reps });
   }
 
-  const totalVolume = workingSets.reduce((sum, s) => {
+  const totalVolume = (allSets ?? []).reduce((sum, s) => {
     const multiplier = s.exercise_id && isPerSideExercise(s.exercise_id) ? 2 : 1;
     return sum + s.weight * s.reps * multiplier;
   }, 0);
-  const totalSets = workingSets.length;
+  const totalSets = (allSets ?? []).length;
   const duration = formatDuration(workout.started_at, workout.ended_at);
 
   // Build summary text

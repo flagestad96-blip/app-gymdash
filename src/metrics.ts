@@ -3,6 +3,15 @@ export function e1rmEpley(weight: number, reps: number) {
   return weight * (1 + reps / 30);
 }
 
+export function epley1RM(weight: number, reps: number) {
+  const r = Math.max(1, reps);
+  return weight * (1 + r / 30);
+}
+
+export function round1(n: number) {
+  return Math.round(n * 10) / 10;
+}
+
 export function suggestNextWeight(args: {
   lastWeight: number;
   lastReps: number;

@@ -9,10 +9,13 @@ import { Screen, TopBar, IconButton, Card, ListRow, Btn } from "../../src/ui";
 import { displayNameFor, tagsFor } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
+import { isoDateOnly } from "../../src/storage";
+import { epley1RM } from "../../src/metrics";
 
 type WorkoutRow = {
   id: string;
   date: string;
+  program_id?: string | null;
   day_index?: number | null;
   started_at?: string | null;
   ended_at?: string | null;
@@ -27,8 +30,6 @@ type SetRow = {
   weight: number;
   reps: number;
   rpe?: number | null;
-  set_type?: string | null;
-  is_warmup?: number | null;
   created_at?: string | null;
   notes?: string | null;
 };
@@ -62,7 +63,7 @@ function classifyWorkout(exerciseIds: string[]): WorkoutType {
     const tags = tagsFor(id);
     for (const tag of tags) {
       if (tag === "chest" || tag === "shoulders" || tag === "triceps") push++;
-      else if (tag === "back" || tag === "biceps") pull++;
+      else if (tag === "back" || tag === "biceps" || tag === "forearms") pull++;
       else if (tag === "quads" || tag === "hamstrings" || tag === "glutes" || tag === "calves") legs++;
     }
   }
@@ -73,13 +74,6 @@ function classifyWorkout(exerciseIds: string[]): WorkoutType {
   if (pull / total > 0.6) return "pull";
   if (legs / total > 0.6) return "legs";
   return "other";
-}
-
-function isoDateOnly(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${da}`;
 }
 
 function daysInMonth(year: number, monthIndex: number) {
@@ -99,13 +93,6 @@ function formatTime(isoStr: string | null | undefined): string {
     return "";
   }
 }
-
-function epley1RM(w: number, r: number): number {
-  if (r <= 0 || w <= 0) return 0;
-  if (r === 1) return w;
-  return w * (1 + r / 30);
-}
-
 
 export default function CalendarScreen() {
   const theme = useTheme();
@@ -136,13 +123,14 @@ export default function CalendarScreen() {
   const [detailWorkout, setDetailWorkout] = useState<WorkoutRow | null>(null);
   const [detailSets, setDetailSets] = useState<SetRow[]>([]);
   const [detailPRSetIds, setDetailPRSetIds] = useState<Set<string>>(new Set());
+  const [prevExOrder, setPrevExOrder] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
     await ensureDb();
     const db = getDb();
 
     const w = await db.getAllAsync<WorkoutRow>(
-      `SELECT id, date, day_index, started_at, ended_at, notes FROM workouts ORDER BY date ASC`
+      `SELECT id, date, program_id, day_index, started_at, ended_at, notes FROM workouts ORDER BY date ASC`
     );
     const wList = Array.isArray(w) ? w : [];
     setWorkouts(wList);
@@ -156,10 +144,10 @@ export default function CalendarScreen() {
 
     // Load exercise IDs per workout for classification + day summaries
     try {
-      const allSets = await db.getAllAsync<{ workout_id: string; exercise_id: string; weight: number; reps: number; is_warmup: number | null }>(
-        `SELECT workout_id, exercise_id, weight, reps, is_warmup FROM sets ORDER BY workout_id`
+      const allSets = await db.getAllAsync<{ workout_id: string; exercise_id: string; weight: number; reps: number }>(
+        `SELECT workout_id, exercise_id, weight, reps FROM sets ORDER BY workout_id`
       );
-      const byWorkout = new Map<string, Array<{ exercise_id: string; weight: number; reps: number; is_warmup: number | null }>>();
+      const byWorkout = new Map<string, Array<{ exercise_id: string; weight: number; reps: number }>>();
       for (const s of allSets ?? []) {
         if (!byWorkout.has(s.workout_id)) byWorkout.set(s.workout_id, []);
         byWorkout.get(s.workout_id)!.push(s);
@@ -184,7 +172,6 @@ export default function CalendarScreen() {
           const sets = byWorkout.get(wo.id) ?? [];
           for (const s of sets) {
             if (s.exercise_id) allExIds.push(s.exercise_id);
-            if (s.is_warmup) continue;
             const key = s.exercise_id || "unknown";
             const e1rm = epley1RM(s.weight, s.reps);
             const prev = exBest.get(key);
@@ -253,8 +240,8 @@ export default function CalendarScreen() {
     setDetailWorkout(w);
     try {
       const sets = await getDb().getAllAsync<SetRow>(
-        `SELECT id, exercise_id, exercise_name, set_index, weight, reps, rpe, set_type, is_warmup, created_at, notes
-         FROM sets WHERE workout_id = ? ORDER BY exercise_id, set_index`,
+        `SELECT id, exercise_id, exercise_name, set_index, weight, reps, rpe, created_at, notes
+         FROM sets WHERE workout_id = ? ORDER BY created_at ASC, set_index ASC`,
         [w.id]
       );
       setDetailSets(Array.isArray(sets) ? sets : []);
@@ -269,15 +256,39 @@ export default function CalendarScreen() {
       const prIds = new Set<string>();
       for (const r of prRows ?? []) if (r.set_id) prIds.add(r.set_id);
       setDetailPRSetIds(prIds);
+
+      // Load previous session's exercise order for comparison
+      if (w.program_id && w.day_index != null) {
+        try {
+          const prevW = await getDb().getAllAsync<{ id: string }>(
+            `SELECT id FROM workouts WHERE program_id = ? AND day_index = ? AND id != ? AND ended_at IS NOT NULL ORDER BY date DESC LIMIT 1`,
+            [w.program_id, w.day_index, w.id]
+          );
+          if (prevW && prevW.length > 0) {
+            const prevSets = await getDb().getAllAsync<{ exercise_id: string }>(
+              `SELECT exercise_id, MIN(created_at) as first_set_at FROM sets WHERE workout_id = ? GROUP BY exercise_id ORDER BY MIN(created_at) ASC`,
+              [prevW[0].id]
+            );
+            setPrevExOrder((prevSets ?? []).map((r) => r.exercise_id));
+          } else {
+            setPrevExOrder([]);
+          }
+        } catch {
+          setPrevExOrder([]);
+        }
+      } else {
+        setPrevExOrder([]);
+      }
     } catch {
       setDetailSets([]);
       setDetailPRSetIds(new Set());
+      setPrevExOrder([]);
     }
   }, []);
 
-  // Group detail sets by exercise
+  // Group detail sets by exercise (preserves execution order from created_at sorting)
   const exerciseGroups = useMemo(() => {
-    const groups: Array<{ exId: string; name: string; sets: SetRow[] }> = [];
+    const groups: Array<{ exId: string; name: string; sets: SetRow[]; orderNum: number; prevOrderNum: number | null }> = [];
     const map = new Map<string, SetRow[]>();
     const order: string[] = [];
     for (const s of detailSets) {
@@ -288,23 +299,24 @@ export default function CalendarScreen() {
       }
       map.get(key)!.push(s);
     }
-    for (const key of order) {
+    for (let i = 0; i < order.length; i++) {
+      const key = order[i];
       const sets = map.get(key)!;
       const name = sets[0].exercise_id ? displayNameFor(sets[0].exercise_id) : sets[0].exercise_name;
-      groups.push({ exId: key, name, sets });
+      const prevIdx = prevExOrder.indexOf(key);
+      groups.push({ exId: key, name, sets, orderNum: i + 1, prevOrderNum: prevIdx >= 0 ? prevIdx + 1 : null });
     }
     return groups;
-  }, [detailSets]);
+  }, [detailSets, prevExOrder]);
 
   // Summary stats
   const detailSummary = useMemo(() => {
     if (!detailSets.length) return { totalSets: 0, totalVolume: 0, exercises: 0, duration: "" };
-    const nonWarmup = detailSets.filter((s) => !s.is_warmup);
-    const totalVolume = nonWarmup.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
+    const totalVolume = detailSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
     const lastSet = detailSets[detailSets.length - 1];
     const endRef = detailWorkout?.ended_at || lastSet?.created_at;
     return {
-      totalSets: nonWarmup.length,
+      totalSets: detailSets.length,
       totalVolume: Math.round(totalVolume),
       exercises: exerciseGroups.length,
       duration: formatDuration(detailWorkout?.started_at, endRef),
@@ -623,14 +635,39 @@ export default function CalendarScreen() {
                 </View>
               ) : null}
 
+              {/* Order change hint */}
+              {prevExOrder.length > 0 && exerciseGroups.some((g) => g.prevOrderNum !== null && g.prevOrderNum !== g.orderNum) ? (
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, textAlign: "center" }}>
+                  {t("calendar.orderChanged")}
+                </Text>
+              ) : null}
+
               {/* Exercise groups */}
-              {exerciseGroups.map((group) => (
+              {exerciseGroups.map((group) => {
+                const orderChanged = group.prevOrderNum !== null && group.prevOrderNum !== group.orderNum;
+                const movedEarlier = orderChanged && group.orderNum < group.prevOrderNum!;
+                return (
                 <View key={group.exId} style={{ gap: 6 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <View style={{
+                      width: 22, height: 22, borderRadius: 11,
+                      borderWidth: 1, borderColor: theme.glassBorder,
+                      alignItems: "center", justifyContent: "center",
+                      backgroundColor: theme.glass,
+                    }}>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                        {group.orderNum}
+                      </Text>
+                    </View>
                     <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 15 }}>
                       {group.name}
                     </Text>
                     <BackImpactDot exerciseId={group.exId} />
+                    {orderChanged ? (
+                      <Text style={{ color: movedEarlier ? theme.success : theme.warn, fontFamily: theme.mono, fontSize: 11 }}>
+                        {movedEarlier ? "\u2191" : "\u2193"}
+                      </Text>
+                    ) : null}
                   </View>
 
                   {/* Set header */}
@@ -639,14 +676,12 @@ export default function CalendarScreen() {
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, flex: 1 }}>{wu.unitLabel()}</Text>
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, flex: 1 }}>REPS</Text>
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 36 }}>RPE</Text>
-                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 50 }}>TYPE</Text>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 50 }}></Text>
                   </View>
 
                   {/* Individual sets */}
                   {group.sets.map((s, sIdx) => {
                     const isPR = detailPRSetIds.has(s.id);
-                    const isWarmup = s.is_warmup === 1;
-                    const typeLabel = isWarmup ? "warmup" : (s.set_type && s.set_type !== "normal" ? s.set_type : "");
                     return (
                       <View key={s.id}>
                         <View
@@ -663,17 +698,17 @@ export default function CalendarScreen() {
                           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, width: 24 }}>
                             {sIdx + 1}
                           </Text>
-                          <Text style={{ color: isWarmup ? theme.muted : theme.text, fontFamily: theme.mono, fontSize: 14, flex: 1 }}>
+                          <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14, flex: 1 }}>
                             {wu.toDisplay(s.weight ?? 0)}
                           </Text>
-                          <Text style={{ color: isWarmup ? theme.muted : theme.text, fontFamily: theme.mono, fontSize: 14, flex: 1 }}>
+                          <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14, flex: 1 }}>
                             {s.reps ?? 0}
                           </Text>
                           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, width: 36 }}>
                             {s.rpe ?? ""}
                           </Text>
                           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 50 }}>
-                            {isPR ? "PR" : typeLabel}
+                            {isPR ? "PR" : ""}
                           </Text>
                         </View>
                         {s.notes ? (
@@ -685,7 +720,8 @@ export default function CalendarScreen() {
                     );
                   })}
                 </View>
-              ))}
+                );
+              })}
 
               {exerciseGroups.length === 0 ? (
                 <Text style={{ color: theme.muted }}>{t("calendar.noSetsLogged")}</Text>

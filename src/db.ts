@@ -387,154 +387,212 @@ export async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_user_achievements_unlocked ON user_achievements(unlocked_at DESC);
     `);
 
-      // Migrations on native
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN exercise_id TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN set_type TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN is_warmup INTEGER;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN external_load_kg REAL DEFAULT 0;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN bodyweight_kg_used REAL;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN bodyweight_factor REAL;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN est_total_load_kg REAL;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE sets ADD COLUMN notes TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE workouts ADD COLUMN day_index INTEGER;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE workouts ADD COLUMN started_at TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE workouts ADD COLUMN program_id TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE workouts ADD COLUMN ended_at TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_program ON workouts(program_id);`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE programs ADD COLUMN created_at TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE programs ADD COLUMN updated_at TEXT;`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE programs ADD COLUMN mode TEXT;`);
-      } catch {}
-      try {
-        const cols = db.getAllSync<{ name: string }>(`PRAGMA table_info(programs);`);
-        const hasMode = (cols ?? []).some((col) => col.name === "mode");
-        if (hasMode) {
-          db.execSync(`CREATE INDEX IF NOT EXISTS idx_programs_mode ON programs(mode);`);
-        }
-      } catch {}
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS exercise_targets (
-            id TEXT PRIMARY KEY NOT NULL,
-            program_id TEXT NOT NULL,
-            exercise_id TEXT NOT NULL,
-            rep_min INTEGER NOT NULL,
-            rep_max INTEGER NOT NULL,
-            target_sets INTEGER,
-            increment_kg REAL NOT NULL,
-            updated_at TEXT NOT NULL
-          );
-        `);
-        db.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_targets_program ON exercise_targets(program_id);`);
-        db.execSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id);`);
-      } catch {}
-      try {
-        db.execSync(`ALTER TABLE exercise_targets ADD COLUMN target_sets INTEGER;`);
-      } catch {}
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS pr_records (
-            exercise_id TEXT NOT NULL,
-            type TEXT NOT NULL,
-            value REAL NOT NULL,
-            reps INTEGER,
-            weight REAL,
-            set_id TEXT,
-            date TEXT,
-            program_id TEXT NOT NULL,
-            PRIMARY KEY (exercise_id, type, program_id)
-          );
-        `);
-        db.execSync(`CREATE INDEX IF NOT EXISTS idx_pr_records_exercise ON pr_records(exercise_id);`);
-      } catch {}
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS body_metrics (
-            date TEXT PRIMARY KEY NOT NULL,
-            weight_kg REAL NOT NULL,
-            note TEXT
-          );
-        `);
-      } catch {}
+      // ── Versioned migrations ──
+      db.execSync(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY NOT NULL);`);
 
+      const currentVersion = (() => {
+        try {
+          const row = db.getFirstSync<{ v: number | null }>(`SELECT MAX(version) as v FROM schema_migrations`);
+          return row?.v ?? 0;
+        } catch { return 0; }
+      })();
+
+      type Migration = { version: number; up: (d: SQLite.SQLiteDatabase) => void | Promise<void> };
+
+      const MIGRATIONS: Migration[] = [
+        // 1: sets — extra columns (each wrapped: existing users may have some already)
+        { version: 1, up: (d) => {
+          const cols = ["exercise_id TEXT", "set_type TEXT", "is_warmup INTEGER",
+            "external_load_kg REAL DEFAULT 0", "bodyweight_kg_used REAL",
+            "bodyweight_factor REAL", "est_total_load_kg REAL", "notes TEXT"];
+          for (const col of cols) {
+            try { d.execSync(`ALTER TABLE sets ADD COLUMN ${col};`); } catch {}
+          }
+        }},
+        // 2: workouts — extra columns + index
+        { version: 2, up: (d) => {
+          for (const col of ["day_index INTEGER", "started_at TEXT", "program_id TEXT", "ended_at TEXT"]) {
+            try { d.execSync(`ALTER TABLE workouts ADD COLUMN ${col};`); } catch {}
+          }
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_program ON workouts(program_id);`);
+        }},
+        // 3: programs — extra columns + index
+        { version: 3, up: (d) => {
+          for (const col of ["created_at TEXT", "updated_at TEXT", "mode TEXT"]) {
+            try { d.execSync(`ALTER TABLE programs ADD COLUMN ${col};`); } catch {}
+          }
+          if (hasColumn("programs", "mode")) {
+            d.execSync(`CREATE INDEX IF NOT EXISTS idx_programs_mode ON programs(mode);`);
+          }
+        }},
+        // 4: exercise_targets table + indexes + target_sets column
+        { version: 4, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS exercise_targets (
+              id TEXT PRIMARY KEY NOT NULL, program_id TEXT NOT NULL, exercise_id TEXT NOT NULL,
+              rep_min INTEGER NOT NULL, rep_max INTEGER NOT NULL, target_sets INTEGER,
+              increment_kg REAL NOT NULL, updated_at TEXT NOT NULL
+            );`);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_targets_program ON exercise_targets(program_id);`);
+          d.execSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id);`);
+          try { d.execSync(`ALTER TABLE exercise_targets ADD COLUMN target_sets INTEGER;`); } catch {}
+        }},
+        // 5: pr_records table + index
+        { version: 5, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS pr_records (
+              exercise_id TEXT NOT NULL, type TEXT NOT NULL, value REAL NOT NULL,
+              reps INTEGER, weight REAL, set_id TEXT, date TEXT,
+              program_id TEXT NOT NULL, PRIMARY KEY (exercise_id, type, program_id)
+            );`);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_pr_records_exercise ON pr_records(exercise_id);`);
+        }},
+        // 6: body_metrics table
+        { version: 6, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS body_metrics (
+              date TEXT PRIMARY KEY NOT NULL, weight_kg REAL NOT NULL, note TEXT
+            );`);
+        }},
+        // 7: backfill exercise_id on sets from exercise_name
+        { version: 7, up: (d) => {
+          const rows = d.getAllSync<{ id: string; exercise_name: string }>(
+            `SELECT id, exercise_name FROM sets WHERE (exercise_id IS NULL OR exercise_id = '') AND exercise_name IS NOT NULL`
+          );
+          for (const row of rows ?? []) {
+            const exId = getExerciseLibrary().resolveExerciseId(row.exercise_name);
+            if (!exId) continue;
+            d.runSync(`UPDATE sets SET exercise_id = ? WHERE id = ?`, [exId, row.id]);
+          }
+        }},
+        // 8: exercise_goals table + indexes
+        { version: 8, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS exercise_goals (
+              id TEXT PRIMARY KEY NOT NULL, exercise_id TEXT NOT NULL, goal_type TEXT NOT NULL,
+              target_value REAL NOT NULL, created_at TEXT NOT NULL, achieved_at TEXT,
+              program_id TEXT NOT NULL
+            );`);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_goals_exercise ON exercise_goals(exercise_id);`);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_goals_program ON exercise_goals(program_id);`);
+        }},
+        // 9: custom_exercises table
+        { version: 9, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS custom_exercises (
+              id TEXT PRIMARY KEY NOT NULL, display_name TEXT NOT NULL, equipment TEXT NOT NULL,
+              tags TEXT NOT NULL, default_increment_kg REAL NOT NULL DEFAULT 2.5,
+              is_bodyweight INTEGER DEFAULT 0, bodyweight_factor REAL, created_at TEXT NOT NULL
+            );`);
+        }},
+        // 10: one-time split workout repair
+        { version: 10, up: () => { runSplitWorkoutRepairOnce(); }},
+        // 11: exercise_targets — auto_progress column
+        { version: 11, up: (d) => {
+          if (!hasColumn("exercise_targets", "auto_progress")) {
+            d.execSync(`ALTER TABLE exercise_targets ADD COLUMN auto_progress INTEGER DEFAULT 1;`);
+          }
+        }},
+        // 12: progression_log table + index
+        { version: 12, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS progression_log (
+              id TEXT PRIMARY KEY NOT NULL, program_id TEXT NOT NULL, exercise_id TEXT NOT NULL,
+              old_weight_kg REAL NOT NULL, new_weight_kg REAL NOT NULL, reason TEXT,
+              created_at TEXT NOT NULL, applied INTEGER DEFAULT 0, dismissed INTEGER DEFAULT 0
+            );`);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_progression_log_program ON progression_log(program_id, exercise_id);`);
+        }},
+        // 13: body_metrics — photo_uri column
+        { version: 13, up: (d) => {
+          if (!hasColumn("body_metrics", "photo_uri")) {
+            d.execSync(`ALTER TABLE body_metrics ADD COLUMN photo_uri TEXT;`);
+          }
+        }},
+        // 14: workout_templates table
+        { version: 14, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS workout_templates (
+              id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, description TEXT,
+              exercises_json TEXT NOT NULL, created_at TEXT NOT NULL, last_used_at TEXT
+            );`);
+        }},
+        // 15: programs — periodization_json column
+        { version: 15, up: (d) => {
+          if (!hasColumn("programs", "periodization_json")) {
+            d.execSync(`ALTER TABLE programs ADD COLUMN periodization_json TEXT;`);
+          }
+        }},
+        // 16: day_marks table
+        { version: 16, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS day_marks (
+              date TEXT PRIMARY KEY NOT NULL, status TEXT NOT NULL
+            );`);
+        }},
+        { version: 17, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS exercise_notes (
+              exercise_id TEXT PRIMARY KEY NOT NULL,
+              note TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );`);
+        }},
+        { version: 18, up: (d) => {
+          d.execSync(`ALTER TABLE sets ADD COLUMN rest_seconds INTEGER`);
+        }},
+        // 19: migrate legacy active-program setting keys
+        { version: 19, up: (d) => {
+          const oldNormal = d.getFirstSync<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, ["activeProgramIdNormal"]);
+          const oldBack = d.getFirstSync<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, ["activeProgramIdBack"]);
+          const curNormal = d.getFirstSync<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, ["activeProgramId_normal"]);
+          const curBack = d.getFirstSync<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, ["activeProgramId_back"]);
+          if (!curNormal && oldNormal?.value) {
+            d.runSync(`INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)`, ["activeProgramId_normal", oldNormal.value]);
+          }
+          if (!curBack && oldBack?.value) {
+            d.runSync(`INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)`, ["activeProgramId_back", oldBack.value]);
+          }
+        }},
+        // 20: set mode on legacy programs that have mode IS NULL
+        { version: 20, up: (d) => {
+          const normalIds = ["template_normal_5", "program_standard_v1", "program_standard_v2"];
+          const backIds = ["template_back_5", "program_back_v1", "program_back_v2"];
+          for (const id of normalIds) d.runSync(`UPDATE programs SET mode = 'normal' WHERE mode IS NULL AND id = ?`, [id]);
+          for (const id of backIds) d.runSync(`UPDATE programs SET mode = 'back' WHERE mode IS NULL AND id = ?`, [id]);
+        }},
+        // 21: rename legacy program names
+        { version: 21, up: (d) => {
+          d.runSync(
+            `UPDATE programs SET name = '4-dagers – Legacy' WHERE id = ? AND name IN ('Standard 5-dagers (v1)', 'Standard 5 dager (v1)')`,
+            ["program_standard_v1"]
+          );
+        }},
+      ];
+
+      // Run pending migrations
+      for (const m of MIGRATIONS) {
+        if (m.version <= currentVersion) continue;
+        try {
+          await Promise.resolve(m.up(db));
+          db.runSync(`INSERT INTO schema_migrations(version) VALUES(?)`, [m.version]);
+        } catch (err) {
+          console.warn(`[db] migration ${m.version} failed:`, err);
+        }
+      }
+
+      // ── Post-migration steps (run every init) ──
+
+      // Migrate exercise notes from settings to exercise_notes table (one-time)
       try {
-        const rows = db.getAllSync<{ id: string; exercise_name: string }>(
-          `SELECT id, exercise_name FROM sets WHERE (exercise_id IS NULL OR exercise_id = '') AND exercise_name IS NOT NULL`
+        const settingNotes = db.getAllSync<{ key: string; value: string }>(
+          `SELECT key, value FROM settings WHERE key LIKE 'exercise_note_%' AND value != ''`
         );
-        for (const row of rows ?? []) {
-          const exId = getExerciseLibrary().resolveExerciseId(row.exercise_name);
-          if (!exId) continue;
-          db.runSync(`UPDATE sets SET exercise_id = ? WHERE id = ?`, [exId, row.id]);
+        for (const row of settingNotes ?? []) {
+          const exId = row.key.replace("exercise_note_", "");
+          db.runSync(`INSERT OR IGNORE INTO exercise_notes(exercise_id, note, updated_at) VALUES(?, ?, ?)`,
+            [exId, row.value, new Date().toISOString()]);
         }
-      } catch {}
-
-      // Exercise goals table
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS exercise_goals (
-            id TEXT PRIMARY KEY NOT NULL,
-            exercise_id TEXT NOT NULL,
-            goal_type TEXT NOT NULL,
-            target_value REAL NOT NULL,
-            created_at TEXT NOT NULL,
-            achieved_at TEXT,
-            program_id TEXT NOT NULL
-          );
-        `);
-        db.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_goals_exercise ON exercise_goals(exercise_id);`);
-        db.execSync(`CREATE INDEX IF NOT EXISTS idx_exercise_goals_program ON exercise_goals(program_id);`);
-      } catch {}
-
-      // Custom exercises table
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS custom_exercises (
-            id TEXT PRIMARY KEY NOT NULL,
-            display_name TEXT NOT NULL,
-            equipment TEXT NOT NULL,
-            tags TEXT NOT NULL,
-            default_increment_kg REAL NOT NULL DEFAULT 2.5,
-            is_bodyweight INTEGER DEFAULT 0,
-            bodyweight_factor REAL,
-            created_at TEXT NOT NULL
-          );
-        `);
-      } catch {}
-
-      // One-time repair for split workouts due to day switching
-      try {
-        runSplitWorkoutRepairOnce();
       } catch {}
 
       // Seed achievements
@@ -549,63 +607,6 @@ export async function initDb() {
       try {
         const { _loadCustomExercisesFromDb } = await import("./exerciseLibrary");
         await _loadCustomExercisesFromDb(db);
-      } catch {}
-
-      // Auto-progression: add auto_progress column to exercise_targets
-      try {
-        db.execSync(`ALTER TABLE exercise_targets ADD COLUMN auto_progress INTEGER DEFAULT 1`);
-      } catch {}
-
-      // Progression log table
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS progression_log (
-            id TEXT PRIMARY KEY NOT NULL,
-            program_id TEXT NOT NULL,
-            exercise_id TEXT NOT NULL,
-            old_weight_kg REAL NOT NULL,
-            new_weight_kg REAL NOT NULL,
-            reason TEXT,
-            created_at TEXT NOT NULL,
-            applied INTEGER DEFAULT 0,
-            dismissed INTEGER DEFAULT 0
-          );
-        `);
-        db.execSync(`CREATE INDEX IF NOT EXISTS idx_progression_log_program ON progression_log(program_id, exercise_id);`);
-      } catch {}
-
-      // Tier 4: Progress photos — add photo_uri to body_metrics
-      try {
-        db.execSync(`ALTER TABLE body_metrics ADD COLUMN photo_uri TEXT;`);
-      } catch {}
-
-      // Tier 5: Workout templates table
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS workout_templates (
-            id TEXT PRIMARY KEY NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT,
-            exercises_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            last_used_at TEXT
-          );
-        `);
-      } catch {}
-
-      // Tier 5: Periodization — add periodization_json to programs
-      try {
-        db.execSync(`ALTER TABLE programs ADD COLUMN periodization_json TEXT;`);
-      } catch {}
-
-      // Day marks (rest/skipped/sick)
-      try {
-        db.execSync(`
-          CREATE TABLE IF NOT EXISTS day_marks (
-            date TEXT PRIMARY KEY NOT NULL,
-            status TEXT NOT NULL
-          );
-        `);
       } catch {}
     }
 

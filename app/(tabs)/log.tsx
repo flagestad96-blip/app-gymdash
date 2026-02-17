@@ -31,7 +31,6 @@ import {
   type ExerciseTag,
   type Equipment,
   isBodyweight,
-  isPerSideExercise,
   bodyweightFactorFor,
 } from "../../src/exerciseLibrary";
 import ProgramStore from "../../src/programStore";
@@ -46,14 +45,16 @@ import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../sr
 import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
+import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, type PrMap } from "../../src/prEngine";
+import { getAllNotes, setNote, deleteNote } from "../../src/exerciseNotes";
 import { AchievementToast, UndoToast } from "../../src/ui/modern";
 import { useI18n } from "../../src/i18n";
 import { useWeightUnit } from "../../src/units";
-import { calculatePlates, plateColor } from "../../src/plateCalculator";
+import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
-import type { SetType, InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
+import type { InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
 import type { SetRow } from "../../src/components/workout/SetEntryRow";
 import PlateCalcModal from "../../src/components/modals/PlateCalcModal";
 import ExerciseSwapModal from "../../src/components/modals/ExerciseSwapModal";
@@ -61,6 +62,9 @@ import { advanceWeek, getPeriodization, isDeloadWeek, deloadWeight, type Periodi
 import { saveWorkoutAsTemplate } from "../../src/templates";
 import TemplatePickerModal from "../../src/components/modals/TemplatePickerModal";
 import { shareWorkoutSummary } from "../../src/sharing";
+import { uid, isoDateOnly, isoNow } from "../../src/storage";
+import { epley1RM, round1 } from "../../src/metrics";
+import { formatWeight, shortLabel, parseTimeMs, clampInt } from "../../src/format";
 
 type WorkoutRow = {
   id: string;
@@ -75,18 +79,6 @@ type WorkoutRow = {
 };
 
 type ProgramMode = "normal" | "back";
-
-type PrType = "heaviest" | "e1rm" | "volume";
-
-type PrRecord = {
-  value: number;
-  date?: string | null;
-  reps?: number | null;
-  weight?: number | null;
-  setId?: string | null;
-};
-
-type PrMap = Record<string, Partial<Record<PrType, PrRecord>>>;
 
 type RenderBlock =
   | {
@@ -104,65 +96,9 @@ type RenderBlock =
       anchorKey: string;
     };
 
-function isoDateOnly(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${da}`;
-}
-
-function isoNow() {
-  return new Date().toISOString();
-}
-
-function uid(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-
-function parseTimeMs(iso: string | null | undefined) {
-  if (!iso) return NaN;
-  const t = new Date(iso).getTime();
-  return Number.isFinite(t) ? t : NaN;
-}
-
-function clampInt(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
-
 function roundWeight(n: number) {
   return Math.round(n * 10) / 10;
 }
-
-function formatWeight(n: number) {
-  if (!Number.isFinite(n)) return "";
-  const r = roundWeight(n);
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
-
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
-}
-
-function epley1RM(weight: number, reps: number) {
-  const r = Math.max(1, reps);
-  return weight * (1 + r / 30);
-}
-
-function isWarmupType(t?: string | null, flag?: number | null) {
-  if (flag === 1) return true;
-  return t === "warmup";
-}
-
-function shortLabel(name: string) {
-  const clean = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
-  if (!clean) return name.slice(0, 6).toUpperCase();
-  const parts = clean.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 6).toUpperCase();
-  return `${parts[0].slice(0, 3)}${parts[1].slice(0, 3)}`.toUpperCase();
-}
-
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -208,7 +144,6 @@ export default function Logg() {
   const [workoutNotes, setWorkoutNotes] = useState<string>("");
 
   const [inputs, setInputs] = useState<Record<string, InputState>>({});
-  const [setTypes, setSetTypes] = useState<Record<string, SetType>>({});
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   const [lastSets, setLastSets] = useState<Record<string, LastSetInfo>>({});
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
@@ -236,7 +171,6 @@ export default function Logg() {
   const [editWeight, setEditWeight] = useState("");
   const [editReps, setEditReps] = useState("");
   const [editRpe, setEditRpe] = useState("");
-  const [editType, setEditType] = useState<SetType>("normal");
 
   // Rest timer state comes from useRestTimer context
   const restTimer = useRestTimer();
@@ -388,31 +322,24 @@ export default function Logg() {
         });
       });
 
-      setProgram(prog);
-      setAlternatives(mergedAlts);
-      setSuggestedDayIndex(suggested);
-      setActiveDayIndex(day);
-
-      // Restore persisted exercise swaps if a workout is active
+      // Read persisted exercise swaps BEFORE setting state so all updates batch together
+      let restoredAlts: Record<string, string> = {};
       if (activeRow) {
         try {
           const savedAlts = await getSettingAsync("selectedAlternatives");
           if (savedAlts) {
             const parsed = JSON.parse(savedAlts);
-            if (parsed && typeof parsed === "object") {
-              setSelectedAlternatives(parsed);
-            } else {
-              setSelectedAlternatives({});
-            }
-          } else {
-            setSelectedAlternatives({});
+            if (parsed && typeof parsed === "object") restoredAlts = parsed;
           }
-        } catch {
-          setSelectedAlternatives({});
-        }
-      } else {
-        setSelectedAlternatives({});
+        } catch {}
       }
+
+      // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
+      setProgram(prog);
+      setAlternatives(mergedAlts);
+      setSuggestedDayIndex(suggested);
+      setActiveDayIndex(day);
+      setSelectedAlternatives(restoredAlts);
 
       // Load periodization
       try {
@@ -526,14 +453,16 @@ export default function Logg() {
   // Only clear alternatives when NOT in an active workout - during a session, alternatives should persist
   const prevDayRef = useRef<{ day: number; prog: string | null }>({ day: activeDayIndex, prog: program?.id ?? null });
   useEffect(() => {
+    // Skip during initial load — loadSession handles restoring selectedAlternatives
+    if (!ready) return;
     const prevDay = prevDayRef.current.day;
     const prevProg = prevDayRef.current.prog;
     prevDayRef.current = { day: activeDayIndex, prog: program?.id ?? null };
-    // Skip if same values (initial mount) or if there's an active workout
+    // Skip if same values or if there's an active workout
     if ((prevDay === activeDayIndex && prevProg === (program?.id ?? null)) || activeWorkoutId) return;
     setSelectedAlternatives({});
     setSettingAsync("selectedAlternatives", "").catch(() => {});
-  }, [activeDayIndex, program?.id, activeWorkoutId]);
+  }, [activeDayIndex, program?.id, activeWorkoutId, ready]);
 
   const refreshWorkoutSets = useCallback(() => {
     if (!activeWorkoutId) { setWorkoutSets([]); return; }
@@ -581,41 +510,12 @@ export default function Logg() {
 
   useEffect(() => {
     if (exerciseIds.length === 0) { setExerciseNotes({}); return; }
-    let alive = true;
-    (async () => {
-      const entries = await Promise.all(
-        exerciseIds.map(async (exId) => {
-          const key = `exercise_note_${exId}`;
-          const val = await getSettingAsync(key);
-          return [exId, val ?? ""] as const;
-        })
-      );
-      if (!alive) return;
-      const map: Record<string, string> = {};
-      for (const [exId, note] of entries) map[exId] = note;
-      setExerciseNotes(map);
-    })();
-    return () => { alive = false; };
+    setExerciseNotes(getAllNotes());
   }, [exerciseIdsKey, exerciseIds]);
 
   useEffect(() => {
     if (!program?.id || exerciseIds.length === 0) { setPrRecords({}); return; }
-    try {
-      const placeholders = exerciseIds.map(() => "?").join(",");
-      const params: (string | number)[] = [...exerciseIds, program.id];
-      const rows = getDb().getAllSync<{
-        exercise_id: string; type: string; value: number;
-        reps?: number | null; weight?: number | null; set_id?: string | null; date?: string | null;
-      }>(`SELECT exercise_id, type, value, reps, weight, set_id, date FROM pr_records WHERE exercise_id IN (${placeholders}) AND program_id = ?`, params);
-      const map: PrMap = {};
-      for (const r of rows ?? []) {
-        const exId = String(r.exercise_id);
-        if (!map[exId]) map[exId] = {};
-        const t = r.type as PrType;
-        map[exId][t] = { value: r.value, date: r.date ?? null, reps: r.reps ?? null, weight: r.weight ?? null, setId: r.set_id ?? null };
-      }
-      setPrRecords(map);
-    } catch { setPrRecords({}); }
+    setPrRecords(loadPrRecords(program.id, exerciseIds));
   }, [program?.id, exerciseIdsKey, exerciseIds]);
 
   useEffect(() => {
@@ -623,13 +523,12 @@ export default function Logg() {
     try {
       const placeholders = exerciseIds.map(() => "?").join(",");
       const rows = getDb().getAllSync<SetRow>(
-        `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at, set_type, is_warmup
+        `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
          FROM sets WHERE exercise_id IN (${placeholders}) ORDER BY created_at DESC`,
         [...exerciseIds]
       );
       const last: Record<string, LastSetInfo> = {};
       for (const r of rows ?? []) {
-        if (isWarmupType(r.set_type ?? null, r.is_warmup ?? null)) continue;
         const key = r.exercise_id ? String(r.exercise_id) : "";
         if (!key || last[key]) continue;
         last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
@@ -711,10 +610,6 @@ export default function Logg() {
     }));
   }
 
-  function setSetType(exId: string, t: SetType) {
-    setSetTypes((prev) => ({ ...prev, [exId]: t }));
-  }
-
   function openAltPicker(baseExId: string) {
     const list = alternatives[activeDayIndex]?.[baseExId] ?? [];
     if (!list.length) return;
@@ -735,13 +630,13 @@ export default function Logg() {
     setAltPickerBase(null);
   }
 
-  async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment) {
+  async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[]) {
     if (!program?.id) return;
     const base = getExercise(baseExId);
     const newId = await createCustomExercise({
       displayName: name,
       equipment,
-      tags: tagsFor(baseExId),
+      tags: tags.length > 0 ? tags : tagsFor(baseExId),
       defaultIncrementKg: base?.defaultIncrementKg ?? 2.5,
     });
 
@@ -884,11 +779,10 @@ export default function Logg() {
     const nextIdx = (activeDayIndex + 1) % dayCount;
 
     // Build summary before clearing state
-    const nonWarmup = workoutSets.filter((s) => !isWarmupType(s.set_type, s.is_warmup));
-    const totalVolume = nonWarmup.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
-    const exerciseIds = new Set(nonWarmup.map((s) => s.exercise_id ?? s.exercise_name));
+    const totalVolume = workoutSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
+    const exerciseIds = new Set(workoutSets.map((s) => s.exercise_id ?? s.exercise_name));
     let topE1rm: { name: string; value: number } | null = null;
-    for (const s of nonWarmup) {
+    for (const s of workoutSets) {
       if (s.weight > 0 && s.reps > 0) {
         const e = round1(epley1RM(s.weight, s.reps));
         if (!topE1rm || e > topE1rm.value) {
@@ -897,53 +791,30 @@ export default function Logg() {
       }
     }
     // ── Volume PRs (session-total per exercise) ──
-    const volumeByExercise: Record<string, number> = {};
-    for (const s of nonWarmup) {
-      const exId = s.exercise_id ?? s.exercise_name;
-      const isBw = isBodyweight(exId);
-      const effectiveWeight = isBw && s.est_total_load_kg != null ? s.est_total_load_kg : (s.weight ?? 0);
-      const perSideMultiplier = isPerSideExercise(exId) ? 2 : 1;
-      volumeByExercise[exId] = (volumeByExercise[exId] ?? 0) + effectiveWeight * (s.reps ?? 0) * perSideMultiplier;
-    }
-    const dateOnly = isoDateOnly();
-    const volumePrs: string[] = [];
-    const updatedPrRecords = { ...prRecords };
-    for (const [exId, sessionVolume] of Object.entries(volumeByExercise)) {
-      const vol = round1(sessionVolume);
-      const current = prRecords[exId]?.volume;
-      if (!current || vol > (current.value ?? 0)) {
-        // Check baseline — skip banner if this is the very first session for this exercise
-        let isBaseline = false;
-        if (!prRecords[exId]?.heaviest && !prRecords[exId]?.e1rm && !current) {
-          try {
-            const prior = getDb().getFirstSync<{ c: number }>(
-              `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND (s.is_warmup IS NULL OR s.is_warmup = 0) AND w.id != ? LIMIT 1`,
-              [exId, activeWorkoutId ?? ""]
-            );
-            isBaseline = !(prior && prior.c > 0);
-          } catch {}
-        }
-        const record: PrRecord = { value: vol, date: dateOnly, reps: null, weight: null, setId: null };
-        updatedPrRecords[exId] = { ...updatedPrRecords[exId], volume: record };
-        try {
-          await getDb().runAsync(
-            `INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'volume', ?, NULL, NULL, NULL, ?, ?)`,
-            [exId, vol, dateOnly, programId]
-          );
-        } catch {}
-        if (!isBaseline) volumePrs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(vol))} ${wu.unitLabel()}`);
-      }
-    }
-    setPrRecords(updatedPrRecords);
+    const { dbPrMap, volumePrs: rawVolumePrs } = await checkSessionVolumePRs({
+      workoutId: activeWorkoutId ?? "",
+      programId,
+      sets: workoutSets,
+    });
+    const volumePrs = rawVolumePrs.map((msg) => {
+      const [, exId, vol] = msg.split(":");
+      return `${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(Number(vol)))} ${wu.unitLabel()}`;
+    });
+    // Merge DB records into React state
+    setPrRecords((prev) => {
+      const merged = { ...prev };
+      for (const [eid, rec] of Object.entries(dbPrMap)) merged[eid] = { ...merged[eid], ...rec };
+      return merged;
+    });
 
     const prs: string[] = [];
-    for (const [exId, rec] of Object.entries(updatedPrRecords)) {
+    for (const [exId, rec] of Object.entries(dbPrMap)) {
       if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
     }
 
     setFinishSummary({
       duration: mmss(workoutElapsedSec),
-      totalSets: nonWarmup.length,
+      totalSets: workoutSets.length,
       totalVolume: round1(wu.toDisplay(totalVolume)),
       exercises: exerciseIds.size,
       topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
@@ -1037,21 +908,29 @@ export default function Logg() {
 
     const rpe = parseFloat(input.rpe);
     const setIndex = Number.isFinite(forcedIndex) ? Number(forcedIndex) : (setsByExercise[exId]?.length ?? 0);
-    const setType = setTypes[exId] ?? "normal";
-    const isWarmup = setType === "warmup" ? 1 : 0;
     const bwData = await computeBodyweightLoad(exId, isoDateOnly(), weight);
+
+    // Compute rest_seconds: actual time since last set of this exercise in this session
+    const exerciseSetsForRest = setsByExercise[exId];
+    let restSeconds: number | null = null;
+    if (exerciseSetsForRest && exerciseSetsForRest.length > 0) {
+      const lastSet = exerciseSetsForRest[exerciseSetsForRest.length - 1];
+      const elapsed = Math.round((Date.now() - Date.parse(lastSet.created_at)) / 1000);
+      if (Number.isFinite(elapsed) && elapsed > 0) restSeconds = elapsed;
+    }
 
     const row: SetRow = {
       id: uid("set"), workout_id: activeWorkoutId, exercise_name: displayNameFor(exId),
       set_index: setIndex, weight, reps, rpe: Number.isFinite(rpe) ? rpe : null,
-      created_at: isoNow(), exercise_id: exId, set_type: setType, is_warmup: isWarmup,
+      created_at: isoNow(), exercise_id: exId, set_type: "normal", is_warmup: 0,
       external_load_kg: bwData.external_load_kg, bodyweight_kg_used: bwData.bodyweight_kg_used,
       bodyweight_factor: bwData.bodyweight_factor, est_total_load_kg: bwData.est_total_load_kg,
+      rest_seconds: restSeconds,
     };
 
     await getDb().runAsync(
-      `INSERT INTO sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.workout_id, row.exercise_name, row.set_index, row.weight, row.reps, row.rpe ?? null, row.created_at, row.exercise_id ?? null, row.set_type ?? null, row.is_warmup ?? 0, row.external_load_kg ?? 0, row.bodyweight_kg_used ?? null, row.bodyweight_factor ?? null, row.est_total_load_kg ?? null]
+      `INSERT INTO sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, rest_seconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.workout_id, row.exercise_name, row.set_index, row.weight, row.reps, row.rpe ?? null, row.created_at, row.exercise_id ?? null, row.set_type ?? null, row.is_warmup ?? 0, row.external_load_kg ?? 0, row.bodyweight_kg_used ?? null, row.bodyweight_factor ?? null, row.est_total_load_kg ?? null, row.rest_seconds ?? null]
     );
 
     const key = anchorKeyByExerciseId[exId];
@@ -1065,53 +944,35 @@ export default function Logg() {
     restTimer.startRestTimer(restTimer.getRestForExercise(exId));
     Keyboard.dismiss();
 
-    if (!isWarmup) {
-      const programId = program?.id ?? "";
-      const dateOnly = row.created_at ? row.created_at.slice(0, 10) : isoDateOnly();
-      const prWeight = isBw && row.est_total_load_kg != null ? row.est_total_load_kg : weight;
-      const e1rm = round1(epley1RM(prWeight, reps));
-      const current = prRecords[exId] ?? {};
-      const nextMap: Partial<Record<PrType, PrRecord>> = { ...current };
-      const messages: string[] = [];
+    const programId = program?.id ?? "";
+    const { updatedRecords, messages: rawMsgs } = await checkSetPRs({
+      exerciseId: exId,
+      weight,
+      reps,
+      setId: row.id,
+      workoutId: activeWorkoutId ?? "",
+      programId,
+      currentVolumeRecord: prRecords[exId]?.volume,
+      isBw,
+      estTotalLoadKg: row.est_total_load_kg,
+    });
 
-      let isBaseline = false;
-      if (!current.heaviest && !current.e1rm && !current.volume) {
-        try {
-          const prior = getDb().getFirstSync<{ c: number }>(
-            `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND (s.is_warmup IS NULL OR s.is_warmup = 0) AND w.id != ? LIMIT 1`,
-            [exId, activeWorkoutId ?? ""]
-          );
-          isBaseline = !(prior && prior.c > 0);
-        } catch {}
-      }
+    setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
 
-      if (!current.heaviest || prWeight > (current.heaviest.value ?? 0)) {
-        nextMap.heaviest = { value: prWeight, date: dateOnly, reps, weight: prWeight, setId: row.id };
-        if (!isBaseline) messages.push(t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(prWeight)) }));
-      }
-      if (!current.e1rm || e1rm > (current.e1rm.value ?? 0)) {
-        nextMap.e1rm = { value: e1rm, date: dateOnly, reps, weight: prWeight, setId: row.id };
-        if (!isBaseline) messages.push(t("log.newE1rm", { weight: formatWeight(wu.toDisplay(e1rm)) }));
-      }
-      try {
-        const db = getDb();
-        if (nextMap.heaviest && (!current.heaviest || nextMap.heaviest.value !== current.heaviest.value)) {
-          await db.runAsync(`INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'heaviest', ?, ?, ?, ?, ?, ?)`, [exId, nextMap.heaviest.value, reps, prWeight, row.id, dateOnly, programId]);
-        }
-        if (nextMap.e1rm && (!current.e1rm || nextMap.e1rm.value !== current.e1rm.value)) {
-          await db.runAsync(`INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'e1rm', ?, ?, ?, ?, ?, ?)`, [exId, nextMap.e1rm.value, reps, prWeight, row.id, dateOnly, programId]);
-        }
-      } catch {}
+    // Convert coded messages to display strings
+    const messages: string[] = rawMsgs.map((msg) => {
+      const [type, val] = msg.split(":");
+      const num = Number(val);
+      if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) });
+      return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) });
+    });
 
-      setPrRecords((prev) => ({ ...prev, [exId]: nextMap }));
-
-      if (messages.length) {
-        const bannerText = messages.join(" \u00B7 ");
-        setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
-        setTimeout(() => {
-          setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
-        }, 3500);
-      }
+    if (messages.length) {
+      const bannerText = messages.join(" \u00B7 ");
+      setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
+      setTimeout(() => {
+        setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
+      }, 3500);
     }
 
     setLastSets((prev) => ({
@@ -1161,7 +1022,14 @@ export default function Logg() {
       await db.runAsync(`DELETE FROM sets WHERE id = ?`, [row.id]);
       if (prSetId) await db.runAsync(`DELETE FROM pr_records WHERE set_id = ?`, [prSetId]);
       setWorkoutSets((prev) => prev.filter((s) => s.id !== row.id));
-      setPrRecords((prev) => { const next = { ...prev }; delete next[exerciseId]; return next; });
+      // Reload PR records from DB for this exercise instead of wiping state
+      const programId = program?.id ?? "";
+      if (programId) {
+        const reloaded = loadPrRecords(programId, [exerciseId]);
+        setPrRecords((prev) => ({ ...prev, [exerciseId]: reloaded[exerciseId] ?? {} }));
+      } else {
+        setPrRecords((prev) => { const next = { ...prev }; delete next[exerciseId]; return next; });
+      }
       setPrBanners((prev) => { const next = { ...prev }; delete next[exerciseId]; return next; });
     } catch {}
     setUndoSet(null);
@@ -1173,8 +1041,6 @@ export default function Logg() {
     setEditWeight(row.weight != null ? String(wu.toDisplay(row.weight)) : "");
     setEditReps(String(row.reps ?? ""));
     setEditRpe(row.rpe != null ? String(row.rpe) : "");
-    const type = row.is_warmup === 1 ? "warmup" : (row.set_type as SetType) ?? "normal";
-    setEditType(type);
     setEditSetOpen(true);
   }
 
@@ -1186,17 +1052,16 @@ export default function Logg() {
     const reps = parseInt(editReps, 10);
     const rpe = parseFloat(editRpe);
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
-    const isWarmup = editType === "warmup" ? 1 : 0;
     try {
       if (isBw && editSet.exercise_id) {
         const dateOnly = editSet.created_at ? editSet.created_at.slice(0, 10) : isoDateOnly();
         const bwData = await computeBodyweightLoad(editSet.exercise_id, dateOnly, weight);
         await getDb().runAsync(
-          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, set_type = ?, is_warmup = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
-          [weight, reps, Number.isFinite(rpe) ? rpe : null, editType, isWarmup, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
+          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
+          [weight, reps, Number.isFinite(rpe) ? rpe : null, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
         );
       } else {
-        await getDb().runAsync(`UPDATE sets SET weight = ?, reps = ?, rpe = ?, set_type = ?, is_warmup = ? WHERE id = ?`, [weight, reps, Number.isFinite(rpe) ? rpe : null, editType, isWarmup, editSet.id]);
+        await getDb().runAsync(`UPDATE sets SET weight = ?, reps = ?, rpe = ? WHERE id = ?`, [weight, reps, Number.isFinite(rpe) ? rpe : null, editSet.id]);
       }
       refreshWorkoutSets();
     } catch { Alert.alert(t("common.error"), t("log.couldNotUpdate")); }
@@ -1223,7 +1088,6 @@ export default function Logg() {
   // ── Shared callbacks for exercise cards ──
   const cardCallbacks = {
     onSetInput: setInput,
-    onSetType: setSetType,
     onApplyWeightStep: applyWeightStep,
     onApplyLastSet: applyLastSet,
     onAddSet: addSetForExercise,
@@ -1244,9 +1108,9 @@ export default function Logg() {
       setExerciseNotes((prev) => ({ ...prev, [exId]: note }));
     },
     onExerciseNoteBlur: (exId: string) => {
-      const key = `exercise_note_${exId}`;
-      const val = exerciseNotes[exId] ?? "";
-      setSettingAsync(key, val).catch(() => {});
+      const val = (exerciseNotes[exId] ?? "").trim();
+      if (val) setNote(exId, val).catch(() => {});
+      else deleteNote(exId).catch(() => {});
     },
     onOpenPlateCalc: (exId: string) => setPlateCalcExId(exId),
   };
@@ -1399,7 +1263,7 @@ export default function Logg() {
           </Card>
 
           <View style={{ gap: 12 }}>
-            {renderBlocks.map((block) => {
+            {renderBlocks.map((block, blockIdx) => {
               if (block.type === "single") {
                 const exId = block.exId;
                 return (
@@ -1415,11 +1279,12 @@ export default function Logg() {
                     prBanner={prBanners[exId]}
                     coachHint={buildCoachHint(exId)}
                     altList={alternatives[activeDayIndex]?.[block.baseExId] ?? []}
-                    currentSetType={setTypes[exId] ?? "normal"}
                     exerciseNote={exerciseNotes[exId] ?? ""}
                     isFocused={quickExerciseId === exId}
                     lastAddedSetId={lastAddedSetId}
                     lastAddedAnim={lastAddedAnim}
+                    workoutId={activeWorkoutId}
+                    exerciseIndex={blockIdx}
                     onLayout={(e) => {
                       anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                       anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
@@ -1454,13 +1319,13 @@ export default function Logg() {
                   coachHintB={buildCoachHint(block.b)}
                   altListA={alternatives[activeDayIndex]?.[block.baseA] ?? []}
                   altListB={alternatives[activeDayIndex]?.[block.baseB] ?? []}
-                  setTypeA={setTypes[block.a] ?? "normal"}
-                  setTypeB={setTypes[block.b] ?? "normal"}
                   exerciseNoteA={exerciseNotes[block.a] ?? ""}
                   exerciseNoteB={exerciseNotes[block.b] ?? ""}
                   focusedExerciseId={quickExerciseId}
                   lastAddedSetId={lastAddedSetId}
                   lastAddedAnim={lastAddedAnim}
+                  workoutId={activeWorkoutId}
+                  exerciseIndex={blockIdx}
                   nextLabel={nextLabel}
                   onLayout={(e) => {
                     anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
@@ -1488,6 +1353,7 @@ export default function Logg() {
         onSetDefault={handleSetAlternativeAsDefault}
         onCreateCustom={handleCreateCustomFromAlt}
         lastSets={lastSets}
+        exerciseNotes={exerciseNotes}
       />
 
       {/* Day Picker Modal */}
@@ -1523,18 +1389,6 @@ export default function Logg() {
             shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
           }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.editSet")}</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              {(["normal", "warmup", "dropset", "restpause"] as SetType[]).map((st) => (
-                <Pressable key={`edit_set_${st}`} onPress={() => setEditType(st)}
-                  style={{
-                    borderColor: editType === st ? theme.accent : theme.glassBorder, borderWidth: 1, borderRadius: 999,
-                    paddingHorizontal: 12, paddingVertical: 6,
-                    backgroundColor: editType === st ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
-                  }}>
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{st}</Text>
-                </Pressable>
-              ))}
-            </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TextField value={editWeight} onChangeText={setEditWeight} placeholder={wu.unitLabel().toLowerCase()} placeholderTextColor={theme.muted} keyboardType="numeric"
                 style={{ flex: 1, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
@@ -1558,6 +1412,7 @@ export default function Logg() {
         visible={plateCalcExId !== null}
         onClose={() => setPlateCalcExId(null)}
         weightStr={plateCalcExId ? (inputs[plateCalcExId]?.weight ?? "") : ""}
+        exerciseId={plateCalcExId}
       />
 
       {/* Undo Toast */}

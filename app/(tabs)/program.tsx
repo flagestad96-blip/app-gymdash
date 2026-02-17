@@ -22,6 +22,8 @@ import { shareFile, saveBackupFile } from "../../src/fileSystem";
 import { getShareableProgramJson } from "../../src/sharing";
 import { SkeletonProgramCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
+import { uid, isoNow } from "../../src/storage";
+import { clampInt } from "../../src/format";
 
 type PickerMode = "addSingle" | "addSupersetA" | "addSupersetB";
 
@@ -38,19 +40,6 @@ type ImportPayload = {
   name: string;
   days: Array<{ name: string; blocks: Array<{ type: string; exId?: string; ex?: string; a?: string; b?: string }> }>;
 };
-
-function isoNow() {
-  return new Date().toISOString();
-}
-
-function newProgramId() {
-  return `program_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function clampInt(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
 
 function collectExerciseIds(program: Program, alts: AlternativesMap): string[] {
   const set = new Set<string>();
@@ -327,7 +316,7 @@ export default function ProgramScreen() {
   }
 
   function buildEmptyDay(name: string): ProgramDay {
-    return { id: newProgramId(), name, blocks: [] };
+    return { id: uid("program"), name, blocks: [] };
   }
 
   async function setDayCount(count: number) {
@@ -527,7 +516,7 @@ export default function ProgramScreen() {
     if (!name) return;
     if (nameAction === "new") {
       const p = ProgramStore.createBlankProgram(name, clampInt(newProgramDays, 1, 10), t("common.day"));
-      const created: Program = { ...p, id: newProgramId(), createdAt: isoNow(), updatedAt: isoNow() };
+      const created: Program = { ...p, id: uid("program"), createdAt: isoNow(), updatedAt: isoNow() };
       await ProgramStore.saveProgram(programMode, created);
       await ProgramStore.setActiveProgram(programMode, created.id);
       await setSettingAsync("activeDayIndex", "0");
@@ -672,12 +661,12 @@ export default function ProgramScreen() {
     }
 
     const program: Program = {
-      id: newProgramId(),
+      id: uid("program"),
       name: base.name,
       createdAt: now,
       updatedAt: now,
       days: base.days.map((d) => ({
-        id: newProgramId(),
+        id: uid("program"),
         name: d.name,
         blocks: d.blocks.map((b) => {
           if (b.type === "single") return { type: "single", exId: (b.exId ?? b.ex) as string };

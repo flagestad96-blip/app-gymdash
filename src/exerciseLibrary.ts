@@ -1,4 +1,5 @@
 // src/exerciseLibrary.ts
+import { uid } from "./storage";
 
 export type ExerciseTag =
   | "chest"
@@ -16,6 +17,7 @@ export type ExerciseTag =
   | "lower"
   | "compound"
   | "isolation"
+  | "forearms"
   | "lower_back_demanding"
   | "lower_back_friendly";
 
@@ -300,7 +302,7 @@ export const EXERCISES: ExerciseDef[] = [
     tags: ["biceps", "isolation"],
     defaultIncrementKg: 2.5,
     isPerSide: true,
-    alternatives: ["db_curl", "cable_curl", "ez_bar_curl", "zottman_curl"],
+    alternatives: ["db_curl", "cable_curl", "ez_bar_curl", "zottman_curl", "reverse_cable_curl"],
   },
 
   // Legs / lower
@@ -725,6 +727,35 @@ export const EXERCISES: ExerciseDef[] = [
     isPerSide: true,
     alternatives: ["db_curl", "cable_curl", "spider_curl", "preacher_curl"],
   },
+
+  // Forearms
+  {
+    id: "reverse_cable_curl",
+    displayName: "Overhand Cable Curl",
+    equipment: "cable",
+    tags: ["forearms", "biceps", "isolation"],
+    defaultIncrementKg: 2.5,
+    alternatives: ["hammer_curl", "zottman_curl", "reverse_wrist_curl"],
+  },
+  {
+    id: "wrist_curl",
+    displayName: "Wrist Curl",
+    equipment: "dumbbell",
+    tags: ["forearms", "isolation"],
+    defaultIncrementKg: 1,
+    isPerSide: true,
+    alternatives: ["reverse_wrist_curl", "reverse_cable_curl"],
+  },
+  {
+    id: "reverse_wrist_curl",
+    displayName: "Reverse Wrist Curl",
+    equipment: "dumbbell",
+    tags: ["forearms", "isolation"],
+    defaultIncrementKg: 1,
+    isPerSide: true,
+    alternatives: ["wrist_curl", "reverse_cable_curl"],
+  },
+
   {
     id: "rope_pushdown",
     displayName: "Rope Pushdown",
@@ -1125,7 +1156,7 @@ export const EXERCISES: ExerciseDef[] = [
     id: "farmers_walk",
     displayName: "Farmer's Walk",
     equipment: "other",
-    tags: ["full", "compound"],
+    tags: ["forearms", "full", "compound"],
     defaultIncrementKg: 5,
     alternatives: ["sandbag_carry", "yoke_walk", "deadlift"],
   },
@@ -1381,10 +1412,10 @@ export const EXERCISES: ExerciseDef[] = [
     id: "zottman_curl",
     displayName: "Zottman Curl",
     equipment: "dumbbell",
-    tags: ["biceps", "isolation"],
+    tags: ["biceps", "forearms", "isolation"],
     defaultIncrementKg: 1,
     isPerSide: true,
-    alternatives: ["hammer_curl", "db_curl", "cable_curl"],
+    alternatives: ["hammer_curl", "db_curl", "cable_curl", "reverse_cable_curl"],
   },
   {
     id: "reverse_lunge",
@@ -1877,10 +1908,6 @@ export async function loadCustomExercises(): Promise<void> {
   const { ensureDb, getDb } = require("./db") as typeof import("./db");
   await ensureDb();
   await _loadCustomExercisesFromDb(getDb());
-}
-
-function uid(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 export async function createCustomExercise(args: {

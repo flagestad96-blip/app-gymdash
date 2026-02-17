@@ -35,10 +35,10 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Logg: rest-timer med presets, auto-start, haptics/vibrasjon + bakgrunnsnotifikasjoner (expo-notifications).
 - Logg: per-øvelse hvile-defaults — flerleddsøvelser 2:30, isolasjonsøvelser 1:15, bruker-override per øvelse.
 - Logg: egendefinerte hvile-presets — legg til/fjern via "+" chip, long-press for å slette.
-- Logg: øvelsesbytte persisteres under navigasjon (lagres i settings, ryddes ved økt-slutt).
+- Logg: øvelsesbytte persisteres under navigasjon (lagres i settings, gjenopprettes i samme render-batch som program/dag, ryddes ved økt-slutt).
 - Logg: neste-dag forslag per program + dag-override.
-- Logg: PR-banner ved nye pers (tungeste/e1RM/volum). Første sett = baseline (ingen banner).
-- Logg: set-type (normal/warmup/dropset/restpause), +3 quick add, notater per sett og per økt.
+- Logg: PR-banner ved nye pers (tungeste/e1RM/volum). Første sett = baseline (ingen banner). PR-sjekk leser direkte fra DB (ikke React state) for å unngå stale data.
+- Logg: +3 quick add, notater per sett og per økt.
 - Logg: superset auto-fokus til neste øvelse etter set.
 - Logg: «Bytt øvelse»-knapp med alternative-picker under trening.
 - Logg: KG/reps suffix-labels alltid synlige i inputfelt.
@@ -64,7 +64,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Program: manuell deload-uke — toggle-knapp som reduserer target-sett med 1 per øvelse.
 - Program: del program via fil (native share sheet).
 - Analyse: øvelsesgraf, overall strength, volumserie, muskelgruppe-sets og konsistens.
-- Analyse: Strength Index-graf (e1RM-basert, uten warmup) + muskelgruppe-volum pr uke.
+- Analyse: Strength Index-graf (e1RM-basert) + muskelgruppe-volum pr uke.
 - Analyse: forbedrede grafer med Y/X-akser, rutenett, interaktive datapunkter.
 - Analyse: øvelsessammenligning — to øvelser side-om-side med stablede grafer + fargekodet legende.
 - Analyse: mål-system — sett vekt/volum/reps-mål per øvelse, progress bar, auto-oppnåelse.
@@ -154,7 +154,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - src/components/PhotoPicker.tsx: kamera/galleri bildeplukker med komprimering + fullskjerm forhåndsvisning.
 - src/components/BackImpactDot.tsx: farget dot-indikator for ryggbelastning (rød/gul/grønn). Vises ved alle øvelsesnavn.
 - src/components/workout/RestTimer.tsx: rest-timer UI (ekstrahert fra log.tsx).
-- src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste, utstyrslabel, RPE-hjelper, BackImpactDot, trykk-for-fokus (accent-border).
+- src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste, utstyrslabel, RPE-hjelper, BackImpactDot, trykk-for-fokus (FocusGlow: graderte lilla lag + iOS accent shadow).
 - src/components/FloatingRestTimer.tsx: flytende rest-timer pill — viser tid for fokusert øvelse, tap for innstillinger, long-press for start/stopp.
 - src/restTimerContext.tsx: rest-timer context (global state for rest-timer, presets, per-øvelse overrides, fokusert øvelse).
 - src/components/workout/SetEntryRow.tsx: individuell sett-rad (ekstrahert fra log.tsx).
@@ -219,7 +219,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Cue/link UI fjernet (legacy data beholdes kun i storage).
 - Rest-timer nå i flytende pill (FloatingRestTimer); RestTimerInline i RestTimer.tsx er ubrukt legacy.
 - Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
-- App icon PNG (1024×1024) må genereres fra GymdashLogo SVG for Play Store.
+- App icon PNG (1024×1024) — SVG-filer generert (assets/gymdash-icon.svg + foreground), må konverteres til PNG for Play Store.
 - ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.
 
 ## Build — Preview APK (Android)
@@ -233,6 +233,16 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-02-17: Logg — PR-system: heaviest/e1rm-sjekk leser fra DB (ikke React state) for å forhindre falske PR-bannere.
+- 2026-02-17: Logg — Volum-PR beregnes som session-total ved økt-slutt, ikke per-sett. Leser fra DB.
+- 2026-02-17: Logg — Undo-sett laster PR-records fra DB etter sletting (i stedet for å slette alt fra state).
+- 2026-02-17: Logg — Øvelsesbytte (Alt) persisterer korrekt under navigasjon: gjenopprettes i samme render-batch som program/dag, day-change effect blokkert under initial load.
+- 2026-02-17: UI — Fokus-glow effekt på aktive øvelseskort (graderte lilla lag + iOS accent shadow).
+- 2026-02-17: UI — Light mode: redusert glass/border-opasitet, mørkere success/warn/danger for lesbarhet.
+- 2026-02-17: UI — Drawer: transparente inaktive items, redusert visuelt støy.
+- 2026-02-17: UI — Body & Achievements: TopBar flyttet inn i ScrollView for konsistent layout.
+- 2026-02-17: i18n — Program dag-labels bruker t("common.day") i stedet for hardkodet "Dag".
+- 2026-02-17: Assets — gymdash-icon.svg og gymdash-icon-foreground.svg for Play Store ikon-generering.
 - 2026-02-10: Logg — PlateCalc stangtype-valg (Olympic/Women's/EZ Bar/Smith/Trap Bar) med persistert preferanse.
 - 2026-02-10: Logg — opprett egendefinert øvelse direkte fra ALT-picker (inline skjema, arver tags, auto-lagret som alternativ).
 - 2026-02-10: Logg — fjernet inline rest-timer fra kort, trykk på kort for å fokusere øvelse (accent-border + flytende pill oppdateres).

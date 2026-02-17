@@ -488,7 +488,7 @@ async function getPRCount(): Promise<number> {
 async function checkWeightThreshold(exerciseId: string, threshold: number): Promise<boolean> {
   const db = getDbHelpers().getDb();
   const row = await db.getFirstAsync<{ max_weight: number | null }>(
-    `SELECT MAX(weight) as max_weight FROM sets WHERE exercise_id = ? AND (is_warmup = 0 OR is_warmup IS NULL)`,
+    `SELECT MAX(weight) as max_weight FROM sets WHERE exercise_id = ?`,
     [exerciseId]
   );
   return (row?.max_weight ?? 0) >= threshold;

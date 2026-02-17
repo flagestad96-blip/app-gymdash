@@ -1,0 +1,38 @@
+import type { TranslationMap } from "../types";
+
+const calendar: TranslationMap = {
+  "calendar.title": "Kalender",
+  "calendar.subtitle": "Treningshistorikk",
+  "calendar.month": "M\u00C5NED",
+  "calendar.days": "DAGER",
+  "calendar.workouts": "\u00D8KTER",
+  "calendar.selectDate": "Velg en dato for \u00e5 se \u00f8kter.",
+  "calendar.noWorkouts": "Ingen \u00f8kter p\u00e5 {date}.",
+  "calendar.noSetsLogged": "Ingen sett logget i denne \u00f8kten.",
+  "calendar.dayAbbr.mon": "M",
+  "calendar.dayAbbr.tue": "T",
+  "calendar.dayAbbr.wed": "O",
+  "calendar.dayAbbr.thu": "T",
+  "calendar.dayAbbr.fri": "F",
+  "calendar.dayAbbr.sat": "L",
+  "calendar.dayAbbr.sun": "S",
+  "calendar.started": "Startet {time}",
+  "calendar.note": "NOTAT",
+  "calendar.orderChanged": "Annen rekkef\u00f8lge enn forrige \u00f8kt",
+  "calendar.type.push": "Push",
+  "calendar.type.pull": "Pull",
+  "calendar.type.legs": "Ben",
+  "calendar.type.other": "Annet",
+  "calendar.daySummary": "OPPSUMMERING",
+  "calendar.markDay": "Merk dag",
+  "calendar.markDayMsg": "Velg status for denne dagen.",
+  "calendar.markRest": "Hviledag",
+  "calendar.markSkipped": "Hoppet over",
+  "calendar.markSick": "Syk",
+  "calendar.clearMark": "Fjern merke",
+  "calendar.mark.rest": "Hviledag",
+  "calendar.mark.skipped": "Hoppet over",
+  "calendar.mark.sick": "Syk",
+};
+
+export default calendar;

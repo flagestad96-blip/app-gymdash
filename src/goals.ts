@@ -1,5 +1,6 @@
 // src/goals.ts — Exercise goal tracking
 import { ensureDb, getDb } from "./db";
+import { uid, isoNow } from "./storage";
 
 export type GoalType = "weight" | "volume" | "reps";
 
@@ -12,14 +13,6 @@ export type ExerciseGoal = {
   achievedAt: string | null;
   programId: string;
 };
-
-function isoNow() {
-  return new Date().toISOString();
-}
-
-function uid(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 type GoalRow = {
   id: string;
@@ -124,7 +117,7 @@ export async function checkGoalAchievement(goal: ExerciseGoal): Promise<boolean>
   if (goal.goalType === "reps") {
     const maxReps = await db.getFirstAsync<{ max_reps: number }>(
       `SELECT MAX(reps) as max_reps FROM sets
-       WHERE exercise_id = ? AND is_warmup = 0`,
+       WHERE exercise_id = ?`,
       [goal.exerciseId]
     );
     return maxReps ? (maxReps.max_reps ?? 0) >= goal.targetValue : false;
@@ -172,7 +165,7 @@ export async function getCurrentValueForGoal(goal: ExerciseGoal): Promise<number
   if (goal.goalType === "reps") {
     const maxReps = await db.getFirstAsync<{ max_reps: number }>(
       `SELECT MAX(reps) as max_reps FROM sets
-       WHERE exercise_id = ? AND is_warmup = 0`,
+       WHERE exercise_id = ?`,
       [goal.exerciseId]
     );
     return maxReps?.max_reps ?? 0;

@@ -16,6 +16,9 @@ import BackImpactDot from "../../src/components/BackImpactDot";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
 import { useWeightUnit, unitLabel } from "../../src/units";
+import { isoDateOnly } from "../../src/storage";
+import { epley1RM } from "../../src/metrics";
+import { parseTimeMs } from "../../src/format";
 
 type RangeKey = "week" | "month" | "year";
 type ChartMetric = "e1rm" | "volume" | "repsPr" | "topSet";
@@ -28,9 +31,8 @@ type RowSet = {
   reps: number;
   rpe?: number | null;
   created_at: string;
-  set_type?: string | null;
-  is_warmup?: number | null;
   est_total_load_kg?: number | null;
+  rest_seconds?: number | null;
 };
 
 type RowWorkout = {
@@ -67,13 +69,6 @@ function pad2(n: number) {
   return n < 10 ? `0${n}` : String(n);
 }
 
-function isoDateOnly(d: Date) {
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth() + 1);
-  const da = pad2(d.getDate());
-  return `${y}-${m}-${da}`;
-}
-
 function addDays(d: Date, n: number) {
   const next = new Date(d);
   next.setDate(next.getDate() + n);
@@ -93,20 +88,10 @@ function monthKey(d: Date) {
   return `${y}-${m}`;
 }
 
-function parseTimeMs(iso: string | null | undefined) {
-  if (!iso) return NaN;
-  const t = new Date(iso).getTime();
-  return Number.isFinite(t) ? t : NaN;
-}
-
-function epley1RM(weight: number, reps: number) {
-  const r = Math.max(1, reps);
-  return weight * (1 + r / 30);
-}
-
-function isWarmup(row: RowSet) {
-  if (row.is_warmup === 1) return true;
-  return row.set_type === "warmup";
+function fmtRest(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function weightForSet(row: RowSet): number | null {
@@ -229,7 +214,7 @@ export default function Analysis() {
     setWorkouts(Array.isArray(w) ? w : []);
 
     const s = getDb().getAllSync<RowSet>(
-      `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at, set_type, is_warmup, est_total_load_kg
+      `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at, est_total_load_kg, rest_seconds
        FROM sets
        WHERE created_at >= ?
        ORDER BY created_at ASC`,
@@ -251,11 +236,11 @@ export default function Analysis() {
         [lastMonthStart, thisMonthStart]
       );
       const prevS = getDb().getFirstSync<{ c: number; vol: number }>(
-        `SELECT COUNT(1) as c, COALESCE(SUM(CASE WHEN is_warmup = 1 THEN 0 ELSE weight * reps END), 0) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ?`,
+        `SELECT COUNT(1) as c, COALESCE(SUM(weight * reps), 0) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ?`,
         [lastMonthStart, thisMonthStart]
       );
       const prevE1rm = getDb().getAllSync<{ weight: number; reps: number; est_total_load_kg: number | null; exercise_id: string | null }>(
-        `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup != 1`,
+        `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ?`,
         [lastMonthStart, thisMonthStart]
       );
       let bestPrev = 0;
@@ -391,7 +376,7 @@ export default function Analysis() {
     for (const row of sets) {
       const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
       if (key !== selectedExerciseKey) continue;
-      if (isWarmup(row)) continue;
+
 
       const day = isoDateOnly(new Date(row.created_at));
       const w = weightForSet(row);
@@ -436,7 +421,7 @@ export default function Analysis() {
     for (const row of sets) {
       const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
       if (key !== comparisonExerciseKey) continue;
-      if (isWarmup(row)) continue;
+
       const day = isoDateOnly(new Date(row.created_at));
       const w = weightForSet(row);
       if (w == null) continue;
@@ -515,10 +500,42 @@ export default function Analysis() {
     };
   }, [sets, selectedExerciseKey, range]);
 
+  const restStats = useMemo(() => {
+    const allRest = sets.filter(s => s.rest_seconds != null && s.rest_seconds > 0);
+    const overallAvg = allRest.length > 0 ? Math.round(allRest.reduce((sum, s) => sum + s.rest_seconds!, 0) / allRest.length) : null;
+
+    if (!selectedExerciseKey) return { overallAvg, exercise: null };
+    const exRest = allRest.filter(s => {
+      const key = (s.exercise_id && String(s.exercise_id)) || s.exercise_name;
+      return key === selectedExerciseKey;
+    });
+    if (exRest.length === 0) return { overallAvg, exercise: null };
+
+    const vals = exRest.map(s => s.rest_seconds!);
+    const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+
+    // Trend: compare avg rest of first 2 weeks vs last 2 weeks in recent 4-week window
+    const d28 = new Date(); d28.setDate(d28.getDate() - 28);
+    const d14 = new Date(); d14.setDate(d14.getDate() - 14);
+    const iso14 = isoDateOnly(d14);
+    const iso28 = isoDateOnly(d28);
+    const recent = exRest.filter(s => isoDateOnly(new Date(s.created_at)) >= iso28);
+    const firstHalf = recent.filter(s => isoDateOnly(new Date(s.created_at)) < iso14);
+    const secondHalf = recent.filter(s => isoDateOnly(new Date(s.created_at)) >= iso14);
+    const avgOf = (arr: typeof exRest) => arr.length ? Math.round(arr.reduce((a, b) => a + b.rest_seconds!, 0) / arr.length) : null;
+    const trendDiff = (firstHalf.length > 0 && secondHalf.length > 0)
+      ? (avgOf(secondHalf)! - avgOf(firstHalf)!)
+      : null;
+
+    return { overallAvg, exercise: { avg, min, max, trend: trendDiff, count: exRest.length } };
+  }, [sets, selectedExerciseKey]);
+
   const volumeSeries = useMemo(() => {
     const volumeByDay: Record<string, number> = {};
     for (const row of sets) {
-      if (isWarmup(row)) continue;
+
       const day = isoDateOnly(new Date(row.created_at));
       const w = weightForSet(row);
       if (w == null) continue;
@@ -576,7 +593,7 @@ export default function Analysis() {
 
     const byWeek: Record<string, Record<string, number>> = {};
     for (const row of sets) {
-      if (isWarmup(row)) continue;
+
       const wk = weekStartKey(new Date(row.created_at));
       if (!byWeek[wk]) byWeek[wk] = {};
       const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
@@ -666,7 +683,7 @@ export default function Analysis() {
   const strengthIndexSeries = useMemo(() => {
     const setsByWorkout: Record<string, RowSet[]> = {};
     for (const row of sets) {
-      if (isWarmup(row)) continue;
+
       if (!setsByWorkout[row.workout_id]) setsByWorkout[row.workout_id] = [];
       setsByWorkout[row.workout_id].push(row);
     }
@@ -748,7 +765,7 @@ export default function Analysis() {
     const cutoff = isoDateOnly(d30);
 
     const recentWorkouts = workouts.filter((w) => w.date >= cutoff);
-    const recentSets = sets.filter((s) => isoDateOnly(new Date(s.created_at)) >= cutoff && !isWarmup(s));
+    const recentSets = sets.filter((s) => isoDateOnly(new Date(s.created_at)) >= cutoff);
     const vol = recentSets.reduce((sum, s) => {
       const w = weightForSet(s);
       return sum + (w != null ? w * s.reps : 0);
@@ -804,18 +821,17 @@ export default function Analysis() {
     return { labels, values: weights, current, min, max, change };
   }, [bodyMetrics90]);
 
-  // ── Muscle Balance Radar (Relative Effort Score) ──────────────────
-  const RADAR_GROUPS = ["chest", "back", "shoulders", "biceps", "triceps", "quads", "hamstrings"] as const;
+  // ── Muscle Balance Radar (Relative Distribution) ──────────────────
+  const RADAR_GROUPS = ["chest", "back", "shoulders", "biceps", "triceps", "forearms", "quads", "hamstrings"] as const;
 
-  // Optimal weekly sets per muscle group (midpoint of recommended range)
-  const OPTIMAL_SETS: Record<string, number> = {
-    chest: 15, back: 15, shoulders: 15,
-    quads: 15, hamstrings: 15, glutes: 15,
-    biceps: 12, triceps: 12, core: 12, calves: 12,
+  // Ideal weekly distribution (target %) — should sum to 100
+  const TARGET_PCT: Record<string, number> = {
+    chest: 16, back: 18, shoulders: 14,
+    quads: 16, hamstrings: 14,
+    biceps: 10, triceps: 12, forearms: 4,
   };
 
   const radarData = useMemo((): RadarDataPoint[] => {
-    // Use last 7 days for weekly snapshot
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 7);
     const cutoffIso = isoDateOnly(cutoff);
@@ -823,30 +839,58 @@ export default function Analysis() {
     const setsByGroup: Record<string, number> = {};
     for (const g of RADAR_GROUPS) setsByGroup[g] = 0;
 
+    let totalSets = 0;
     for (const row of sets) {
-      if (isWarmup(row)) continue;
+
       const d = isoDateOnly(new Date(row.created_at));
       if (d < cutoffIso) continue;
       const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
       for (const g of groups) {
         if (g in setsByGroup) {
           setsByGroup[g] += 1;
+          totalSets += 1;
         }
       }
     }
 
-    // Score = % of optimal sets (capped at 100%)
+    // Score = (actual% / target%) × 100, capped at 150
     return RADAR_GROUPS.map((g) => {
-      const count = setsByGroup[g];
-      const optimal = OPTIMAL_SETS[g] ?? 15;
-      const score = Math.min(100, (count / optimal) * 100);
+      const actualPct = totalSets > 0 ? (setsByGroup[g] / totalSets) * 100 : 0;
+      const targetPct = TARGET_PCT[g] ?? 12;
+      const score = targetPct > 0 ? Math.min(150, (actualPct / targetPct) * 100) : 0;
       return {
         label: g.charAt(0).toUpperCase() + g.slice(1),
         value: Math.round(score),
-        max: 100,
+        max: 150,
       };
     });
   }, [sets]);
+
+  // Balance hint
+  const radarHint = useMemo((): string => {
+    if (radarData.every((d) => d.value === 0)) return "";
+    const sorted = [...radarData].sort((a, b) => b.value - a.value);
+    const top = sorted[0];
+    const bottom = sorted[sorted.length - 1];
+    const spread = top.value - bottom.value;
+    if (spread < 30) return t("analysis.balanced");
+    // Check push/pull/legs dominance
+    const pushGroups = ["Chest", "Shoulders", "Triceps"];
+    const pullGroups = ["Back", "Biceps", "Forearms"];
+    const legGroups = ["Quads", "Hamstrings"];
+    const avgOf = (labels: string[]) => {
+      const matches = radarData.filter((d) => labels.includes(d.label));
+      return matches.length > 0 ? matches.reduce((s, d) => s + d.value, 0) / matches.length : 0;
+    };
+    const pushAvg = avgOf(pushGroups);
+    const pullAvg = avgOf(pullGroups);
+    const legAvg = avgOf(legGroups);
+    const maxAvg = Math.max(pushAvg, pullAvg, legAvg);
+    if (maxAvg === pushAvg && pushAvg > pullAvg + 20) return t("analysis.pushDominant");
+    if (maxAvg === pullAvg && pullAvg > pushAvg + 20) return t("analysis.pullDominant");
+    if (maxAvg === legAvg && legAvg > pushAvg + 20 && legAvg > pullAvg + 20) return t("analysis.legDominant");
+    return t("analysis.balanced");
+  }, [radarData, t]);
 
   if (!ready) {
     return (
@@ -913,6 +957,35 @@ export default function Analysis() {
                   divider={idx < consistencyStats.length - 1}
                 />
               ))}
+            </View>
+          )}
+        </Card>
+
+        <Card title={t("analysis.restTime")}>
+          {restStats.overallAvg == null ? (
+            <Text style={{ color: theme.muted }}>{t("analysis.noRestData")}</Text>
+          ) : (
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: theme.muted }}>
+                {t("analysis.overallAvgRest")}: {fmtRest(restStats.overallAvg)}
+              </Text>
+              {restStats.exercise ? (
+                <>
+                  <Text style={{ color: theme.text }}>
+                    {t("analysis.avgRest")}: {fmtRest(restStats.exercise.avg)}
+                  </Text>
+                  <Text style={{ color: theme.muted }}>
+                    {t("analysis.minRest")}: {fmtRest(restStats.exercise.min)} {"\u00B7"} {t("analysis.maxRest")}: {fmtRest(restStats.exercise.max)}
+                  </Text>
+                  {restStats.exercise.trend != null && (
+                    <Text style={{
+                      color: restStats.exercise.trend > 0 ? "#F87171" : restStats.exercise.trend < 0 ? "#34D399" : theme.muted,
+                    }}>
+                      {t("analysis.restTrend")}: {restStats.exercise.trend > 0 ? "+" : ""}{fmtRest(Math.abs(restStats.exercise.trend))}
+                    </Text>
+                  )}
+                </>
+              ) : null}
             </View>
           )}
         </Card>
@@ -1334,9 +1407,11 @@ export default function Analysis() {
           ) : (
             <View style={{ alignItems: "center", gap: 8 }}>
               <RadarChart data={radarData} size={240} />
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-                {t("analysis.muscleBalance")} — last 4 weeks volume
-              </Text>
+              {radarHint ? (
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                  {radarHint}
+                </Text>
+              ) : null}
             </View>
           )}
         </Card>

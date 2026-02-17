@@ -1,6 +1,6 @@
 // src/components/workout/ExerciseCard.tsx
 import React, { useRef, useState } from "react";
-import { View, Text, Pressable, Animated, Modal } from "react-native";
+import { View, Text, Pressable, Animated, Modal, LayoutAnimation } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -8,13 +8,13 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
+import { formatWeight } from "../../format";
 import { displayNameFor, getExercise, isPerSideExercise } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 import SetEntryRow from "./SetEntryRow";
 import type { SetRow } from "./SetEntryRow";
 import type { ExerciseTarget } from "../../progressionStore";
-
-export type SetType = "normal" | "warmup" | "dropset" | "restpause";
+import { getRecentSessions, type ExerciseSession } from "../../exerciseHistory";
 
 export type InputState = {
   weight: string;
@@ -29,12 +29,6 @@ export type LastSetInfo = {
   created_at: string;
   workout_id?: string | null;
 };
-
-function formatWeight(n: number) {
-  if (!Number.isFinite(n)) return "";
-  const r = Math.round(n * 10) / 10;
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
 
 function AddSetButton({
   label,
@@ -165,13 +159,11 @@ type ExerciseHalfProps = {
   prBanner: string | undefined;
   coachHint: string | null;
   altList: string[];
-  currentSetType: SetType;
   exerciseNote: string;
   isFocused: boolean;
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
-  onSetType: (exId: string, t: SetType) => void;
   onApplyWeightStep: (exId: string, delta: number) => void;
   onApplyLastSet: (exId: string) => void;
   onAddSet: (exId: string) => Promise<void>;
@@ -184,6 +176,8 @@ type ExerciseHalfProps = {
   onExerciseNoteChange: (exId: string, note: string) => void;
   onExerciseNoteBlur: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
+  workoutId: string | null;
+  exerciseIndex: number;
 };
 
 function ExerciseHalf({
@@ -198,13 +192,11 @@ function ExerciseHalf({
   prBanner,
   coachHint,
   altList,
-  currentSetType,
   exerciseNote,
   isFocused,
   lastAddedSetId,
   lastAddedAnim,
   onSetInput,
-  onSetType,
   onApplyWeightStep,
   onApplyLastSet,
   onAddSet,
@@ -217,11 +209,24 @@ function ExerciseHalf({
   onExerciseNoteChange,
   onExerciseNoteBlur,
   onOpenPlateCalc,
+  workoutId,
+  exerciseIndex,
 }: ExerciseHalfProps) {
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
   const [rpeHelperOpen, setRpeHelperOpen] = useState(false);
+  const [noteExpanded, setNoteExpanded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySessions, setHistorySessions] = useState<ExerciseSession[] | null>(null);
+
+  const toggleHistory = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (!historyOpen && !historySessions) {
+      getRecentSessions(exId, workoutId).then(setHistorySessions);
+    }
+    setHistoryOpen((prev) => !prev);
+  };
 
   const RPE_SCALE: { value: string; desc: string }[] = [
     { value: "6", desc: t("log.rpe6") },
@@ -250,6 +255,18 @@ function ExerciseHalf({
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
             ) : null; })()}
             <BackImpactDot exerciseId={exId} />
+            <Pressable
+              onPress={() => setNoteExpanded((p) => !p)}
+              onLongPress={() => setNoteExpanded(true)}
+              hitSlop={8}
+            >
+              <MaterialIcons
+                name="lightbulb-outline"
+                size={16}
+                color={exerciseNote ? theme.accent : theme.muted}
+                style={{ opacity: exerciseNote ? 1 : 0.4 }}
+              />
+            </Pressable>
           </View>
         </View>
         {altList.length ? (
@@ -299,10 +316,56 @@ function ExerciseHalf({
           {t("log.target", { sets: target.targetSets, repMin: target.repMin, repMax: target.repMax, inc: formatWeight(wu.toDisplay(target.incrementKg)) })}
         </Text>
         {lastSet ? (
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-            {t("log.lastSet", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps, date: lastSet.created_at ? lastSet.created_at.slice(0, 10) : "" })}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, flex: 1 }}>
+              {t("log.lastSet", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps, date: lastSet.created_at ? lastSet.created_at.slice(0, 10) : "" })}
+            </Text>
+            <Pressable onPress={toggleHistory} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+              <MaterialIcons name="history" size={14} color={theme.accent} />
+              <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                {historyOpen ? t("log.hideHistory") : t("log.showHistory")}
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
+        {historyOpen && (
+          <View style={{ gap: 6, paddingTop: 2 }}>
+            {historySessions === null ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>...</Text>
+            ) : historySessions.length === 0 ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("log.noHistoryFound")}</Text>
+            ) : (
+              historySessions.map((session) => {
+                const [, mo, da] = session.date.split("-");
+                const dateLabel = `${parseInt(da)}.${parseInt(mo)}`;
+                const best = session.sets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b), session.sets[0]);
+                const setsLine = session.sets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");
+                const orderDiffers = session.exerciseOrder !== exerciseIndex;
+                return (
+                  <View key={session.workoutId} style={{ gap: 2 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }}>{dateLabel}</Text>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                        {t("log.setsCount", { n: String(session.sets.length) })}
+                      </Text>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                        {t("log.bestSet", { weight: formatWeight(wu.toDisplay(best.weight)), reps: String(best.reps) })}
+                      </Text>
+                      {orderDiffers && (
+                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                          {"\u2195"} {t("log.differentOrder")}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, opacity: 0.7 }}>
+                      {setsLine}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
         {coachHint ? (
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
             {t("log.hintLabel", { hint: coachHint })}
@@ -345,45 +408,28 @@ function ExerciseHalf({
         ) : null}
       </View>
 
-      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {(["normal", "warmup", "dropset", "restpause"] as SetType[]).map((st) => (
-          <Pressable
-            key={`${anchorKey}_type_${prefix ?? "s"}_${st}`}
-            onPress={() => onSetType(exId, st)}
-            style={{
-              borderColor: currentSetType === st ? theme.accent : theme.glassBorder,
-              borderWidth: 1,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: currentSetType === st ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
-            }}
-          >
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-              {st}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <TextField
-        value={exerciseNote}
-        onChangeText={(v) => onExerciseNoteChange(exId, v)}
-        onBlur={() => onExerciseNoteBlur(exId)}
-        onFocus={() => onFocusExercise(exId)}
-        placeholder={t("log.notePlaceholder")}
-        placeholderTextColor={theme.muted}
-        style={{
-          color: theme.text,
-          backgroundColor: prefix ? theme.panel2 : theme.glass,
-          borderColor: prefix ? theme.line : theme.glassBorder,
-          borderWidth: 1,
-          borderRadius: prefix ? 12 : theme.radius.md,
-          padding: 10,
-          fontSize: 14,
-          fontFamily: theme.mono,
-        }}
-      />
+      {(noteExpanded || exerciseNote) ? (
+        <TextField
+          value={exerciseNote}
+          onChangeText={(v) => onExerciseNoteChange(exId, v)}
+          onBlur={() => { onExerciseNoteBlur(exId); if (!exerciseNote) setNoteExpanded(false); }}
+          onFocus={() => onFocusExercise(exId)}
+          placeholder={t("exerciseNotes.placeholder")}
+          placeholderTextColor={theme.muted}
+          multiline
+          style={{
+            color: theme.text,
+            backgroundColor: prefix ? theme.panel2 : theme.glass,
+            borderColor: prefix ? theme.line : theme.glassBorder,
+            borderWidth: 1,
+            borderRadius: prefix ? 12 : theme.radius.md,
+            padding: 10,
+            fontSize: 13,
+            fontFamily: theme.mono,
+            fontStyle: "italic",
+          }}
+        />
+      ) : null}
 
       <View style={{ flexDirection: "row", gap: 8 }}>
         <View style={{ flex: 1, flexDirection: "row", gap: 4, alignItems: "center" }}>
@@ -566,7 +612,6 @@ function ExerciseHalf({
 
 export type ExerciseCardCallbacks = {
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
-  onSetType: (exId: string, t: SetType) => void;
   onApplyWeightStep: (exId: string, delta: number) => void;
   onApplyLastSet: (exId: string) => void;
   onAddSet: (exId: string) => Promise<void>;
@@ -595,12 +640,13 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   prBanner: string | undefined;
   coachHint: string | null;
   altList: string[];
-  currentSetType: SetType;
   exerciseNote: string;
   isFocused: boolean;
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
+  workoutId: string | null;
+  exerciseIndex: number;
 };
 
 function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boolean }) {
@@ -646,13 +692,11 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         prBanner={props.prBanner}
         coachHint={props.coachHint}
         altList={props.altList}
-        currentSetType={props.currentSetType}
         exerciseNote={props.exerciseNote}
         isFocused={props.isFocused}
         lastAddedSetId={props.lastAddedSetId}
         lastAddedAnim={props.lastAddedAnim}
         onSetInput={props.onSetInput}
-        onSetType={props.onSetType}
         onApplyWeightStep={props.onApplyWeightStep}
         onApplyLastSet={props.onApplyLastSet}
         onAddSet={props.onAddSet}
@@ -665,6 +709,8 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onExerciseNoteChange={props.onExerciseNoteChange}
         onExerciseNoteBlur={props.onExerciseNoteBlur}
         onOpenPlateCalc={props.onOpenPlateCalc}
+        workoutId={props.workoutId}
+        exerciseIndex={props.exerciseIndex}
       />
     </Pressable>
     </View>
@@ -693,8 +739,6 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   coachHintB: string | null;
   altListA: string[];
   altListB: string[];
-  setTypeA: SetType;
-  setTypeB: SetType;
   exerciseNoteA: string;
   exerciseNoteB: string;
   focusedExerciseId: string | null;
@@ -703,6 +747,8 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   nextLabel: string;
   onLayout: (e: any) => void;
   onAddSuperset: () => void;
+  workoutId: string | null;
+  exerciseIndex: number;
 };
 
 export function SupersetCard(props: SupersetCardProps) {
@@ -743,13 +789,11 @@ export function SupersetCard(props: SupersetCardProps) {
           prBanner={props.prBannerA}
           coachHint={props.coachHintA}
           altList={props.altListA}
-          currentSetType={props.setTypeA}
           exerciseNote={props.exerciseNoteA}
           isFocused={props.focusedExerciseId === props.exIdA}
           lastAddedSetId={props.lastAddedSetId}
           lastAddedAnim={props.lastAddedAnim}
           onSetInput={props.onSetInput}
-          onSetType={props.onSetType}
           onApplyWeightStep={props.onApplyWeightStep}
           onApplyLastSet={props.onApplyLastSet}
           onAddSet={props.onAddSet}
@@ -762,6 +806,8 @@ export function SupersetCard(props: SupersetCardProps) {
           onExerciseNoteChange={props.onExerciseNoteChange}
           onExerciseNoteBlur={props.onExerciseNoteBlur}
           onOpenPlateCalc={props.onOpenPlateCalc}
+          workoutId={props.workoutId}
+          exerciseIndex={props.exerciseIndex}
         />
 
         <ExerciseHalf
@@ -776,13 +822,11 @@ export function SupersetCard(props: SupersetCardProps) {
           prBanner={props.prBannerB}
           coachHint={props.coachHintB}
           altList={props.altListB}
-          currentSetType={props.setTypeB}
           exerciseNote={props.exerciseNoteB}
           isFocused={props.focusedExerciseId === props.exIdB}
           lastAddedSetId={props.lastAddedSetId}
           lastAddedAnim={props.lastAddedAnim}
           onSetInput={props.onSetInput}
-          onSetType={props.onSetType}
           onApplyWeightStep={props.onApplyWeightStep}
           onApplyLastSet={props.onApplyLastSet}
           onAddSet={props.onAddSet}
@@ -795,6 +839,8 @@ export function SupersetCard(props: SupersetCardProps) {
           onExerciseNoteChange={props.onExerciseNoteChange}
           onExerciseNoteBlur={props.onExerciseNoteBlur}
           onOpenPlateCalc={props.onOpenPlateCalc}
+          workoutId={props.workoutId}
+          exerciseIndex={props.exerciseIndex}
         />
       </View>
 

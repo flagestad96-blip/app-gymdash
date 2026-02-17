@@ -55,6 +55,7 @@ export default function TabLayout() {
         <Stack.Screen name="achievements" />
         <Stack.Screen name="body" />
         <Stack.Screen name="calendar" />
+        <Stack.Screen name="history" />
         <Stack.Screen name="settings" />
       </Stack>
     </View>

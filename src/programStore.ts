@@ -2,6 +2,7 @@
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "./db";
 import { defaultIncrementFor } from "./exerciseLibrary";
 import type { ProgramMode } from "./db";
+import { uid, isoNow } from "./storage";
 
 export type ProgramBlock =
   | { type: "single"; exId: string }
@@ -49,14 +50,6 @@ type BlockRow = {
   b_id?: string | null;
 };
 
-function isoNow() {
-  return new Date().toISOString();
-}
-
-function newId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 const ACTIVE_KEY_NORMAL = "activeProgramId_normal";
 const ACTIVE_KEY_BACK = "activeProgramId_back";
 
@@ -68,12 +61,12 @@ export const STANDARD_PROGRAM_ID = TEMPLATE_NORMAL_5_ID;
 export const BACK_PROGRAM_ID = TEMPLATE_BACK_5_ID;
 
 function createDay(name: string, blocks: ProgramBlock[]): ProgramDay {
-  return { id: newId("day"), name, blocks };
+  return { id: uid("day"), name, blocks };
 }
 
 function baseProgram(name: string, days: ProgramDay[]): Program {
   const now = isoNow();
-  return { id: newId("program"), name, days, createdAt: now, updatedAt: now };
+  return { id: uid("program"), name, days, createdAt: now, updatedAt: now };
 }
 
 export const DEFAULT_STANDARD_PROGRAM: Program = {
@@ -303,7 +296,7 @@ async function seedProgramAlternativesIfMissing(programId: string, alts: Alterna
         await getDb().runAsync(
           `INSERT INTO program_exercise_alternatives(id, program_id, day_index, exercise_id, alt_exercise_id, sort_index)
            VALUES(?, ?, ?, ?, ?, ?)`,
-          [newId("alt"), programId, dayIndex, exerciseId, altId, i]
+          [uid("alt"), programId, dayIndex, exerciseId, altId, i]
         );
       }
     }
@@ -344,7 +337,7 @@ function normalizeProgram(raw: Program): Program {
   const createdAt = raw.createdAt ?? isoNow();
   const updatedAt = raw.updatedAt ?? createdAt;
   const days = (raw.days ?? []).map((d: any, idx: number) => ({
-    id: d.id ?? newId("day"),
+    id: d.id ?? uid("day"),
     name: d.name ?? `Dag ${idx + 1}`,
     blocks: (d.blocks ?? []).map((b: any) => {
       if (b.type === "single") {
@@ -372,64 +365,6 @@ async function insertDefaultIfMissing(mode: ProgramMode, program: Program) {
   );
 }
 
-async function migrateActiveKeys() {
-  const oldNormal = await getSettingAsync("activeProgramIdNormal");
-  const oldBack = await getSettingAsync("activeProgramIdBack");
-  const currentNormal = await getSettingAsync(ACTIVE_KEY_NORMAL);
-  const currentBack = await getSettingAsync(ACTIVE_KEY_BACK);
-
-  if (!currentNormal && oldNormal) {
-    await setSettingAsync(ACTIVE_KEY_NORMAL, oldNormal);
-  }
-  if (!currentBack && oldBack) {
-    await setSettingAsync(ACTIVE_KEY_BACK, oldBack);
-  }
-}
-
-async function migrateProgramModes() {
-  try {
-    await getDb().runAsync(
-      `UPDATE programs SET mode = 'normal' WHERE mode IS NULL AND id = ?`,
-      [TEMPLATE_NORMAL_5_ID]
-    );
-    await getDb().runAsync(
-      `UPDATE programs SET mode = 'normal' WHERE mode IS NULL AND id = ?`,
-      ["program_standard_v1"]
-    );
-    await getDb().runAsync(
-      `UPDATE programs SET mode = 'back' WHERE mode IS NULL AND id = ?`,
-      [TEMPLATE_BACK_5_ID]
-    );
-    await getDb().runAsync(
-      `UPDATE programs SET mode = 'back' WHERE mode IS NULL AND id = ?`,
-      ["program_back_v1"]
-    );
-    await getDb().runAsync(
-      `UPDATE programs SET mode = 'normal' WHERE mode IS NULL AND id = ?`,
-      [LEGACY_STANDARD_PROGRAM_ID]
-    );
-    await getDb().runAsync(
-      `UPDATE programs SET mode = 'back' WHERE mode IS NULL AND id = ?`,
-      [LEGACY_BACK_PROGRAM_ID]
-    );
-  } catch {
-    // column may not exist yet
-  }
-}
-
-async function renameLegacyPrograms() {
-  try {
-    await getDb().runAsync(
-      `UPDATE programs
-       SET name = '4-dagers – Legacy'
-       WHERE id = ? AND name IN ('Standard 5-dagers (v1)', 'Standard 5 dager (v1)')`,
-      ["program_standard_v1"]
-    );
-  } catch {
-    // ignore
-  }
-}
-
 async function writeProgramTables(program: Program): Promise<void> {
   const database = getDb();
   await database.runAsync(`DELETE FROM program_days WHERE program_id = ?`, [program.id]);
@@ -437,7 +372,7 @@ async function writeProgramTables(program: Program): Promise<void> {
 
   for (let di = 0; di < program.days.length; di += 1) {
     const day = program.days[di];
-    const dayId = day.id || newId("day");
+    const dayId = day.id || uid("day");
     await database.runAsync(
       `INSERT INTO program_days(id, program_id, day_index, name)
        VALUES(?, ?, ?, ?)` ,
@@ -449,13 +384,13 @@ async function writeProgramTables(program: Program): Promise<void> {
         await database.runAsync(
           `INSERT INTO program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id)
            VALUES(?, ?, ?, ?, ?, ?, NULL, NULL)`,
-          [newId("pde"), program.id, di, bi, "single", block.exId]
+          [uid("pde"), program.id, di, bi, "single", block.exId]
         );
       } else {
         await database.runAsync(
           `INSERT INTO program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id)
            VALUES(?, ?, ?, ?, ?, NULL, ?, ?)`,
-          [newId("pde"), program.id, di, bi, "superset", block.a, block.b]
+          [uid("pde"), program.id, di, bi, "superset", block.a, block.b]
         );
       }
     }
@@ -554,9 +489,6 @@ async function ensureProgramTablesForAll(): Promise<void> {
 
 export async function ensurePrograms() {
   await ensureDb();
-  await migrateActiveKeys();
-  await migrateProgramModes();
-  await renameLegacyPrograms();
 
   await insertDefaultIfMissing("normal", DEFAULT_STANDARD_PROGRAM);
   await insertDefaultIfMissing("back", DEFAULT_BACK_PROGRAM);
@@ -628,7 +560,7 @@ export async function saveProgram(mode: ProgramMode, program: Program): Promise<
   await ensureDb();
   const now = isoNow();
   const nextDays = (program.days ?? []).map((d, idx) => ({
-    id: d.id ?? newId("day"),
+    id: d.id ?? uid("day"),
     name: d.name ?? `Dag ${idx + 1}`,
     blocks: d.blocks ?? [],
   }));
@@ -732,7 +664,7 @@ export async function setReplacement(args: {
   replacedExId: string;
 }): Promise<void> {
   await ensureDb();
-  const id = newId("repl");
+  const id = uid("repl");
   const now = isoNow();
   await getDb().runAsync(
     `INSERT INTO program_replacements(id, program_id, day_index, original_ex_id, replaced_ex_id, updated_at)
@@ -797,7 +729,7 @@ export async function setAlternatives(args: {
     await database.runAsync(
       `INSERT INTO program_exercise_alternatives(id, program_id, day_index, exercise_id, alt_exercise_id, sort_index)
        VALUES(?, ?, ?, ?, ?, ?)`,
-      [newId("alt"), args.programId, args.dayIndex, args.exerciseId, altId, i]
+      [uid("alt"), args.programId, args.dayIndex, args.exerciseId, altId, i]
     );
   }
 }
@@ -815,12 +747,12 @@ export function cloneProgram(program: Program, name: string): Program {
   const now = isoNow();
   return {
     ...program,
-    id: newId("program"),
+    id: uid("program"),
     name,
     createdAt: now,
     updatedAt: now,
     days: program.days.map((d, idx) => ({
-      id: newId("day"),
+      id: uid("day"),
       name: d.name || `Dag ${idx + 1}`,
       blocks: d.blocks.map((b) => ({ ...b })),
     })),

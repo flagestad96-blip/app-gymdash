@@ -9,17 +9,8 @@ import { Screen, TopBar, Card, Btn, TextField, IconButton } from "../../src/ui";
 import { useWeightUnit } from "../../src/units";
 import PhotoPicker from "../../src/components/PhotoPicker";
 import LineChart from "../../src/components/charts/LineChart";
-
-function isoDateOnly(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${da}`;
-}
-
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
-}
+import { isoDateOnly } from "../../src/storage";
+import { round1 } from "../../src/metrics";
 
 export default function BodyScreen() {
   const theme = useTheme();

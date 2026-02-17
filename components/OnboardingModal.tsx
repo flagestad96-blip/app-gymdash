@@ -27,6 +27,11 @@ const SLIDES: Slide[] = [
     icon: "edit",
   },
   {
+    titleKey: "onboarding.exerciseNotes.title",
+    bodyKey: "onboarding.exerciseNotes.body",
+    icon: "lightbulb-outline",
+  },
+  {
     titleKey: "onboarding.rest.title",
     bodyKey: "onboarding.rest.body",
     icon: "timer",
@@ -45,6 +50,11 @@ const SLIDES: Slide[] = [
     titleKey: "onboarding.analysis.title",
     bodyKey: "onboarding.analysis.body",
     icon: "insights",
+  },
+  {
+    titleKey: "onboarding.history.title",
+    bodyKey: "onboarding.history.body",
+    icon: "history",
   },
   {
     titleKey: "onboarding.achievements.title",

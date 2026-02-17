@@ -8,18 +8,7 @@ import {
   scheduleRestNotification,
   cancelRestNotification,
 } from "./notifications";
-
-function mmss(totalSec: number) {
-  const s = Math.max(0, Math.floor(totalSec));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-}
-
-function clampInt(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
+import { mmss, clampInt } from "./format";
 
 function recommendedRestSeconds(tags: ExerciseTag[]) {
   if (tags.includes("compound")) return 150;

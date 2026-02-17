@@ -18,6 +18,10 @@ type CsvRow = {
   day_index?: number | null;
   program_id?: string | null;
   program_name?: string | null;
+  set_type?: string | null;
+  is_warmup?: number | null;
+  notes?: string | null;
+  rest_seconds?: number | null;
 };
 
 export type ImportMode = "merge" | "fresh";
@@ -46,7 +50,7 @@ export async function exportFullBackup(): Promise<string> {
     `SELECT id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, ended_at FROM workouts`
   );
   const sets = await db.getAllAsync(
-    `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, notes FROM sets`
+    `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, notes, rest_seconds FROM sets`
   );
   const settings = await db.getAllAsync(`SELECT key, value FROM settings`);
   const programs = await db.getAllAsync(
@@ -88,6 +92,15 @@ export async function exportFullBackup(): Promise<string> {
   const progressionLog = await db.getAllAsync(
     `SELECT id, program_id, exercise_id, old_weight_kg, new_weight_kg, reason, created_at, applied, dismissed FROM progression_log`
   );
+  const workoutTemplates = await db.getAllAsync(
+    `SELECT id, name, description, exercises_json, created_at, last_used_at FROM workout_templates`
+  );
+  const dayMarks = await db.getAllAsync(
+    `SELECT date, status FROM day_marks`
+  );
+  const exerciseNotes = await db.getAllAsync(
+    `SELECT exercise_id, note, updated_at FROM exercise_notes`
+  );
 
   const payload: BackupPayload = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -110,8 +123,19 @@ export async function exportFullBackup(): Promise<string> {
       exercise_goals: exerciseGoals ?? [],
       custom_exercises: customExercises ?? [],
       progression_log: progressionLog ?? [],
+      workout_templates: workoutTemplates ?? [],
+      day_marks: dayMarks ?? [],
+      exercise_notes: exerciseNotes ?? [],
     },
   };
+
+  // Record backup timestamp
+  try {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)`,
+      ["last_backup_at", new Date().toISOString()]
+    );
+  } catch {}
 
   return JSON.stringify(payload, null, 2);
 }
@@ -167,6 +191,9 @@ export async function importBackup(
   const exerciseGoals = Array.isArray(data.exercise_goals) ? data.exercise_goals : [];
   const customExercises = Array.isArray(data.custom_exercises) ? data.custom_exercises : [];
   const progressionLog = Array.isArray(data.progression_log) ? data.progression_log : [];
+  const workoutTemplates = Array.isArray(data.workout_templates) ? data.workout_templates : [];
+  const dayMarks = Array.isArray(data.day_marks) ? data.day_marks : [];
+  const exerciseNotes = Array.isArray(data.exercise_notes) ? data.exercise_notes : [];
 
   const hasAnyData =
     workouts.length > 0 ||
@@ -184,7 +211,10 @@ export async function importBackup(
     userAchievements.length > 0 ||
     exerciseGoals.length > 0 ||
     customExercises.length > 0 ||
-    progressionLog.length > 0;
+    progressionLog.length > 0 ||
+    workoutTemplates.length > 0 ||
+    dayMarks.length > 0 ||
+    exerciseNotes.length > 0;
 
   if (!hasAnyData) {
     return { success: false, error: "backup_empty" };
@@ -214,6 +244,9 @@ export async function importBackup(
       await db.execAsync("DELETE FROM exercise_goals");
       await db.execAsync("DELETE FROM custom_exercises");
       await db.execAsync("DELETE FROM progression_log");
+      await db.execAsync("DELETE FROM workout_templates");
+      await db.execAsync("DELETE FROM day_marks");
+      await db.execAsync("DELETE FROM exercise_notes");
     }
 
     for (const w of workouts) {
@@ -235,8 +268,8 @@ export async function importBackup(
 
     for (const s of sets) {
       await db.runAsync(
-        `${verb} sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `${verb} sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, rest_seconds)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           s.id,
           s.workout_id,
@@ -247,6 +280,7 @@ export async function importBackup(
           s.rpe ?? null,
           s.created_at,
           s.exercise_id ?? null,
+          s.rest_seconds ?? null,
         ]
       );
     }
@@ -386,6 +420,31 @@ export async function importBackup(
       );
     }
 
+    for (const wt of workoutTemplates) {
+      await db.runAsync(
+        `${verb} workout_templates(id, name, description, exercises_json, created_at, last_used_at)
+         VALUES(?, ?, ?, ?, ?, ?)`,
+        [
+          wt.id, wt.name, wt.description ?? null, wt.exercises_json,
+          wt.created_at, wt.last_used_at ?? null,
+        ]
+      );
+    }
+
+    for (const dm of dayMarks) {
+      await db.runAsync(
+        `${verb} day_marks(date, status) VALUES(?, ?)`,
+        [dm.date, dm.status]
+      );
+    }
+
+    for (const en of exerciseNotes) {
+      await db.runAsync(
+        `${verb} exercise_notes(exercise_id, note, updated_at) VALUES(?, ?, ?)`,
+        [en.exercise_id, en.note, en.updated_at]
+      );
+    }
+
     await db.execAsync("COMMIT");
     return { success: true };
   } catch (err) {
@@ -405,7 +464,8 @@ export async function exportCsv(): Promise<string> {
   await ensureDb();
   const db = getDb();
   const rows = await db.getAllAsync<CsvRow>(
-    `SELECT s.id as set_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at,
+    `SELECT s.id as set_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe,
+            s.created_at, s.set_type, s.is_warmup, s.notes, s.rest_seconds,
             w.date as workout_date, w.day_index, w.program_id, p.name as program_name
      FROM sets s
      LEFT JOIN workouts w ON s.workout_id = w.id
@@ -425,6 +485,7 @@ export async function exportCsv(): Promise<string> {
     "setType",
     "warmup",
     "notes",
+    "restSeconds",
   ];
 
   const escape = (v: string | number | null | undefined) => {
@@ -451,9 +512,10 @@ export async function exportCsv(): Promise<string> {
         r.weight ?? "",
         r.reps ?? "",
         r.rpe ?? "",
-        "",
-        "",
-        "",
+        r.set_type ?? "normal",
+        r.is_warmup === 1 ? "yes" : "no",
+        r.notes ?? "",
+        r.rest_seconds ?? "",
       ]
         .map(escape)
         .join(",")

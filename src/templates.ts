@@ -1,5 +1,6 @@
 // src/templates.ts — Workout template CRUD
 import { ensureDb, getDb } from "./db";
+import { uid, isoNow } from "./storage";
 
 export type TemplateExercise = {
   exerciseId: string;
@@ -25,14 +26,6 @@ type TemplateRow = {
   created_at: string;
   last_used_at: string | null;
 };
-
-function isoNow() {
-  return new Date().toISOString();
-}
-
-function uid(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 function rowToTemplate(r: TemplateRow): WorkoutTemplate {
   let exercises: TemplateExercise[] = [];

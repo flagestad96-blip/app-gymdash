@@ -1,4 +1,64 @@
-// src/plateCalculator.ts — Plate breakdown calculator
+// src/plateCalculator.ts — Plate breakdown calculator + bar types
+
+import { getSettingAsync, setSettingAsync } from "./db";
+
+// ── Bar types ──
+
+export type BarType = {
+  id: string;
+  nameKey?: string;       // i18n key for built-in bars (e.g. "plate.barOlympic")
+  customName?: string;    // user-provided name for custom bars
+  kg: number;
+  builtIn: boolean;
+};
+
+export const BUILT_IN_BARS: BarType[] = [
+  { id: "olympic",       nameKey: "plate.barOlympic",  kg: 20, builtIn: true },
+  { id: "womens",        nameKey: "plate.barWomens",   kg: 15, builtIn: true },
+  { id: "ez_curl",       nameKey: "plate.barEzCurl",   kg: 10, builtIn: true },
+  { id: "trap_hex",      nameKey: "plate.barTrapHex",  kg: 25, builtIn: true },
+  { id: "safety_squat",  nameKey: "plate.barSafety",   kg: 25, builtIn: true },
+  { id: "smith",         nameKey: "plate.barSmith",    kg: 0,  builtIn: true },
+];
+
+const SETTINGS_CUSTOM_BARS = "customBars";
+const SETTINGS_EXERCISE_BAR = "exerciseBarPrefs";
+
+/** Load custom bars from settings */
+export async function loadCustomBars(): Promise<BarType[]> {
+  try {
+    const raw = await getSettingAsync(SETTINGS_CUSTOM_BARS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map((b: any) => ({ id: b.id, customName: b.customName, kg: b.kg, builtIn: false }));
+  } catch {}
+  return [];
+}
+
+/** Save custom bars to settings */
+export async function saveCustomBars(bars: BarType[]): Promise<void> {
+  await setSettingAsync(SETTINGS_CUSTOM_BARS, JSON.stringify(bars.map((b) => ({ id: b.id, customName: b.customName, kg: b.kg }))));
+}
+
+/** Load per-exercise bar preferences: { [exerciseId]: barId } */
+export async function loadExerciseBarPrefs(): Promise<Record<string, string>> {
+  try {
+    const raw = await getSettingAsync(SETTINGS_EXERCISE_BAR);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {}
+  return {};
+}
+
+/** Save per-exercise bar preference */
+export async function saveExerciseBarPref(exerciseId: string, barId: string): Promise<void> {
+  const prefs = await loadExerciseBarPrefs();
+  prefs[exerciseId] = barId;
+  await setSettingAsync(SETTINGS_EXERCISE_BAR, JSON.stringify(prefs));
+}
+
+// ── Plate calculation ──
 
 export type PlateEntry = {
   weight: number;

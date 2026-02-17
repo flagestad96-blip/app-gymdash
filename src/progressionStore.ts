@@ -1,6 +1,7 @@
 // src/progressionStore.ts
 import { ensureDb, getDb } from "./db";
 import { defaultIncrementFor, tagsFor } from "./exerciseLibrary";
+import { uid, isoNow } from "./storage";
 
 export type ExerciseTarget = {
   programId: string;
@@ -31,10 +32,6 @@ export type LastSet = {
   rpe?: number | null;
   createdAt?: string | null;
 };
-
-function isoNow() {
-  return new Date().toISOString();
-}
 
 export function defaultTargetForExercise(exerciseId: string) {
   const tags = tagsFor(exerciseId);
@@ -142,10 +139,6 @@ export async function upsertTarget(args: {
 
 // ── Auto-progression ────────────────────────────────────────────────
 
-function uid(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 type SetRow = { exercise_id: string; weight: number; reps: number };
 
 export async function analyzeWorkoutForProgression(
@@ -158,7 +151,7 @@ export async function analyzeWorkoutForProgression(
 
   const sets = await db.getAllAsync<SetRow>(
     `SELECT exercise_id, weight, reps FROM sets
-     WHERE workout_id = ? AND (is_warmup = 0 OR is_warmup IS NULL) AND (set_type IS NULL OR set_type = 'normal')
+     WHERE workout_id = ?
      ORDER BY exercise_id, created_at`,
     [workoutId]
   );

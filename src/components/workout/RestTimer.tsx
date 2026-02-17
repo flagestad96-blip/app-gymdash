@@ -4,13 +4,7 @@ import { View, Text, Pressable, Switch, Modal, Alert, TextInput } from "react-na
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { Btn } from "../../ui";
-
-function mmss(totalSec: number) {
-  const s = Math.max(0, Math.floor(totalSec));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-}
+import { mmss } from "../../format";
 
 export type RestTimerInlineProps = {
   restEnabled: boolean;
