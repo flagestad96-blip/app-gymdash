@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Appearance, type TextStyle, Platform } from "react-native";
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -7,7 +7,6 @@ export type Theme = {
   mode: "light" | "dark";
   isDark: boolean;
 
-  // Base colors
   bg: string;
   panel: string;
   panel2: string;
@@ -16,13 +15,11 @@ export type Theme = {
   line: string;
   divider: string;
 
-  // Glass effects
   glass: string;
   glassBorder: string;
   modalOverlay: string;
   modalGlass: string;
 
-  // Accent colors
   accent: string;
   accentGradient: [string, string];
   success: string;
@@ -31,7 +28,6 @@ export type Theme = {
   danger: string;
   dangerGradient: [string, string];
 
-  // Typography
   fontFamily: {
     regular: string;
     medium: string;
@@ -53,135 +49,42 @@ export type Theme = {
     semibold: TextStyle["fontWeight"];
     bold: TextStyle["fontWeight"];
   };
-  lineHeight: {
-    sm: number;
-    md: number;
-    lg: number;
-  };
+  lineHeight: { sm: number; md: number; lg: number };
 
-  // Spacing
-  space: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    xxl: number;
-  };
+  space: { xs: number; sm: number; md: number; lg: number; xl: number; xxl: number };
+  radius: { sm: number; md: number; lg: number; xl: number; pill: number };
 
-  // Radius
-  radius: {
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    pill: number;
-  };
-
-  // Shadows
   shadow: {
-    sm: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
-    md: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
-    lg: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
-    glow: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
+    sm: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
+    md: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
+    lg: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
+    glow: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
   };
 
-  // Animation
-  animation: {
-    fast: number;
-    normal: number;
-    slow: number;
-    spring: {
-      damping: number;
-      stiffness: number;
-    };
-  };
-
-  // Interaction
+  animation: { fast: number; normal: number; slow: number; spring: { damping: number; stiffness: number } };
   hitSlop: {
     sm: { top: number; bottom: number; left: number; right: number };
     md: { top: number; bottom: number; left: number; right: number };
   };
 
-  // Legacy
-  textSize: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    xxl: number;
-  };
+  textSize: { xs: number; sm: number; md: number; lg: number; xl: number; xxl: number };
 };
 
 const TOKENS = {
   fontFamily: {
-    regular: "Manrope_400Regular",
-    medium: "Manrope_500Medium",
-    semibold: "Manrope_600SemiBold",
-    bold: "Manrope_700Bold",
+    regular: "SpaceGrotesk_400Regular",
+    medium: "SpaceGrotesk_500Medium",
+    semibold: "SpaceGrotesk_600SemiBold",
+    bold: "SpaceGrotesk_700Bold",
   },
-  fontSize: {
-    xs: 11,
-    sm: 13,
-    md: 15,
-    lg: 18,
-    xl: 22,
-    xxl: 28,
-  },
-  fontWeight: {
-    regular: "400",
-    medium: "500",
-    semibold: "600",
-    bold: "700",
-  } as const,
-  lineHeight: {
-    sm: 20,
-    md: 24,
-    lg: 36,
-  },
-  space: {
-    xs: 6,
-    sm: 10,
-    md: 14,
-    lg: 18,
-    xl: 24,
-    xxl: 32,
-  },
-  radius: {
-    sm: 10,
-    md: 14,
-    lg: 18,
-    xl: 22,
-    pill: 999,
-  },
+  fontSize: { xs: 10, sm: 12, md: 15, lg: 20, xl: 28, xxl: 36 },
+  fontWeight: { regular: "400", medium: "500", semibold: "600", bold: "700" } as const,
+  lineHeight: { sm: 18, md: 22, lg: 36 },
+  space: { xs: 4, sm: 8, md: 12, lg: 20, xl: 28, xxl: 40 },
+  radius: { sm: 0, md: 2, lg: 4, xl: 8, pill: 999 },
   hitSlop: {
-    sm: { top: 6, bottom: 6, left: 6, right: 6 },
-    md: { top: 10, bottom: 10, left: 10, right: 10 },
+    sm: { top: 8, bottom: 8, left: 8, right: 8 },
+    md: { top: 14, bottom: 14, left: 14, right: 14 },
   },
 };
 
@@ -191,90 +94,44 @@ function createTheme(mode: "light" | "dark"): Theme {
       mode,
       isDark: true,
 
-      // Base colors - Deep purple-black with warmth
-      bg: "#0D0B1A",
-      panel: "rgba(30, 20, 55, 0.55)",
-      panel2: "rgba(45, 30, 75, 0.35)",
-      text: "#F5F0FF",
-      muted: "#A89CC8",
-      line: "rgba(255, 255, 255, 0.07)",
-      divider: "rgba(255, 255, 255, 0.04)",
+      bg: "#000000",
+      panel: "#111111",
+      panel2: "#1A1A1A",
+      text: "#FFFFFF",
+      muted: "#666666",
+      line: "#222222",
+      divider: "#111111",
 
-      // Glass effects - frosted purple glass
-      glass: "rgba(80, 50, 140, 0.28)",
-      glassBorder: "rgba(120, 80, 200, 0.22)",
-      modalOverlay: "rgba(0, 0, 0, 0.85)",
-      modalGlass: "rgba(30, 20, 55, 0.92)",
+      glass: "#111111",
+      glassBorder: "#222222",
+      modalOverlay: "rgba(0,0,0,0.88)",
+      modalGlass: "#111111",
 
-      // Accent: purple-to-orange gradient
-      accent: "#B668F5",
-      accentGradient: ["#9C44DC", "#F97316"],
-      success: "#6EE7A0",
-      successGradient: ["#34D399", "#10B981"],
-      warn: "#FBBF24",
-      danger: "#FB7185",
-      dangerGradient: ["#FB7185", "#F43F5E"],
+      accent: "#14B8A6",
+      accentGradient: ["#14B8A6", "#0D9488"],
+      success: "#22C55E",
+      successGradient: ["#22C55E", "#16A34A"],
+      warn: "#F59E0B",
+      danger: "#DC2626",
+      dangerGradient: ["#DC2626", "#B91C1C"],
 
-      // Typography
       fontFamily: TOKENS.fontFamily,
       mono: "monospace",
       fontSize: TOKENS.fontSize,
       fontWeight: TOKENS.fontWeight,
       lineHeight: TOKENS.lineHeight,
-
-      // Spacing
       space: TOKENS.space,
-
-      // Radius
       radius: TOKENS.radius,
 
-      // Soft shadows with purple glow
       shadow: {
-        sm: {
-          color: "#1A0A30",
-          opacity: 0.25,
-          radius: 6,
-          offset: { width: 0, height: 3 },
-          elevation: 2,
-        },
-        md: {
-          color: "#1A0A30",
-          opacity: 0.35,
-          radius: 12,
-          offset: { width: 0, height: 6 },
-          elevation: 5,
-        },
-        lg: {
-          color: "#1A0A30",
-          opacity: 0.45,
-          radius: 24,
-          offset: { width: 0, height: 10 },
-          elevation: 10,
-        },
-        glow: {
-          color: "#B668F5",
-          opacity: 0.35,
-          radius: 18,
-          offset: { width: 0, height: 0 },
-          elevation: 0,
-        },
+        sm: { color: "#000", opacity: 0.5, radius: 4, offset: { width: 0, height: 2 }, elevation: 2 },
+        md: { color: "#000", opacity: 0.6, radius: 8, offset: { width: 0, height: 4 }, elevation: 4 },
+        lg: { color: "#000", opacity: 0.7, radius: 16, offset: { width: 0, height: 8 }, elevation: 8 },
+        glow: { color: "#14B8A6", opacity: 0.3, radius: 20, offset: { width: 0, height: 0 }, elevation: 0 },
       },
 
-      // Animation
-      animation: {
-        fast: 180,
-        normal: 280,
-        slow: 450,
-        spring: {
-          damping: 14,
-          stiffness: 160,
-        },
-      },
-
-      // Interaction
+      animation: { fast: 120, normal: 200, slow: 350, spring: { damping: 20, stiffness: 300 } },
       hitSlop: TOKENS.hitSlop,
-
-      // Legacy
       textSize: TOKENS.fontSize,
     };
   }
@@ -283,90 +140,44 @@ function createTheme(mode: "light" | "dark"): Theme {
     mode,
     isDark: false,
 
-    // Base colors - Warm light with purple tint
-    bg: "#F8F5FF",
-    panel: "rgba(245, 240, 255, 0.55)",
-    panel2: "rgba(238, 232, 252, 0.35)",
-    text: "#1A0E2E",
-    muted: "#6E5C8E",
-    line: "rgba(100, 60, 160, 0.07)",
-    divider: "rgba(100, 60, 160, 0.04)",
+    bg: "#F5F4F0",
+    panel: "#FFFFFF",
+    panel2: "#ECE9E2",
+    text: "#111111",
+    muted: "#8A8A80",
+    line: "#DDD8CE",
+    divider: "#ECE9E2",
 
-    // Glass effects - subtle purple-tinted glass
-    glass: "rgba(160, 120, 220, 0.10)",
-    glassBorder: "rgba(140, 100, 200, 0.12)",
-    modalOverlay: "rgba(0, 0, 0, 0.85)",
-    modalGlass: "rgba(248, 245, 255, 0.95)",
+    glass: "#FFFFFF",
+    glassBorder: "#DDD8CE",
+    modalOverlay: "rgba(0,0,0,0.5)",
+    modalGlass: "#FFFFFF",
 
-    // Accent: purple-to-orange gradient
-    accent: "#7C3AED",
-    accentGradient: ["#7C3AED", "#F97316"],
+    accent: "#0D9488",
+    accentGradient: ["#0D9488", "#0F766E"],
     success: "#16A34A",
     successGradient: ["#16A34A", "#15803D"],
     warn: "#D97706",
     danger: "#DC2626",
     dangerGradient: ["#DC2626", "#B91C1C"],
 
-    // Typography
     fontFamily: TOKENS.fontFamily,
     mono: "monospace",
     fontSize: TOKENS.fontSize,
     fontWeight: TOKENS.fontWeight,
     lineHeight: TOKENS.lineHeight,
-
-    // Spacing
     space: TOKENS.space,
-
-    // Radius
     radius: TOKENS.radius,
 
-    // Soft shadows with purple tint
     shadow: {
-      sm: {
-        color: "#7C3AED",
-        opacity: 0.06,
-        radius: 6,
-        offset: { width: 0, height: 3 },
-        elevation: 2,
-      },
-      md: {
-        color: "#7C3AED",
-        opacity: 0.1,
-        radius: 12,
-        offset: { width: 0, height: 6 },
-        elevation: 5,
-      },
-      lg: {
-        color: "#7C3AED",
-        opacity: 0.14,
-        radius: 24,
-        offset: { width: 0, height: 10 },
-        elevation: 10,
-      },
-      glow: {
-        color: "#7C3AED",
-        opacity: 0.3,
-        radius: 18,
-        offset: { width: 0, height: 0 },
-        elevation: 0,
-      },
+      sm: { color: "#8A8A80", opacity: 0.08, radius: 4, offset: { width: 0, height: 2 }, elevation: 2 },
+      md: { color: "#8A8A80", opacity: 0.12, radius: 8, offset: { width: 0, height: 4 }, elevation: 4 },
+      lg: { color: "#8A8A80", opacity: 0.16, radius: 16, offset: { width: 0, height: 8 }, elevation: 8 },
+      glow: { color: "#0D9488", opacity: 0.15, radius: 20, offset: { width: 0, height: 0 }, elevation: 0 },
     },
 
-    // Animation
-    animation: {
-      fast: 180,
-      normal: 280,
-      slow: 450,
-      spring: {
-        damping: 14,
-        stiffness: 160,
-      },
-    },
-
-    // Interaction
+    animation: { fast: 120, normal: 200, slow: 350, spring: { damping: 20, stiffness: 300 } },
     hitSlop: TOKENS.hitSlop,
-
-    // Legacy
     textSize: TOKENS.fontSize,
   };
 }
@@ -384,10 +195,7 @@ function getSystemColorScheme(): "dark" | "light" {
 let currentTheme: Theme = createTheme(getSystemColorScheme());
 
 function resolveMode(mode: ThemeMode) {
-  if (mode === "system") {
-    return getSystemColorScheme();
-  }
-  return mode;
+  return mode === "system" ? getSystemColorScheme() : mode;
 }
 
 function notify() {
@@ -412,55 +220,45 @@ let appearanceSubAttached = false;
 function ensureAppearanceListener() {
   if (appearanceSubAttached) return;
   appearanceSubAttached = true;
-
-  // Listen to React Native Appearance changes (mobile)
   Appearance.addChangeListener(() => {
     if (currentMode === "system") {
       currentTheme = createTheme(resolveMode("system"));
       notify();
     }
   });
-
-  // Listen to web theme changes
   if (Platform.OS === "web" && typeof window !== "undefined") {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", () => {
       if (currentMode === "system") {
         currentTheme = createTheme(resolveMode("system"));
         notify();
       }
-    };
-    mediaQuery.addEventListener("change", handleChange);
+    });
   }
 }
 
 const ThemeContext = React.createContext<Theme>(currentTheme);
 
 function useThemeState() {
-  const [themeState, setThemeState] = React.useState(currentTheme);
+  const [s, setS] = React.useState(currentTheme);
   React.useEffect(() => {
     ensureAppearanceListener();
-    const cb = () => setThemeState(currentTheme);
+    const cb = () => setS(currentTheme);
     listeners.add(cb);
-    return () => {
-      listeners.delete(cb);
-    };
+    return () => { listeners.delete(cb); };
   }, []);
-  return themeState;
+  return s;
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const themeState = useThemeState();
-  return React.createElement(ThemeContext.Provider, { value: themeState }, children);
+  const s = useThemeState();
+  return React.createElement(ThemeContext.Provider, { value: s }, children);
 }
 
 export function useTheme(): Theme {
   return React.useContext(ThemeContext);
 }
 
-// Legacy export for screens still importing { theme }
 export const theme = new Proxy({} as Theme, {
-  get(_target, prop) {
-    return (currentTheme as any)[prop as keyof Theme];
-  },
+  get(_t, p) { return (currentTheme as any)[p as keyof Theme]; },
 });

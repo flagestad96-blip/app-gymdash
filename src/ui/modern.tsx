@@ -1,6 +1,3 @@
-// src/ui/modern.tsx
-// Modern UI components with glassmorphism, gradients, and animations
-
 import React, { useEffect } from "react";
 import {
   View,
@@ -18,9 +15,6 @@ import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
 
-/**
- * GradientButton - Modern button with gradient background and animations
- */
 type GradientButtonProps = {
   text: string;
   onPress: () => void;
@@ -42,73 +36,44 @@ export function GradientButton({
   haptic = true,
   style,
 }: GradientButtonProps) {
-  const theme = useTheme();
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
+  const t = useTheme();
+  const scale = React.useRef(new Animated.Value(1)).current;
 
-  const gradientColors = {
-    accent: theme.accentGradient,
-    success: theme.successGradient,
-    danger: theme.dangerGradient,
-  }[variant];
+  const colors = { accent: t.accentGradient, success: t.successGradient, danger: t.dangerGradient }[variant];
+  const txt = variant === "accent" && t.isDark ? "#111111" : "#FFFFFF";
 
-  const handlePressIn = () => {
+  const pressIn = () => {
     if (disabled || loading) return;
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      damping: theme.animation.spring.damping,
-      stiffness: theme.animation.spring.stiffness,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scale, { toValue: 0.94, damping: t.animation.spring.damping, stiffness: t.animation.spring.stiffness, useNativeDriver: true }).start();
   };
-
-  const handlePressOut = () => {
+  const pressOut = () => {
     if (disabled || loading) return;
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      damping: theme.animation.spring.damping,
-      stiffness: theme.animation.spring.stiffness,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scale, { toValue: 1, damping: t.animation.spring.damping, stiffness: t.animation.spring.stiffness, useNativeDriver: true }).start();
   };
-
-  const handlePress = () => {
+  const press = () => {
     if (disabled || loading) return;
-    if (haptic) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onPress();
   };
 
   return (
-    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, style]}>
-      <Pressable
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        onPress={handlePress}
-        disabled={disabled || loading}
-      >
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <Pressable onPressIn={pressIn} onPressOut={pressOut} onPress={press} disabled={disabled || loading}>
         <LinearGradient
-          colors={gradientColors}
+          colors={colors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[
-            styles.gradientButton,
-            disabled && styles.gradientButtonDisabled,
+            { paddingHorizontal: 28, paddingVertical: 16, borderRadius: t.radius.lg, alignItems: "center", justifyContent: "center", minHeight: 56 },
+            disabled && { opacity: 0.35 },
           ]}
         >
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={txt} />
           ) : (
-            <View style={styles.gradientButtonContent}>
-              {icon && (
-                <MaterialIcons
-                  name={icon}
-                  size={20}
-                  color="#FFFFFF"
-                  style={{ marginRight: 8 }}
-                />
-              )}
-              <Text style={styles.gradientButtonText}>{text}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+              {icon && <MaterialIcons name={icon} size={20} color={txt} style={{ marginRight: 8 }} />}
+              <Text style={{ color: txt, fontSize: 16, fontFamily: t.fontFamily.bold, letterSpacing: 1, textTransform: "uppercase" }}>{text}</Text>
             </View>
           )}
         </LinearGradient>
@@ -117,9 +82,6 @@ export function GradientButton({
   );
 }
 
-/**
- * GlassCard - Semi-transparent card with blur effect and optional gradient overlay
- */
 type GlassCardProps = {
   children: React.ReactNode;
   blur?: boolean;
@@ -131,49 +93,38 @@ type GlassCardProps = {
 
 export function GlassCard({
   children,
-  blur = true,
   gradient = false,
   shadow = "md",
   style,
   gradientColors,
 }: GlassCardProps) {
-  const theme = useTheme();
-
-  const shadowStyle = {
-    shadowColor: theme.shadow[shadow].color,
-    shadowOpacity: theme.shadow[shadow].opacity,
-    shadowRadius: theme.shadow[shadow].radius,
-    shadowOffset: theme.shadow[shadow].offset,
-  };
-
-  const defaultGradientColors = gradient
-    ? theme.isDark
-      ? ["rgba(90, 40, 160, 0.18)", "transparent", "rgba(249, 115, 22, 0.08)"]
-      : ["rgba(124, 58, 237, 0.10)", "transparent", "rgba(249, 115, 22, 0.06)"]
-    : undefined;
-
-  const colors = gradientColors || defaultGradientColors;
+  const t = useTheme();
+  const sh = t.shadow[shadow];
+  const bar = gradientColors || (gradient ? (t.accentGradient as string[]) : undefined);
 
   return (
     <View
       style={[
-        styles.glassCard,
         {
-          backgroundColor: blur ? theme.glass : theme.panel,
-          borderColor: gradient ? theme.accentGradient[0] + "40" : theme.glassBorder,
-          borderRadius: theme.radius.xl,
+          backgroundColor: t.panel,
+          borderRadius: t.radius.xl,
           overflow: "hidden",
+          padding: t.space.lg,
+          shadowColor: sh.color,
+          shadowOpacity: sh.opacity,
+          shadowRadius: sh.radius,
+          shadowOffset: sh.offset,
+          elevation: sh.elevation,
         },
-        shadowStyle,
         style,
       ]}
     >
-      {colors && (
+      {bar && (
         <LinearGradient
-          colors={colors as [string, string, ...string[]]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
+          colors={bar as [string, string, ...string[]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3 }}
         />
       )}
       {children}
@@ -181,11 +132,8 @@ export function GlassCard({
   );
 }
 
-/**
- * ProgressRing - Circular progress indicator with animation
- */
 type ProgressRingProps = {
-  progress: number; // 0 to 1
+  progress: number;
   size?: number;
   strokeWidth?: number;
   color?: "accent" | "success" | "danger";
@@ -197,65 +145,41 @@ export function ProgressRing({
   progress,
   size = 120,
   strokeWidth = 8,
-  color = "accent",
   showPercentage = true,
   animated = true,
 }: ProgressRingProps) {
-  const theme = useTheme();
-  const animatedProgress = React.useRef(new Animated.Value(0)).current;
+  const t = useTheme();
+  const anim = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (animated) {
-      Animated.timing(animatedProgress, {
-        toValue: progress,
-        duration: theme.animation.slow,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
+      Animated.timing(anim, { toValue: progress, duration: t.animation.slow, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
     } else {
-      animatedProgress.setValue(progress);
+      anim.setValue(progress);
     }
-  }, [progress, animated, animatedProgress, theme.animation.slow]);
-
-  const colorValue = {
-    accent: theme.accent,
-    success: theme.success,
-    danger: theme.danger,
-  }[color];
-
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
+  }, [progress, animated, anim, t.animation.slow]);
 
   return (
-    <View style={[styles.progressRing, { width: size, height: size }]}>
-      {/* Background circle */}
+    <View style={{ width: size, height: size, position: "relative", alignItems: "center", justifyContent: "center" }}>
       <View
-        style={[
-          styles.progressRingBackground,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: strokeWidth,
-            borderColor: theme.line,
-          },
-        ]}
+        style={{
+          position: "absolute",
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: strokeWidth,
+          borderColor: t.line,
+        }}
       />
-      {/* Progress indicator - simplified for now, would use SVG in production */}
       {showPercentage && (
-        <View style={styles.progressRingCenter}>
-          <Text style={[styles.progressRingText, { color: theme.text }]}>
-            {Math.round(progress * 100)}%
-          </Text>
-        </View>
+        <Text style={{ color: t.text, fontSize: 24, fontFamily: t.fontFamily.bold }}>
+          {Math.round(progress * 100)}%
+        </Text>
       )}
     </View>
   );
 }
 
-/**
- * StatPill - Compact stat display with optional gradient for PRs
- */
 type StatPillProps = {
   label: string;
   value: string;
@@ -265,93 +189,68 @@ type StatPillProps = {
   style?: ViewStyle;
 };
 
-export function StatPill({
-  label,
-  value,
-  rpe,
-  isPR = false,
-  compact = false,
-  style,
-}: StatPillProps) {
-  const theme = useTheme();
+export function StatPill({ label, value, rpe, isPR = false, compact = false, style }: StatPillProps) {
+  const t = useTheme();
   const scaleAnim = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      damping: theme.animation.spring.damping,
-      stiffness: theme.animation.spring.stiffness,
-      useNativeDriver: true,
-    }).start();
-  }, [scaleAnim, theme.animation.spring]);
+    Animated.spring(scaleAnim, { toValue: 1, damping: t.animation.spring.damping, stiffness: t.animation.spring.stiffness, useNativeDriver: true }).start();
+  }, [scaleAnim, t.animation.spring]);
 
-  const content = (
-    <View
-      style={[
-        styles.statPill,
-        compact && styles.statPillCompact,
-        !isPR && { backgroundColor: theme.panel2, borderColor: theme.line },
-        style,
-      ]}
-    >
-      <Text
-        style={[
-          styles.statPillLabel,
-          { color: isPR ? "#FFFFFF" : theme.muted, fontFamily: theme.mono },
-        ]}
-      >
-        {label}
-      </Text>
-      <Text
-        style={[
-          styles.statPillValue,
-          { color: isPR ? "#FFFFFF" : theme.text },
-        ]}
-      >
-        {value}
-      </Text>
-      {rpe !== undefined && (
-        <Text
-          style={[
-            styles.statPillRpe,
-            { color: isPR ? "#FFFFFF" : theme.muted, fontFamily: theme.mono },
-          ]}
-        >
-          RPE {rpe}
-        </Text>
+  const vert = !compact;
+
+  const inner = (color: string, mutedColor: string) => (
+    <>
+      {vert ? (
+        <>
+          <Text style={{ color, fontSize: t.fontSize.lg, fontFamily: t.fontFamily.bold }}>{value}</Text>
+          <Text style={{ color: mutedColor, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.medium, letterSpacing: 1, textTransform: "uppercase" }}>{label}</Text>
+          {rpe !== undefined && <Text style={{ color: mutedColor, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.medium }}>RPE {rpe}</Text>}
+        </>
+      ) : (
+        <>
+          <Text style={{ color: mutedColor, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.medium }}>{label}</Text>
+          <Text style={{ color, fontSize: t.fontSize.md, fontFamily: t.fontFamily.bold }}>{value}</Text>
+          {rpe !== undefined && <Text style={{ color: mutedColor, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.medium }}>RPE {rpe}</Text>}
+        </>
       )}
-    </View>
+    </>
   );
+
+  const container: ViewStyle = {
+    flexDirection: vert ? "column" : "row",
+    alignItems: vert ? "flex-start" : "center",
+    gap: vert ? 2 : 8,
+    paddingVertical: vert ? 12 : 6,
+    paddingHorizontal: vert ? 14 : 10,
+    borderRadius: 0,
+  };
 
   if (isPR) {
     return (
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-        <LinearGradient
-          colors={theme.successGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.statPill, compact && styles.statPillCompact, style]}
-        >
-          <Text style={[styles.statPillLabel, { color: "#FFFFFF", fontFamily: theme.mono }]}>
-            {label}
-          </Text>
-          <Text style={[styles.statPillValue, { color: "#FFFFFF" }]}>{value}</Text>
-          {rpe !== undefined && (
-            <Text style={[styles.statPillRpe, { color: "#FFFFFF", fontFamily: theme.mono }]}>
-              RPE {rpe}
-            </Text>
-          )}
+        <LinearGradient colors={t.successGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[container, style]}>
+          {inner("#FFFFFF", "rgba(255,255,255,0.8)")}
         </LinearGradient>
       </Animated.View>
     );
   }
 
-  return <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>{content}</Animated.View>;
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <View
+        style={[
+          container,
+          { borderLeftWidth: 3, borderLeftColor: t.line, backgroundColor: t.panel2 },
+          style,
+        ]}
+      >
+        {inner(t.text, t.muted)}
+      </View>
+    </Animated.View>
+  );
 }
 
-/**
- * AnimatedNumber - Smooth counting animation for numbers
- */
 type AnimatedNumberProps = {
   value: number;
   decimals?: number;
@@ -361,115 +260,43 @@ type AnimatedNumberProps = {
   style?: TextStyle;
 };
 
-export function AnimatedNumber({
-  value,
-  decimals = 0,
-  suffix = "",
-  prefix = "",
-  duration = 500,
-  style,
-}: AnimatedNumberProps) {
-  const animatedValue = React.useRef(new Animated.Value(0)).current;
-  const [displayValue, setDisplayValue] = React.useState(value);
+export function AnimatedNumber({ value, decimals = 0, suffix = "", prefix = "", duration = 500, style }: AnimatedNumberProps) {
+  const av = React.useRef(new Animated.Value(0)).current;
+  const [dv, setDv] = React.useState(value);
 
   useEffect(() => {
-    const listener = animatedValue.addListener(({ value: v }) => {
-      setDisplayValue(v);
-    });
+    const id = av.addListener(({ value: v }) => setDv(v));
+    Animated.timing(av, { toValue: value, duration, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    return () => av.removeListener(id);
+  }, [value, duration, av]);
 
-    Animated.timing(animatedValue, {
-      toValue: value,
-      duration,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-
-    return () => {
-      animatedValue.removeListener(listener);
-    };
-  }, [value, duration, animatedValue]);
-
-  return (
-    <Text style={style}>
-      {prefix}
-      {displayValue.toFixed(decimals)}
-      {suffix}
-    </Text>
-  );
+  return <Text style={style}>{prefix}{dv.toFixed(decimals)}{suffix}</Text>;
 }
 
-/**
- * SkeletonLoader - Shimmer loading animation
- */
-type SkeletonLoaderProps = {
-  width?: ViewStyle["width"];
-  height?: number;
-  borderRadius?: number;
-  style?: ViewStyle;
-};
+type SkeletonLoaderProps = { width?: ViewStyle["width"]; height?: number; borderRadius?: number; style?: ViewStyle };
 
-export function SkeletonLoader({
-  width = 200,
-  height = 40,
-  borderRadius = 12,
-  style,
-}: SkeletonLoaderProps) {
-  const theme = useTheme();
-  const shimmerAnim = React.useRef(new Animated.Value(0)).current;
+export function SkeletonLoader({ width = 200, height = 40, borderRadius = 4, style }: SkeletonLoaderProps) {
+  const t = useTheme();
+  const shimmer = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const anim = Animated.loop(
+    const a = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
+        Animated.timing(shimmer, { toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 1000, easing: Easing.linear, useNativeDriver: true }),
+      ]),
     );
-    anim.start();
-    return () => anim.stop();
-  }, [shimmerAnim]);
-
-  const opacity = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.7],
-  });
+    a.start();
+    return () => a.stop();
+  }, [shimmer]);
 
   return (
-    <Animated.View
-      style={[
-        {
-          opacity,
-        },
-        style,
-      ]}
-    >
-      <View
-        style={[
-          styles.skeleton,
-          {
-            width,
-            height,
-            borderRadius,
-            backgroundColor: theme.panel2,
-          },
-        ]}
-      />
+    <Animated.View style={[{ opacity: shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] }) }, style]}>
+      <View style={{ width, height, borderRadius, backgroundColor: t.panel2 }} />
     </Animated.View>
   );
 }
 
-/**
- * AchievementToast - Toast notification for achievement unlocks
- */
 type AchievementToastProps = {
   visible: boolean;
   achievementName: string;
@@ -480,97 +307,79 @@ type AchievementToastProps = {
   onTap?: () => void;
 };
 
-export function AchievementToast({
-  visible,
-  achievementName,
-  achievementIcon,
-  points,
-  tier,
-  onDismiss,
-  onTap,
-}: AchievementToastProps) {
-  const theme = useTheme();
+export function AchievementToast({ visible, achievementName, achievementIcon, points, tier, onDismiss, onTap }: AchievementToastProps) {
+  const t = useTheme();
   const translateY = React.useRef(new Animated.Value(-200)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
+  const progress = React.useRef(new Animated.Value(1)).current;
   const onDismissRef = React.useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
-  const tierColors = {
-    common: theme.muted,
-    rare: theme.accent,
-    epic: "#9C27B0",
-    legendary: "#FFD700",
-  };
+  const tierColor = { common: t.muted, rare: t.accent, epic: "#A855F7", legendary: "#FFD700" }[tier];
 
   useEffect(() => {
     if (visible) {
-      // Slide in
       Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          damping: theme.animation.spring.damping,
-          stiffness: theme.animation.spring.stiffness,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: theme.animation.normal,
-          useNativeDriver: true,
-        }),
+        Animated.spring(translateY, { toValue: 0, damping: t.animation.spring.damping, stiffness: t.animation.spring.stiffness, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: t.animation.normal, useNativeDriver: true }),
       ]).start();
 
-      // Haptic feedback
+      progress.setValue(1);
+      Animated.timing(progress, { toValue: 0, duration: 4000, easing: Easing.linear, useNativeDriver: true }).start();
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Auto dismiss after 4 seconds
       const timeout = setTimeout(() => {
         Animated.parallel([
-          Animated.spring(translateY, {
-            toValue: -200,
-            damping: theme.animation.spring.damping,
-            stiffness: theme.animation.spring.stiffness,
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: 0,
-            duration: theme.animation.normal,
-            useNativeDriver: true,
-          }),
+          Animated.spring(translateY, { toValue: -200, damping: t.animation.spring.damping, stiffness: t.animation.spring.stiffness, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0, duration: t.animation.normal, useNativeDriver: true }),
         ]).start(() => onDismissRef.current());
       }, 4000);
 
       return () => clearTimeout(timeout);
     }
-  }, [visible, translateY, opacity, theme.animation]);
+  }, [visible, translateY, opacity, progress, t.animation]);
 
   if (!visible) return null;
 
   return (
-    <Animated.View
-      style={[
-        styles.toastContainer,
-        {
-          transform: [{ translateY }],
-          opacity,
-        },
-      ]}
-    >
+    <Animated.View style={{ position: "absolute", top: 60, left: 16, right: 16, zIndex: 9999, transform: [{ translateY }], opacity }}>
       <Pressable onPress={() => { onDismiss(); onTap?.(); }}>
-        <LinearGradient
-          colors={tier === "legendary" ? ["#FFD700", "#FFA500"] : theme.successGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.toastContent}
+        <View
+          style={{
+            backgroundColor: t.panel,
+            borderLeftWidth: 4,
+            borderLeftColor: tierColor,
+            borderRadius: 0,
+            overflow: "hidden",
+            padding: 16,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
         >
-          <View style={styles.toastIconContainer}>
-            <MaterialIcons name={achievementIcon as any} size={32} color="#FFFFFF" />
+          <Animated.View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+              backgroundColor: tierColor,
+              transform: [{ scaleX: progress }],
+              transformOrigin: "left",
+            }}
+          />
+          <View style={{ width: 44, height: 44, borderRadius: 0, backgroundColor: tierColor + "20", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <MaterialIcons name={achievementIcon as any} size={24} color={tierColor} />
           </View>
-          <View style={styles.toastTextContainer}>
-            <Text style={styles.toastTitle}>🏆 Prestasjon låst opp!</Text>
-            <Text style={styles.toastName}>{achievementName}</Text>
-            <Text style={styles.toastPoints}>+{points} poeng</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: tierColor, fontSize: 9, fontFamily: t.fontFamily.bold, letterSpacing: 2.5, textTransform: "uppercase" }}>
+              Achievement unlocked
+            </Text>
+            <Text style={{ color: t.text, fontSize: t.fontSize.md, fontFamily: t.fontFamily.bold }}>{achievementName}</Text>
+            <Text style={{ color: t.muted, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.medium }}>+{points} pts</Text>
           </View>
-        </LinearGradient>
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -585,39 +394,25 @@ type UndoToastProps = {
 };
 
 export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: UndoToastProps) {
-  const theme = useTheme();
+  const t = useTheme();
   const translateY = React.useRef(new Animated.Value(100)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
+  const progress = React.useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (visible) {
       Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          damping: theme.animation.spring.damping,
-          stiffness: theme.animation.spring.stiffness,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: theme.animation.fast,
-          useNativeDriver: true,
-        }),
+        Animated.spring(translateY, { toValue: 0, damping: t.animation.spring.damping, stiffness: t.animation.spring.stiffness, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: t.animation.fast, useNativeDriver: true }),
       ]).start();
+
+      progress.setValue(1);
+      Animated.timing(progress, { toValue: 0, duration: 5000, easing: Easing.linear, useNativeDriver: true }).start();
 
       const timeout = setTimeout(() => {
         Animated.parallel([
-          Animated.timing(translateY, {
-            toValue: 100,
-            duration: theme.animation.normal,
-            easing: Easing.in(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: 0,
-            duration: theme.animation.normal,
-            useNativeDriver: true,
-          }),
+          Animated.timing(translateY, { toValue: 100, duration: t.animation.normal, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0, duration: t.animation.normal, useNativeDriver: true }),
         ]).start(() => onDismiss());
       }, 5000);
 
@@ -630,172 +425,48 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
 
   if (!visible) return null;
 
+  const btnTxt = t.isDark ? "#111111" : "#FFFFFF";
+
   return (
-    <Animated.View
-      style={{
-        position: "absolute",
-        bottom: 40,
-        left: 16,
-        right: 16,
-        zIndex: 9999,
-        transform: [{ translateY }],
-        opacity,
-      }}
-    >
+    <Animated.View style={{ position: "absolute", bottom: 40, left: 16, right: 16, zIndex: 9999, transform: [{ translateY }], opacity }}>
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: theme.modalGlass,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: theme.glassBorder,
-          paddingVertical: 12,
-          paddingHorizontal: 16,
+          backgroundColor: t.panel,
+          borderRadius: 0,
+          overflow: "hidden",
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.2,
+          shadowOpacity: 0.4,
           shadowRadius: 8,
+          elevation: 8,
         }}
       >
-        <Text style={{ color: theme.text, fontFamily: "Manrope_500Medium", fontSize: 14, flex: 1 }}>
-          {message}
-        </Text>
-        <Pressable
-          onPress={onUndo}
+        <Animated.View
           style={{
-            paddingVertical: 6,
-            paddingHorizontal: 14,
-            borderRadius: 8,
-            backgroundColor: theme.accent,
-            marginLeft: 12,
+            height: 2,
+            backgroundColor: t.accent,
+            transform: [{ scaleX: progress }],
+            transformOrigin: "left",
           }}
-        >
-          <Text style={{ color: "#FFFFFF", fontFamily: "Manrope_600SemiBold", fontSize: 13 }}>
-            {undoLabel}
-          </Text>
-        </Pressable>
+        />
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 16 }}>
+          <Text style={{ color: t.text, fontFamily: t.fontFamily.medium, fontSize: 14, flex: 1 }}>{message}</Text>
+          <Pressable
+            onPress={onUndo}
+            style={({ pressed }) => ({
+              paddingVertical: 8,
+              paddingHorizontal: 16,
+              borderRadius: 0,
+              backgroundColor: t.accent,
+              marginLeft: 12,
+              opacity: pressed ? 0.8 : 1,
+              transform: [{ scale: pressed ? 0.95 : 1 }],
+            })}
+          >
+            <Text style={{ color: btnTxt, fontFamily: t.fontFamily.bold, fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>{undoLabel}</Text>
+          </Pressable>
+        </View>
       </View>
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  gradientButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
-  },
-  gradientButtonDisabled: {
-    opacity: 0.5,
-  },
-  gradientButtonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gradientButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontFamily: "Manrope_600SemiBold",
-  },
-  glassCard: {
-    borderWidth: 1,
-    padding: 18,
-  },
-  progressRing: {
-    position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressRingBackground: {
-    position: "absolute",
-  },
-  progressRingCenter: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressRingText: {
-    fontSize: 24,
-    fontWeight: "600",
-  },
-  statPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  statPillCompact: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  statPillLabel: {
-    fontSize: 11,
-  },
-  statPillValue: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  statPillRpe: {
-    fontSize: 11,
-  },
-  skeleton: {
-    overflow: "hidden",
-  },
-  toastContainer: {
-    position: "absolute",
-    top: 60,
-    left: 16,
-    right: 16,
-    zIndex: 9999,
-  },
-  toastContent: {
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  toastIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  toastTextContainer: {
-    flex: 1,
-    gap: 2,
-  },
-  toastTitle: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "600",
-    opacity: 0.9,
-  },
-  toastName: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  toastPoints: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "600",
-    opacity: 0.9,
-  },
-});

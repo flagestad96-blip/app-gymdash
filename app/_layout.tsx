@@ -7,7 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text, View, InteractionManager } from "react-native";
-import { useFonts, Manrope_400Regular, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
+import { useFonts, SpaceGrotesk_400Regular, SpaceGrotesk_500Medium, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold } from "@expo-google-fonts/space-grotesk";
 import { initDb, getSettingAsync } from "../src/db";
 import { ThemeProvider, useTheme, setThemeMode, type ThemeMode } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
@@ -35,7 +35,7 @@ function DrawerRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const activeBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.08)";
+  const activeBg = theme.isDark ? "rgba(20, 184, 166, 0.12)" : "rgba(13, 148, 136, 0.08)";
   return (
     <Pressable
       onPress={onPress}
@@ -128,10 +128,10 @@ function CustomDrawerContent(props: any) {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Manrope_400Regular,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
+    SpaceGrotesk_400Regular,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
   });
 
   if (!fontsLoaded) return null;
@@ -239,7 +239,7 @@ function RootLayoutInner() {
                 drawerContent={(props) => <CustomDrawerContent {...props} />}
                 screenOptions={{
                   headerShown: false,
-                  drawerStyle: { backgroundColor: theme.isDark ? "rgba(13, 11, 26, 0.92)" : "rgba(248, 245, 255, 0.92)" },
+                  drawerStyle: { backgroundColor: theme.isDark ? "#0A0A0A" : "#F5F4F0" },
                   sceneStyle: { backgroundColor: "transparent" },
                 }}
               >

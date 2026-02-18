@@ -311,29 +311,55 @@ function ExerciseHalf({
         </Text>
       ) : null}
 
-      <View style={{ gap: 4 }}>
-        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-          {t("log.target", { sets: target.targetSets, repMin: target.repMin, repMax: target.repMax, inc: formatWeight(wu.toDisplay(target.incrementKg)) })}
-        </Text>
+      <View style={{ gap: 6 }}>
+        {/* Target chips */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <View style={{ backgroundColor: theme.isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", borderRadius: theme.radius.md, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Text style={{ color: theme.isDark ? "#999" : "#666", fontFamily: theme.fontFamily.medium, fontSize: 12 }}>
+              {t("log.targetSets", { sets: target.targetSets })}
+            </Text>
+          </View>
+          <View style={{ backgroundColor: theme.isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", borderRadius: theme.radius.md, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Text style={{ color: theme.isDark ? "#999" : "#666", fontFamily: theme.fontFamily.medium, fontSize: 12 }}>
+              {t("log.targetReps", { repMin: target.repMin, repMax: target.repMax })}
+            </Text>
+          </View>
+          <View style={{ backgroundColor: theme.isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", borderRadius: theme.radius.md, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Text style={{ color: theme.isDark ? "#999" : "#666", fontFamily: theme.fontFamily.medium, fontSize: 12 }}>
+              {t("log.targetInc", { inc: formatWeight(wu.toDisplay(target.incrementKg)) })}{wu.unitLabel().toLowerCase()}
+            </Text>
+          </View>
+          {lastSet ? (
+            <View style={{ backgroundColor: theme.isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", borderRadius: theme.radius.md, paddingHorizontal: 8, paddingVertical: 3 }}>
+              <Text style={{ color: theme.isDark ? "#999" : "#666", fontFamily: theme.fontFamily.medium, fontSize: 12 }}>
+                {t("log.lastSetShort", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps })}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Last set row with history toggle */}
         {lastSet ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, flex: 1 }}>
+            <Text style={{ color: theme.isDark ? "#777" : "#888", fontFamily: theme.fontFamily.regular, fontSize: 12, flex: 1 }}>
               {t("log.lastSet", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps, date: lastSet.created_at ? lastSet.created_at.slice(0, 10) : "" })}
             </Text>
             <Pressable onPress={toggleHistory} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
               <MaterialIcons name="history" size={14} color={theme.accent} />
-              <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+              <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.medium, fontSize: 11 }}>
                 {historyOpen ? t("log.hideHistory") : t("log.showHistory")}
               </Text>
             </Pressable>
           </View>
         ) : null}
+
+        {/* History expansion */}
         {historyOpen && (
           <View style={{ gap: 6, paddingTop: 2 }}>
             {historySessions === null ? (
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>...</Text>
+              <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 11 }}>...</Text>
             ) : historySessions.length === 0 ? (
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("log.noHistoryFound")}</Text>
+              <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 11 }}>{t("log.noHistoryFound")}</Text>
             ) : (
               historySessions.map((session) => {
                 const [, mo, da] = session.date.split("-");
@@ -344,20 +370,20 @@ function ExerciseHalf({
                 return (
                   <View key={session.workoutId} style={{ gap: 2 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }}>{dateLabel}</Text>
-                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 11 }}>{dateLabel}</Text>
+                      <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 11 }}>
                         {t("log.setsCount", { n: String(session.sets.length) })}
                       </Text>
-                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                      <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 11 }}>
                         {t("log.bestSet", { weight: formatWeight(wu.toDisplay(best.weight)), reps: String(best.reps) })}
                       </Text>
                       {orderDiffers && (
-                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                        <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 10 }}>
                           {"\u2195"} {t("log.differentOrder")}
                         </Text>
                       )}
                     </View>
-                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, opacity: 0.7 }}>
+                    <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 11, opacity: 0.7 }}>
                       {setsLine}
                     </Text>
                   </View>
@@ -366,29 +392,38 @@ function ExerciseHalf({
             )}
           </View>
         )}
+
+        {/* Coach hint with icon */}
         {coachHint ? (
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-            {t("log.hintLabel", { hint: coachHint })}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <MaterialIcons name="trending-up" size={13} color={theme.isDark ? "#999" : "#666"} />
+            <Text style={{ color: theme.isDark ? "#999" : "#666", fontFamily: theme.fontFamily.regular, fontSize: 12 }}>
+              {coachHint}
+            </Text>
+          </View>
         ) : null}
+
+        {/* Use last button */}
         {lastSet ? (
           <Pressable
             onPress={() => onApplyLastSet(exId)}
             style={{
-              borderColor: theme.glassBorder,
+              borderColor: theme.line,
               borderWidth: 1,
-              borderRadius: 999,
+              borderRadius: theme.radius.md,
               paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: theme.glass,
+              paddingVertical: 5,
+              backgroundColor: "transparent",
               alignSelf: "flex-start",
             }}
           >
-            <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+            <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.medium, fontSize: 11 }}>
               {t("log.useLast")}
             </Text>
           </Pressable>
         ) : null}
+
+        {/* PR banner */}
         {prBanner ? (
           <LinearGradient
             colors={theme.accentGradient}
@@ -401,7 +436,7 @@ function ExerciseHalf({
               alignSelf: "flex-start",
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.semibold }}>
+            <Text style={{ color: theme.isDark ? "#111" : "#FFF", fontFamily: theme.fontFamily.bold, fontSize: 11 }}>
               {prBanner}
             </Text>
           </LinearGradient>

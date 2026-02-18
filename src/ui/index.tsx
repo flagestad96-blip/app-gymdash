@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -14,8 +14,6 @@ import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
 
-const WATERMARK = "UI v2";
-
 export function Screen({
   children,
   style,
@@ -25,7 +23,6 @@ export function Screen({
   style?: ViewStyle | ViewStyle[];
   edges?: Edge[];
 }) {
-  const theme = useTheme();
   return (
     <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: "transparent" }, style]}>
       {children}
@@ -44,37 +41,41 @@ export function TopBar({
   left?: React.ReactNode;
   right?: React.ReactNode;
 }) {
-  const theme = useTheme();
+  const t = useTheme();
   return (
     <View
       style={{
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: "flex-end",
         justifyContent: "space-between",
-        gap: theme.space.md,
-        paddingVertical: theme.space.sm,
+        gap: t.space.md,
+        paddingVertical: t.space.sm,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.sm, flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm, flex: 1 }}>
         {left}
-        <View style={{ gap: 4, flex: 1 }}>
+        <View style={{ flex: 1 }}>
           <Text
             style={{
-              color: theme.text,
-              fontSize: theme.fontSize.xxl,
-              fontFamily: theme.fontFamily.semibold,
-              lineHeight: theme.fontSize.xxl * 1.3,
+              color: t.text,
+              fontSize: t.fontSize.xxl,
+              fontFamily: t.fontFamily.bold,
+              lineHeight: t.fontSize.xxl * 1.1,
+              letterSpacing: -1,
             }}
+            numberOfLines={1}
           >
             {title}
           </Text>
           {subtitle ? (
             <Text
               style={{
-                color: theme.muted,
-                fontSize: theme.fontSize.sm,
-                fontFamily: theme.fontFamily.regular,
-                lineHeight: theme.fontSize.sm * 1.4,
+                color: t.muted,
+                fontSize: t.fontSize.xs,
+                fontFamily: t.mono,
+                letterSpacing: 2,
+                textTransform: "uppercase",
+                marginTop: 2,
               }}
             >
               {subtitle}
@@ -82,37 +83,21 @@ export function TopBar({
           ) : null}
         </View>
       </View>
-      <View style={{ alignItems: "flex-end", gap: 6 }}>
-        {right}
-        <View
-          style={{
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            borderColor: theme.glassBorder,
-            backgroundColor: theme.glass,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-          }}
-        >
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-            {WATERMARK}
-          </Text>
-        </View>
-      </View>
+      {right ? <View style={{ alignItems: "flex-end" }}>{right}</View> : null}
     </View>
   );
 }
 
 export function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
-  const theme = useTheme();
+  const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: t.space.xs }}>
       <Text
         style={{
-          color: theme.muted,
-          fontFamily: theme.mono,
-          fontSize: theme.fontSize.xs,
-          letterSpacing: 1,
+          color: t.muted,
+          fontFamily: t.fontFamily.semibold,
+          fontSize: t.fontSize.xs,
+          letterSpacing: 2,
           textTransform: "uppercase",
         }}
       >
@@ -132,21 +117,18 @@ export function Card({
   style?: ViewStyle | ViewStyle[];
   title?: string;
 }) {
-  const theme = useTheme();
+  const t = useTheme();
   return (
     <View
       style={[
         {
-          backgroundColor: theme.glass,
-          borderColor: theme.glassBorder,
-          borderWidth: 1,
-          borderRadius: theme.radius.xl,
-          padding: theme.space.lg,
-          gap: theme.space.sm,
-          shadowColor: theme.shadow.sm.color,
-          shadowOpacity: theme.shadow.sm.opacity,
-          shadowRadius: theme.shadow.sm.radius,
-          shadowOffset: theme.shadow.sm.offset,
+          backgroundColor: t.panel,
+          borderLeftWidth: 3,
+          borderLeftColor: t.accent,
+          borderRadius: 0,
+          paddingVertical: t.space.lg,
+          paddingHorizontal: t.space.lg,
+          gap: t.space.md,
         },
         style,
       ]}
@@ -170,36 +152,48 @@ export function Button({
   small?: boolean;
   disabled?: boolean;
 }) {
-  const theme = useTheme();
-  const isGhost = tone === "ghost";
+  const t = useTheme();
   const isPrimary = tone === "accent";
   const isDanger = tone === "danger";
-  const bg = isPrimary ? theme.accent : isDanger ? theme.danger : isGhost ? "transparent" : theme.glass;
-  const borderColor = isGhost ? "transparent" : isPrimary ? theme.accent : isDanger ? theme.danger : theme.glassBorder;
-  const textColor = isPrimary || isDanger ? "#FFFFFF" : isGhost ? theme.accent : theme.text;
+  const isGhost = tone === "ghost";
+
+  const bg = isPrimary ? t.accent : isDanger ? "transparent" : isGhost ? "transparent" : t.panel;
+  const border = isDanger ? t.danger : isPrimary ? t.accent : isGhost ? "transparent" : t.line;
+  const txt = isPrimary
+    ? (t.isDark ? "#111111" : "#FFFFFF")
+    : isDanger
+      ? t.danger
+      : isGhost
+        ? t.accent
+        : t.text;
+  const rad = isPrimary ? t.radius.pill : t.radius.sm;
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
-        height: small ? 34 : 46,
-        paddingHorizontal: small ? 12 : 18,
-        borderRadius: theme.radius.lg,
-        borderWidth: isGhost ? 0 : 1,
-        borderColor,
+        height: small ? 38 : 52,
+        paddingHorizontal: small ? 14 : 22,
+        borderRadius: rad,
+        borderWidth: isGhost ? 0 : isDanger ? 2 : 1,
+        borderColor: border,
         backgroundColor: bg,
-        opacity: disabled ? 0.5 : pressed ? 0.88 : 1,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
+        opacity: disabled ? 0.35 : pressed ? 0.8 : 1,
+        transform: [{ scale: pressed ? 0.96 : 1 }],
         alignItems: "center",
         justifyContent: "center",
-        shadowColor: isPrimary ? theme.shadow.sm.color : "transparent",
-        shadowOpacity: isPrimary ? theme.shadow.sm.opacity : 0,
-        shadowRadius: isPrimary ? theme.shadow.sm.radius : 0,
-        shadowOffset: isPrimary ? theme.shadow.sm.offset : { width: 0, height: 0 },
-        elevation: isPrimary ? theme.shadow.sm.elevation : 0,
       })}
     >
-      <Text style={{ color: textColor, fontSize: theme.fontSize.sm, fontFamily: theme.fontFamily.semibold }}>
+      <Text
+        style={{
+          color: txt,
+          fontSize: small ? t.fontSize.sm : t.fontSize.md,
+          fontFamily: t.fontFamily.bold,
+          letterSpacing: 0.5,
+          textTransform: isPrimary ? "uppercase" : "none",
+        }}
+      >
         {label}
       </Text>
     </Pressable>
@@ -217,32 +211,33 @@ export function Chip({
   onPress?: () => void;
   tone?: "normal" | "accent" | "danger";
 }) {
-  const theme = useTheme();
+  const t = useTheme();
   const isAccent = tone === "accent" || active;
-  const borderColor = tone === "danger" ? theme.danger : isAccent ? theme.accent : theme.glassBorder;
-  const accentBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)";
-  const dangerBg = theme.isDark ? "rgba(251, 113, 133, 0.18)" : "#FEE2E2";
-  const bg = tone === "danger" ? dangerBg : isAccent ? accentBg : theme.glass;
-  const textColor = tone === "danger" ? theme.danger : isAccent ? theme.accent : theme.text;
+  const isDanger = tone === "danger";
+
+  const bg = isAccent ? t.accent : isDanger ? (t.isDark ? "rgba(220,38,38,0.15)" : "#FEE2E2") : "transparent";
+  const border = isDanger ? t.danger : isAccent ? t.accent : t.line;
+  const txt = isAccent ? (t.isDark ? "#111111" : "#FFFFFF") : isDanger ? t.danger : t.text;
+
   const body = (
     <View
       style={{
-        borderColor,
+        borderColor: border,
         borderWidth: 1,
-        borderRadius: theme.radius.pill,
+        borderRadius: t.radius.md,
         paddingHorizontal: 12,
         paddingVertical: 7,
         backgroundColor: bg,
       }}
     >
-      <Text style={{ color: textColor, fontSize: theme.fontSize.xs, fontFamily: theme.fontFamily.medium }}>
+      <Text style={{ color: txt, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.semibold, letterSpacing: 0.5 }}>
         {text}
       </Text>
     </View>
   );
   if (!onPress) return body;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
       {body}
     </Pressable>
   );
@@ -261,23 +256,21 @@ export function IconButton({
   tone?: "normal" | "accent" | "danger";
   disabled?: boolean;
 }) {
-  const theme = useTheme();
-  const borderColor = tone === "danger" ? theme.danger : tone === "accent" ? theme.accent : theme.glassBorder;
-  const tint = tone === "danger" ? theme.danger : tone === "accent" ? theme.accent : theme.text;
+  const t = useTheme();
+  const tint = tone === "danger" ? t.danger : tone === "accent" ? t.accent : t.text;
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      hitSlop={theme.hitSlop.md}
+      hitSlop={t.hitSlop.md}
       style={({ pressed }) => ({
-        borderColor,
         borderWidth: 1,
-        borderRadius: theme.radius.md,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        backgroundColor: theme.glass,
-        opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
+        borderColor: tone === "danger" ? t.danger : tone === "accent" ? t.accent : t.line,
+        borderRadius: t.radius.sm,
+        padding: 12,
+        backgroundColor: t.panel,
+        opacity: disabled ? 0.35 : pressed ? 0.7 : 1,
+        transform: [{ scale: pressed ? 0.92 : 1 }],
       })}
     >
       <MaterialIcons name={icon} size={size} color={tint} />
@@ -290,49 +283,40 @@ export function TextField({
   suffix,
   ...rest
 }: TextInputProps & { style?: StyleProp<TextStyle>; suffix?: string }) {
-  const theme = useTheme();
+  const t = useTheme();
   const [focused, setFocused] = React.useState(false);
   const error = (rest as { error?: string }).error;
   const helperText = (rest as { helperText?: string }).helperText;
-  const flatStyle = (StyleSheet.flatten(style as any) || {}) as any;
-  const layoutStyle: ViewStyle = {
-    flex: flatStyle.flex,
-    width: flatStyle.width,
-    minWidth: flatStyle.minWidth,
-    maxWidth: flatStyle.maxWidth,
-    alignSelf: flatStyle.alignSelf,
-    marginTop: flatStyle.marginTop,
-    marginBottom: flatStyle.marginBottom,
-    marginLeft: flatStyle.marginLeft,
-    marginRight: flatStyle.marginRight,
+  const flat = (StyleSheet.flatten(style as any) || {}) as any;
+  const layout: ViewStyle = {
+    flex: flat.flex, width: flat.width, minWidth: flat.minWidth,
+    maxWidth: flat.maxWidth, alignSelf: flat.alignSelf,
+    marginTop: flat.marginTop, marginBottom: flat.marginBottom,
+    marginLeft: flat.marginLeft, marginRight: flat.marginRight,
   };
+
   return (
-    <View style={[{ gap: 6 }, layoutStyle]}>
+    <View style={[{ gap: 4 }, layout]}>
       <View style={{ position: "relative", justifyContent: "center" }}>
         <TextInput
           {...rest}
-          onFocus={(e) => {
-            setFocused(true);
-            rest.onFocus?.(e);
-          }}
-          onBlur={(e) => {
-            setFocused(false);
-            rest.onBlur?.(e);
-          }}
-          placeholderTextColor={theme.muted}
-          selectionColor={theme.accent}
+          onFocus={(e) => { setFocused(true); rest.onFocus?.(e); }}
+          onBlur={(e) => { setFocused(false); rest.onBlur?.(e); }}
+          placeholderTextColor={t.muted}
+          selectionColor={t.accent}
           style={[
             {
-              color: theme.text,
-              backgroundColor: theme.glass,
-              borderColor: error ? theme.danger : focused ? theme.accent : theme.glassBorder,
-              borderWidth: 1,
-              borderRadius: theme.radius.lg,
-              paddingHorizontal: theme.space.md,
-              paddingRight: suffix ? 36 : theme.space.md,
-              paddingVertical: 10,
-              fontSize: theme.fontSize.md,
-              lineHeight: theme.lineHeight.md,
+              color: t.text,
+              backgroundColor: "transparent",
+              borderBottomWidth: focused ? 2 : 1,
+              borderBottomColor: error ? t.danger : focused ? t.accent : t.line,
+              borderRadius: 0,
+              paddingHorizontal: 2,
+              paddingRight: suffix ? 32 : 2,
+              paddingVertical: 12,
+              fontSize: t.fontSize.md,
+              fontFamily: t.fontFamily.regular,
+              lineHeight: t.lineHeight.md,
             },
             style,
           ]}
@@ -341,10 +325,10 @@ export function TextField({
           <Text
             style={{
               position: "absolute",
-              right: 8,
-              color: theme.muted,
-              fontFamily: theme.mono,
-              fontSize: 10,
+              right: 2,
+              color: t.muted,
+              fontFamily: t.mono,
+              fontSize: t.fontSize.xs,
               letterSpacing: 0.5,
             }}
             pointerEvents="none"
@@ -354,13 +338,9 @@ export function TextField({
         ) : null}
       </View>
       {error ? (
-        <Text style={{ color: theme.danger, fontSize: theme.fontSize.xs, fontFamily: theme.mono }}>
-          {error}
-        </Text>
+        <Text style={{ color: t.danger, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.semibold }}>{error}</Text>
       ) : helperText ? (
-        <Text style={{ color: theme.muted, fontSize: theme.fontSize.xs, fontFamily: theme.mono }}>
-          {helperText}
-        </Text>
+        <Text style={{ color: t.muted, fontSize: t.fontSize.xs, fontFamily: t.fontFamily.regular }}>{helperText}</Text>
       ) : null}
     </View>
   );
@@ -383,48 +363,34 @@ export function ListRow({
   onPress?: () => void;
   divider?: boolean;
 }) {
-  const theme = useTheme();
-  const row = (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: theme.space.sm,
-      }}
-    >
-      <View style={{ gap: 4, flex: 1 }}>
-        <Text style={{ color: theme.text, fontSize: theme.fontSize.md, fontFamily: theme.fontFamily.medium }}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{subtitle}</Text>
-        ) : null}
-      </View>
-      {right}
-    </View>
-  );
+  const t = useTheme();
 
   const body = (
     <View
       style={{
-        gap: theme.space.xs,
-        paddingVertical: theme.space.sm,
-        paddingHorizontal: theme.space.md,
-        borderRadius: theme.radius.lg,
-        borderWidth: 1,
-        borderColor: theme.glassBorder,
-        backgroundColor: theme.glass,
+        paddingVertical: t.space.md + 2,
+        paddingHorizontal: t.space.md,
+        backgroundColor: t.panel,
+        borderBottomWidth: divider ? 1 : 0,
+        borderBottomColor: t.line,
+        borderRadius: 0,
       }}
     >
-      {row}
-      {divider ? <View style={{ height: 1, backgroundColor: theme.divider }} /> : null}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: t.space.sm }}>
+        <View style={{ gap: 2, flex: 1 }}>
+          <Text style={{ color: t.text, fontSize: t.fontSize.md, fontFamily: t.fontFamily.medium }}>{title}</Text>
+          {subtitle ? (
+            <Text style={{ color: t.muted, fontFamily: t.fontFamily.regular, fontSize: t.fontSize.xs }}>{subtitle}</Text>
+          ) : null}
+        </View>
+        {right}
+      </View>
     </View>
   );
 
   if (!onPress) return body;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
       {body}
     </Pressable>
   );
@@ -439,29 +405,35 @@ export function SegButton({
   active: boolean;
   onPress: () => void;
 }) {
-  const theme = useTheme();
+  const t = useTheme();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
         flex: 1,
-        height: 38,
-        borderRadius: theme.radius.md,
-        borderWidth: 1,
-        borderColor: active ? theme.accent : theme.glassBorder,
-        backgroundColor: active ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
+        height: 44,
         alignItems: "center",
         justifyContent: "center",
-        opacity: pressed ? 0.85 : 1,
+        borderBottomWidth: active ? 3 : 1,
+        borderBottomColor: active ? t.accent : t.line,
+        backgroundColor: "transparent",
+        opacity: pressed ? 0.7 : 1,
       })}
     >
-      <Text style={{ color: active ? theme.accent : theme.text, fontSize: theme.fontSize.sm, fontFamily: theme.fontFamily.medium }}>
+      <Text
+        style={{
+          color: active ? t.accent : t.muted,
+          fontSize: t.fontSize.sm,
+          fontFamily: active ? t.fontFamily.bold : t.fontFamily.regular,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+        }}
+      >
         {label}
       </Text>
     </Pressable>
   );
 }
 
-// Backwards-compatible names for existing screens
 export const Header = TopBar;
 export const Btn = Button;
