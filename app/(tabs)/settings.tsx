@@ -33,6 +33,8 @@ import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNote
 import { useWeightUnit, type WeightUnit } from "../../src/units";
 import { uid, isoDateOnly } from "../../src/storage";
 import { clampInt } from "../../src/format";
+import { listGyms, createGym, updateGym, deleteGym, type GymLocation } from "../../src/gymStore";
+import { MaterialIcons } from "@expo/vector-icons";
 
 type ProgramMode = "normal" | "back";
 type ExerciseHistoryRow = {
@@ -60,6 +62,52 @@ function WeightUnitCard() {
           />
         ))}
       </View>
+    </Card>
+  );
+}
+
+function GymLocationsCard({
+  gyms,
+  onManage,
+}: {
+  gyms: GymLocation[];
+  onManage: () => void;
+}) {
+  const theme = useTheme();
+  const { t } = useI18n();
+
+  return (
+    <Card title={t("settings.gymLocations")}>
+      <Text style={{ color: theme.muted, marginBottom: 8 }}>
+        {t("settings.gymLocations.desc")}
+      </Text>
+      {gyms.length === 0 ? (
+        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, marginBottom: 8 }}>
+          {t("settings.gymLocations.empty")}
+        </Text>
+      ) : (
+        <View style={{ gap: 6, marginBottom: 8 }}>
+          {gyms.map((gym) => (
+            <View
+              key={gym.id}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
+              <View
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  backgroundColor: gym.color ?? theme.accent,
+                }}
+              />
+              <Text style={{ color: theme.text, fontSize: theme.fontSize.sm }}>
+                {gym.name}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <Btn label={t("settings.gymLocations.manage")} onPress={onManage} />
     </Card>
   );
 }
@@ -104,6 +152,14 @@ export default function Settings() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareSetActive, setShareSetActive] = useState(true);
+
+  const [gymModalOpen, setGymModalOpen] = useState(false);
+  const [gyms, setGyms] = useState<GymLocation[]>([]);
+  const [gymEditTarget, setGymEditTarget] = useState<GymLocation | null>(null);
+  const [gymFormName, setGymFormName] = useState("");
+  const [gymFormColor, setGymFormColor] = useState<string>("#B668F5");
+  const [gymFormError, setGymFormError] = useState<string | null>(null);
+  const [gymFormOpen, setGymFormOpen] = useState(false);
 
   const [dataToolsOpen, setDataToolsOpen] = useState(false);
   const [historyRows, setHistoryRows] = useState<ExerciseHistoryRow[]>([]);
@@ -157,7 +213,7 @@ export default function Settings() {
         if (match) dayIndex = Number(match[1]) - 1;
       }
       if (Number.isFinite(dayIndex)) {
-        setLockedDayLabel(`Dag ${Math.max(0, dayIndex) + 1}`);
+        setLockedDayLabel(t("log.dayLabel", { n: Math.max(0, dayIndex) + 1 }));
       } else {
         setLockedDayLabel(null);
       }
@@ -166,6 +222,9 @@ export default function Settings() {
       setWorkoutLocked(false);
       setLockedDayLabel(null);
     }
+
+    const loadedGyms = listGyms();
+    setGyms(loadedGyms);
   }
 
   useEffect(() => {
@@ -722,6 +781,7 @@ export default function Settings() {
               await db.execAsync("DELETE FROM pr_records");
               await db.execAsync("DELETE FROM programs");
               await db.execAsync("DELETE FROM settings");
+              await db.execAsync("DELETE FROM gym_locations");
               await db.execAsync("COMMIT");
               await ProgramStore.ensurePrograms();
               await loadSettings();
@@ -734,6 +794,58 @@ export default function Settings() {
               } catch {}
               Alert.alert(t("common.error"), t("settings.couldNotReset"));
             }
+          },
+        },
+      ]
+    );
+  }
+
+  function openGymAdd() {
+    setGymEditTarget(null);
+    setGymFormName("");
+    setGymFormColor("#B668F5");
+    setGymFormError(null);
+    setGymFormOpen(true);
+  }
+
+  function openGymEdit(gym: GymLocation) {
+    setGymEditTarget(gym);
+    setGymFormName(gym.name);
+    setGymFormColor(gym.color ?? "#B668F5");
+    setGymFormError(null);
+    setGymFormOpen(true);
+  }
+
+  function handleGymSave() {
+    const name = gymFormName.trim();
+    if (!name) {
+      setGymFormError(t("settings.gym.nameRequired"));
+      return;
+    }
+    if (gymEditTarget) {
+      updateGym(gymEditTarget.id, { name, color: gymFormColor });
+    } else {
+      const nextSortIndex = gyms.length;
+      createGym({ name, color: gymFormColor, sortIndex: nextSortIndex });
+    }
+    setGyms(listGyms());
+    setGymFormOpen(false);
+  }
+
+  function handleGymDelete(gym: GymLocation) {
+    Alert.alert(
+      t("settings.gym.confirmDelete"),
+      t("settings.gym.confirmDeleteMsg", { name: gym.name }),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("settings.gym.delete"),
+          style: "destructive",
+          onPress: () => {
+            deleteGym(gym.id);
+            setGyms(listGyms());
+            if (!gymFormOpen) return;
+            setGymFormOpen(false);
           },
         },
       ]
@@ -882,6 +994,11 @@ export default function Settings() {
         </Card>
 
         <WeightUnitCard />
+
+        <GymLocationsCard
+          gyms={gyms}
+          onManage={() => setGymModalOpen(true)}
+        />
 
         <Card title={t("settings.defaultDay")}>
           <Text style={{ color: theme.muted, marginBottom: 8 }}>
@@ -1399,13 +1516,149 @@ export default function Settings() {
           <Pressable style={{ flex: 1 }} onPress={() => setShowPatchNotes(false)} />
         </View>
       </Modal>
+
+      {/* ── Gym Management Modal ── */}
+      <Modal
+        visible={gymModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGymModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{
+            backgroundColor: theme.modalGlass,
+            borderColor: theme.glassBorder,
+            borderWidth: 1,
+            borderRadius: 16,
+            padding: 14,
+            gap: 12,
+            maxHeight: "85%",
+          }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
+              {t("settings.gym.title")}
+            </Text>
+
+            <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 8 }}>
+              {gyms.length === 0 ? (
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                  {t("settings.gymLocations.empty")}
+                </Text>
+              ) : (
+                gyms.map((gym) => (
+                  <Pressable
+                    key={gym.id}
+                    onPress={() => openGymEdit(gym)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: 10,
+                      borderRadius: 12,
+                      backgroundColor: theme.glass,
+                      borderWidth: 1,
+                      borderColor: theme.glassBorder,
+                    }}
+                  >
+                    <View style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 7,
+                      backgroundColor: gym.color ?? theme.accent,
+                    }} />
+                    <Text style={{ color: theme.text, flex: 1 }}>{gym.name}</Text>
+                    <MaterialIcons name="chevron-right" size={18} color={theme.muted} />
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Btn label={t("settings.gym.add")} onPress={openGymAdd} />
+              <Btn label={t("common.close")} onPress={() => setGymModalOpen(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Gym Add/Edit Form Modal ── */}
+      <Modal
+        visible={gymFormOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGymFormOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{
+            backgroundColor: theme.modalGlass,
+            borderColor: theme.glassBorder,
+            borderWidth: 1,
+            borderRadius: 16,
+            padding: 14,
+            gap: 12,
+          }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
+              {gymEditTarget ? t("settings.gym.editTitle") : t("settings.gym.addTitle")}
+            </Text>
+
+            <TextField
+              value={gymFormName}
+              onChangeText={(v: string) => { setGymFormName(v); setGymFormError(null); }}
+              placeholder={t("settings.gym.namePlaceholder")}
+              placeholderTextColor={theme.muted}
+              style={{
+                color: theme.text,
+                backgroundColor: theme.panel2,
+                borderColor: gymFormError ? "#EF4444" : theme.line,
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 10,
+                fontSize: 15,
+                fontFamily: theme.mono,
+              }}
+            />
+            {gymFormError ? (
+              <Text style={{ color: "#EF4444", fontFamily: theme.mono, fontSize: 12 }}>
+                {gymFormError}
+              </Text>
+            ) : null}
+
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+              {t("settings.gym.colorLabel")}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+              {["#B668F5", "#F97316", "#22C55E", "#3B82F6", "#EF4444", "#F59E0B", "#EC4899", "#6366F1"].map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => setGymFormColor(c)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: c,
+                    borderWidth: gymFormColor === c ? 3 : 1,
+                    borderColor: gymFormColor === c ? theme.text : theme.glassBorder,
+                  }}
+                />
+              ))}
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+              <Btn label={t("settings.gym.save")} onPress={handleGymSave} />
+              {gymEditTarget ? (
+                <Btn
+                  label={t("settings.gym.delete")}
+                  tone="danger"
+                  onPress={() => handleGymDelete(gymEditTarget)}
+                />
+              ) : null}
+              <Btn label={t("common.cancel")} onPress={() => setGymFormOpen(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
-
-
-
-
 
 
 

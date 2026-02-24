@@ -4,7 +4,7 @@
 import { ensureDb, getDb } from "./db";
 import { displayNameFor, resolveExerciseId } from "./exerciseLibrary";
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 type CsvRow = {
   set_id: string;
@@ -40,14 +40,14 @@ export interface ImportResult {
 
 /**
  * Export ALL database tables as a JSON backup string.
- * Covers every table defined in db.ts schema (version 3).
+ * Covers every table defined in db.ts schema (version 4).
  */
 export async function exportFullBackup(): Promise<string> {
   await ensureDb();
   const db = getDb();
 
   const workouts = await db.getAllAsync(
-    `SELECT id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, ended_at FROM workouts`
+    `SELECT id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, ended_at, gym_id FROM workouts`
   );
   const sets = await db.getAllAsync(
     `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, notes, rest_seconds FROM sets`
@@ -101,6 +101,9 @@ export async function exportFullBackup(): Promise<string> {
   const exerciseNotes = await db.getAllAsync(
     `SELECT exercise_id, note, updated_at FROM exercise_notes`
   );
+  const gymLocations = await db.getAllAsync(
+    `SELECT id, name, color, icon, available_equipment, available_plates, sort_index, created_at FROM gym_locations`
+  );
 
   const payload: BackupPayload = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -126,6 +129,7 @@ export async function exportFullBackup(): Promise<string> {
       workout_templates: workoutTemplates ?? [],
       day_marks: dayMarks ?? [],
       exercise_notes: exerciseNotes ?? [],
+      gym_locations: gymLocations ?? [],
     },
   };
 
@@ -194,6 +198,7 @@ export async function importBackup(
   const workoutTemplates = Array.isArray(data.workout_templates) ? data.workout_templates : [];
   const dayMarks = Array.isArray(data.day_marks) ? data.day_marks : [];
   const exerciseNotes = Array.isArray(data.exercise_notes) ? data.exercise_notes : [];
+  const gymLocations = Array.isArray(data.gym_locations) ? data.gym_locations : [];
 
   const hasAnyData =
     workouts.length > 0 ||
@@ -214,7 +219,8 @@ export async function importBackup(
     progressionLog.length > 0 ||
     workoutTemplates.length > 0 ||
     dayMarks.length > 0 ||
-    exerciseNotes.length > 0;
+    exerciseNotes.length > 0 ||
+    gymLocations.length > 0;
 
   if (!hasAnyData) {
     return { success: false, error: "backup_empty" };
@@ -247,12 +253,13 @@ export async function importBackup(
       await db.execAsync("DELETE FROM workout_templates");
       await db.execAsync("DELETE FROM day_marks");
       await db.execAsync("DELETE FROM exercise_notes");
+      await db.execAsync("DELETE FROM gym_locations");
     }
 
     for (const w of workouts) {
       await db.runAsync(
-        `${verb} workouts(id, date, program_mode, day_key, back_status, notes, day_index, started_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+        `${verb} workouts(id, date, program_mode, day_key, back_status, notes, day_index, started_at, gym_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           w.id,
           w.date,
@@ -262,6 +269,7 @@ export async function importBackup(
           w.notes ?? null,
           w.day_index ?? null,
           w.started_at ?? null,
+          w.gym_id ?? null,
         ]
       );
     }
@@ -442,6 +450,23 @@ export async function importBackup(
       await db.runAsync(
         `${verb} exercise_notes(exercise_id, note, updated_at) VALUES(?, ?, ?)`,
         [en.exercise_id, en.note, en.updated_at]
+      );
+    }
+
+    for (const gl of gymLocations) {
+      await db.runAsync(
+        `${verb} gym_locations(id, name, color, icon, available_equipment, available_plates, sort_index, created_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          gl.id,
+          gl.name,
+          gl.color ?? null,
+          gl.icon ?? null,
+          gl.available_equipment ?? null,
+          gl.available_plates ?? null,
+          gl.sort_index ?? 0,
+          gl.created_at,
+        ]
       );
     }
 

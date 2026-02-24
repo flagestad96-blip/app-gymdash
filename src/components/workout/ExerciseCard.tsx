@@ -9,7 +9,7 @@ import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
 import { formatWeight } from "../../format";
-import { displayNameFor, getExercise, isPerSideExercise } from "../../exerciseLibrary";
+import { displayNameFor, getExercise, isPerSideExercise, type Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 import SetEntryRow from "./SetEntryRow";
 import type { SetRow } from "./SetEntryRow";
@@ -28,6 +28,7 @@ export type LastSetInfo = {
   rpe?: number | null;
   created_at: string;
   workout_id?: string | null;
+  fromOtherGym?: boolean;
 };
 
 function AddSetButton({
@@ -178,6 +179,8 @@ type ExerciseHalfProps = {
   onOpenPlateCalc: (exId: string) => void;
   workoutId: string | null;
   exerciseIndex: number;
+  gymId?: string | null;
+  gymEquipment?: Set<Equipment> | null;
 };
 
 function ExerciseHalf({
@@ -211,6 +214,8 @@ function ExerciseHalf({
   onOpenPlateCalc,
   workoutId,
   exerciseIndex,
+  gymId,
+  gymEquipment,
 }: ExerciseHalfProps) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -223,7 +228,7 @@ function ExerciseHalf({
   const toggleHistory = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (!historyOpen && !historySessions) {
-      getRecentSessions(exId, workoutId).then(setHistorySessions);
+      getRecentSessions(exId, workoutId, 5, gymId).then(setHistorySessions);
     }
     setHistoryOpen((prev) => !prev);
   };
@@ -310,23 +315,40 @@ function ExerciseHalf({
           {t("log.alternativeFor", { name: displayNameFor(baseExId) })}
         </Text>
       ) : null}
+      {(() => {
+        if (!gymEquipment) return null;
+        const eq = getExercise(exId)?.equipment as Equipment | undefined;
+        if (!eq || gymEquipment.has(eq)) return null;
+        return (
+          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, opacity: 0.6 }}>
+            {t("gym.notAtThisGym")}
+          </Text>
+        );
+      })()}
 
       <View style={{ gap: 4 }}>
         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
           {t("log.target", { sets: target.targetSets, repMin: target.repMin, repMax: target.repMax, inc: formatWeight(wu.toDisplay(target.incrementKg)) })}
         </Text>
         {lastSet ? (
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, flex: 1 }}>
-              {t("log.lastSet", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps, date: lastSet.created_at ? lastSet.created_at.slice(0, 10) : "" })}
-            </Text>
-            <Pressable onPress={toggleHistory} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-              <MaterialIcons name="history" size={14} color={theme.accent} />
-              <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
-                {historyOpen ? t("log.hideHistory") : t("log.showHistory")}
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, flex: 1 }}>
+                {t("log.lastSet", { weight: formatWeight(wu.toDisplay(lastSet.weight)), reps: lastSet.reps, date: lastSet.created_at ? lastSet.created_at.slice(0, 10) : "" })}
               </Text>
-            </Pressable>
-          </View>
+              <Pressable onPress={toggleHistory} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                <MaterialIcons name="history" size={14} color={theme.accent} />
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {historyOpen ? t("log.hideHistory") : t("log.showHistory")}
+                </Text>
+              </Pressable>
+            </View>
+            {lastSet.fromOtherGym ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, opacity: 0.7 }}>
+                {t("gym.fromOtherGym")}
+              </Text>
+            ) : null}
+          </>
         ) : null}
         {historyOpen && (
           <View style={{ gap: 6, paddingTop: 2 }}>
@@ -647,6 +669,8 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   onLayout: (e: any) => void;
   workoutId: string | null;
   exerciseIndex: number;
+  gymId?: string | null;
+  gymEquipment?: Set<Equipment> | null;
 };
 
 function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boolean }) {
@@ -662,9 +686,14 @@ function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boo
 
 export function SingleExerciseCard(props: SingleExerciseCardProps) {
   const theme = useTheme();
+  const exEquipment = getExercise(props.exId)?.equipment as Equipment | undefined;
+  const equipmentUnavailable =
+    props.gymEquipment != null &&
+    exEquipment != null &&
+    !props.gymEquipment.has(exEquipment);
 
   return (
-    <View onLayout={props.onLayout} style={{ position: "relative" }}>
+    <View onLayout={props.onLayout} style={{ position: "relative", opacity: equipmentUnavailable ? 0.4 : 1 }}>
       {props.isFocused && <FocusGlow borderRadius={theme.radius.xl} isDark={theme.isDark} />}
       <Pressable
         onPress={() => props.onActivateExercise(props.exId)}
@@ -711,6 +740,8 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onOpenPlateCalc={props.onOpenPlateCalc}
         workoutId={props.workoutId}
         exerciseIndex={props.exerciseIndex}
+        gymId={props.gymId}
+        gymEquipment={props.gymEquipment}
       />
     </Pressable>
     </View>
@@ -749,15 +780,22 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   onAddSuperset: () => void;
   workoutId: string | null;
   exerciseIndex: number;
+  gymId?: string | null;
+  gymEquipment?: Set<Equipment> | null;
 };
 
 export function SupersetCard(props: SupersetCardProps) {
   const theme = useTheme();
   const { t } = useI18n();
   const isFocused = props.focusedExerciseId === props.exIdA || props.focusedExerciseId === props.exIdB;
+  const eqA = getExercise(props.exIdA)?.equipment as Equipment | undefined;
+  const eqB = getExercise(props.exIdB)?.equipment as Equipment | undefined;
+  const equipmentUnavailable =
+    props.gymEquipment != null &&
+    ((eqA != null && !props.gymEquipment.has(eqA)) || (eqB != null && !props.gymEquipment.has(eqB)));
 
   return (
-    <View onLayout={props.onLayout} style={{ position: "relative" }}>
+    <View onLayout={props.onLayout} style={{ position: "relative", opacity: equipmentUnavailable ? 0.4 : 1 }}>
       {isFocused && <FocusGlow borderRadius={theme.radius.xl} isDark={theme.isDark} />}
       <Pressable
         onPress={() => props.onActivateExercise(props.exIdA)}
@@ -808,6 +846,8 @@ export function SupersetCard(props: SupersetCardProps) {
           onOpenPlateCalc={props.onOpenPlateCalc}
           workoutId={props.workoutId}
           exerciseIndex={props.exerciseIndex}
+          gymId={props.gymId}
+          gymEquipment={props.gymEquipment}
         />
 
         <ExerciseHalf
@@ -841,6 +881,8 @@ export function SupersetCard(props: SupersetCardProps) {
           onOpenPlateCalc={props.onOpenPlateCalc}
           workoutId={props.workoutId}
           exerciseIndex={props.exerciseIndex}
+          gymId={props.gymId}
+          gymEquipment={props.gymEquipment}
         />
       </View>
 

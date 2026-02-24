@@ -1,7 +1,7 @@
 // app/(tabs)/index.tsx — Home Dashboard
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, Pressable } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,6 +16,7 @@ import { useWeightUnit } from "../../src/units";
 import { getNextWorkoutPreview } from "../../src/programStore";
 import { getPendingSuggestions, applySuggestion, dismissSuggestion, type ProgressionSuggestion } from "../../src/progressionStore";
 import { isoDateOnly } from "../../src/storage";
+import { getActiveGym } from "../../src/gymStore";
 
 const BACKUP_REMINDER_DAYS = 14;
 
@@ -67,6 +68,7 @@ export default function HomeScreen() {
   const [suggestions, setSuggestions] = useState<ProgressionSuggestion[]>([]);
   const [backupDaysAgo, setBackupDaysAgo] = useState<number | null>(null);
   const [backupDismissed, setBackupDismissed] = useState(false);
+  const [activeGymName, setActiveGymName] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -203,10 +205,25 @@ export default function HomeScreen() {
         }
       } catch {}
 
+      // Active gym name for passive indicator
+      try {
+        const gym = getActiveGym();
+        if (alive) setActiveGymName(gym?.name ?? null);
+      } catch {}
+
       if (alive) setReady(true);
     });
     return () => { alive = false; };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      try {
+        const gym = getActiveGym();
+        setActiveGymName(gym?.name ?? null);
+      } catch {}
+    }, [])
+  );
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();
@@ -280,6 +297,11 @@ export default function HomeScreen() {
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
             {t("home.todayWorkout")}
           </Text>
+          {activeGymName ? (
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, opacity: 0.7 }}>
+              {activeGymName}
+            </Text>
+          ) : null}
           {todayWorkout ? (
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>

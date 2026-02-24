@@ -7,24 +7,60 @@ export type ExerciseSession = {
   date: string;
   sets: { weight: number; reps: number; rpe?: number | null }[];
   exerciseOrder: number;
+  fromOtherGym?: boolean;
 };
 
 export async function getRecentSessions(
   exerciseId: string,
   excludeWorkoutId: string | null,
-  limit: number = 5
+  limit: number = 5,
+  gymId?: string | null
 ): Promise<ExerciseSession[]> {
   try {
     const db = getDb();
+    const useGymScope = typeof gymId === "string" && gymId.length > 0;
 
-    const workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
-      `SELECT DISTINCT s.workout_id, w.date
-       FROM sets s JOIN workouts w ON s.workout_id = w.id
-       WHERE s.exercise_id = ?${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
-       ORDER BY w.date DESC
-       LIMIT ?`,
-      excludeWorkoutId ? [exerciseId, excludeWorkoutId, limit] : [exerciseId, limit]
-    );
+    // Pass 1: gym-scoped query (only when gymId is provided)
+    let workoutRows: { workout_id: string; date: string }[] | null = null;
+    let isFromOtherGym = false;
+
+    if (useGymScope) {
+      const excludeClause = excludeWorkoutId ? " AND s.workout_id != ?" : "";
+      const params = excludeWorkoutId
+        ? [exerciseId, gymId, excludeWorkoutId, limit]
+        : [exerciseId, gymId, limit];
+      workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
+        `SELECT DISTINCT s.workout_id, w.date
+         FROM sets s JOIN workouts w ON s.workout_id = w.id
+         WHERE s.exercise_id = ? AND w.gym_id = ?${excludeClause}
+         ORDER BY w.date DESC
+         LIMIT ?`,
+        params
+      );
+
+      // Pass 2: global fallback if gym-scoped returned nothing
+      if (!workoutRows || workoutRows.length === 0) {
+        isFromOtherGym = true;
+        workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
+          `SELECT DISTINCT s.workout_id, w.date
+           FROM sets s JOIN workouts w ON s.workout_id = w.id
+           WHERE s.exercise_id = ?${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
+           ORDER BY w.date DESC
+           LIMIT ?`,
+          excludeWorkoutId ? [exerciseId, excludeWorkoutId, limit] : [exerciseId, limit]
+        );
+      }
+    } else {
+      // No gym scope — original global query
+      workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
+        `SELECT DISTINCT s.workout_id, w.date
+         FROM sets s JOIN workouts w ON s.workout_id = w.id
+         WHERE s.exercise_id = ?${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
+         ORDER BY w.date DESC
+         LIMIT ?`,
+        excludeWorkoutId ? [exerciseId, excludeWorkoutId, limit] : [exerciseId, limit]
+      );
+    }
 
     if (!workoutRows || workoutRows.length === 0) return [];
 
@@ -58,6 +94,7 @@ export async function getRecentSessions(
         })),
         exerciseOrder:
           exOrder?.findIndex((e) => e.exercise_id === exerciseId) ?? 0,
+        fromOtherGym: isFromOtherGym || undefined,
       });
     }
 

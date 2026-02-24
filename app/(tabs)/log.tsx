@@ -48,6 +48,9 @@ import { checkAndUnlockAchievements, type Achievement } from "../../src/achievem
 import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, type PrMap } from "../../src/prEngine";
 import { getAllNotes, setNote, deleteNote } from "../../src/exerciseNotes";
 import { AchievementToast, UndoToast } from "../../src/ui/modern";
+import { listGyms, getActiveGymId, setActiveGymId as setActiveGymIdStore, getActiveGym, getGymEquipmentSet, isEquipmentAvailable } from "../../src/gymStore";
+import type { GymLocation } from "../../src/gymStore";
+import GymPickerModal from "../../src/components/modals/GymPickerModal";
 import { useI18n } from "../../src/i18n";
 import { useWeightUnit } from "../../src/units";
 import { calculatePlates } from "../../src/plateCalculator";
@@ -133,6 +136,9 @@ export default function Logg() {
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
   const [suggestedDayIndex, setSuggestedDayIndex] = useState<number>(0);
   const [dayPickerOpen, setDayPickerOpen] = useState<boolean>(false);
+  const [activeGymId, setActiveGymId] = useState<string | null>(null);
+  const [gyms, setGyms] = useState<GymLocation[]>([]);
+  const [gymPickerOpen, setGymPickerOpen] = useState(false);
   const [program, setProgram] = useState<Program | null>(null);
   const [alternatives, setAlternatives] = useState<AlternativesMap>({});
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({});
@@ -246,6 +252,12 @@ export default function Logg() {
       setProgramMode(pm);
       setSupersetAlternate(ssRaw === null ? true : ssRaw === "1");
       setShowOnboarding(onboardingRaw !== "1");
+
+      // Load gym data
+      const gymList = listGyms();
+      const savedGymId = getActiveGymId();
+      setGyms(gymList);
+      setActiveGymId(savedGymId);
 
       // Rest timer settings are now loaded by RestTimerContext
 
@@ -522,20 +534,60 @@ export default function Logg() {
     if (!ready || exerciseIds.length === 0) { setLastSets({}); return; }
     try {
       const placeholders = exerciseIds.map(() => "?").join(",");
-      const rows = getDb().getAllSync<SetRow>(
-        `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-         FROM sets WHERE exercise_id IN (${placeholders}) ORDER BY created_at DESC`,
-        [...exerciseIds]
-      );
       const last: Record<string, LastSetInfo> = {};
-      for (const r of rows ?? []) {
-        const key = r.exercise_id ? String(r.exercise_id) : "";
-        if (!key || last[key]) continue;
-        last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
+
+      if (activeGymId) {
+        // Pass 1: gym-scoped
+        const gymRows = getDb().getAllSync<SetRow>(
+          `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at
+           FROM sets s
+           JOIN workouts w ON s.workout_id = w.id
+           WHERE s.exercise_id IN (${placeholders})
+             AND w.gym_id = ?
+           ORDER BY s.created_at DESC
+           LIMIT ?`,
+          [...exerciseIds, activeGymId, exerciseIds.length * 5]
+        );
+        for (const r of gymRows ?? []) {
+          const key = r.exercise_id ? String(r.exercise_id) : "";
+          if (!key || last[key]) continue;
+          last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
+        }
+
+        // Pass 2: global fallback for remaining exercise IDs
+        const remaining = exerciseIds.filter((id) => !last[id]);
+        if (remaining.length > 0) {
+          const remainingPlaceholders = remaining.map(() => "?").join(",");
+          const globalRows = getDb().getAllSync<SetRow>(
+            `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
+             FROM sets WHERE exercise_id IN (${remainingPlaceholders}) ORDER BY created_at DESC
+             LIMIT ?`,
+            [...remaining, remaining.length * 5]
+          );
+          for (const r of globalRows ?? []) {
+            const key = r.exercise_id ? String(r.exercise_id) : "";
+            if (!key || last[key]) continue;
+            last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id, fromOtherGym: true };
+          }
+        }
+      } else {
+        // No gym — global query (original behavior)
+        const rows = getDb().getAllSync<SetRow>(
+          `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
+           FROM sets WHERE exercise_id IN (${placeholders}) ORDER BY created_at DESC
+           LIMIT ?`,
+          [...exerciseIds, exerciseIds.length * 5]
+        );
+        for (const r of rows ?? []) {
+          const key = r.exercise_id ? String(r.exercise_id) : "";
+          if (!key || last[key]) continue;
+          last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
+        }
       }
+
       setLastSets(last);
     } catch { setLastSets({}); }
-  }, [ready, exerciseIdsKey, exerciseIds, program?.id]);
+  }, [ready, exerciseIdsKey, exerciseIds, program?.id, activeGymId]);
 
   function buildCoachHint(exId: string) {
     const last = lastSets[exId];
@@ -761,8 +813,8 @@ export default function Logg() {
     const startedAt = isoNow();
     const programId = program?.id ?? null;
     await getDb().runAsync(
-      `INSERT INTO workouts(id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, isoDateOnly(), programMode, programId, getDayKey(), "green", "", activeDayIndex, startedAt]
+      `INSERT INTO workouts(id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, gym_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, isoDateOnly(), programMode, programId, getDayKey(), "green", "", activeDayIndex, startedAt, activeGymId ?? null]
     );
     await setSettingAsync("activeWorkoutId", id);
     setActiveWorkoutId(id);
@@ -1086,7 +1138,7 @@ export default function Logg() {
   }
 
   // ── Shared callbacks for exercise cards ──
-  const cardCallbacks = {
+  const cardCallbacks = useMemo(() => ({
     onSetInput: setInput,
     onApplyWeightStep: applyWeightStep,
     onApplyLastSet: applyLastSet,
@@ -1113,7 +1165,15 @@ export default function Logg() {
       else deleteNote(exId).catch(() => {});
     },
     onOpenPlateCalc: (exId: string) => setPlateCalcExId(exId),
-  };
+  }), [setInput, applyWeightStep, applyLastSet, addSetForExercise, addSetMultiple,
+       openEditSet, deleteSet, focusExercise, restTimer, openAltPicker,
+       handleSetAlternativeAsDefault, exerciseNotes]);
+
+  const activeGymEquipment = useMemo(() => {
+    if (!activeGymId) return null;
+    const gym = gyms.find((g) => g.id === activeGymId);
+    return gym ? getGymEquipmentSet(gym) : null;
+  }, [activeGymId, gyms]);
 
   if (!ready || !program || !dayPlan) {
     return (
@@ -1176,6 +1236,13 @@ export default function Logg() {
           />
 
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {gyms.length > 0 ? (
+              <Chip
+                text={activeGymId ? (gyms.find((g) => g.id === activeGymId)?.name ?? t("gym.noGym")) : t("gym.noGym")}
+                active={!!activeGymId}
+                onPress={() => setGymPickerOpen(true)}
+              />
+            ) : null}
             <Chip text={programMode === "back" ? t("log.backFriendly") : t("log.standard")} />
             <Chip
               text={t("log.dayChip", { n: activeDayIndex + 1 })}
@@ -1210,6 +1277,11 @@ export default function Logg() {
                 <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>{mmss(workoutElapsedSec)}</Text>
               </View>
             </View>
+            {activeWorkoutId && activeGymId ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                {gyms.find((g) => g.id === activeGymId)?.name ?? ""}
+              </Text>
+            ) : null}
             <View style={{ marginTop: 12 }}>
               {activeWorkoutId ? (
                 <View style={{ flexDirection: "row", gap: 8 }}>
@@ -1285,6 +1357,8 @@ export default function Logg() {
                     lastAddedAnim={lastAddedAnim}
                     workoutId={activeWorkoutId}
                     exerciseIndex={blockIdx}
+                    gymId={activeGymId}
+                    gymEquipment={activeGymEquipment}
                     onLayout={(e) => {
                       anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                       anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
@@ -1326,6 +1400,8 @@ export default function Logg() {
                   lastAddedAnim={lastAddedAnim}
                   workoutId={activeWorkoutId}
                   exerciseIndex={blockIdx}
+                  gymId={activeGymId}
+                  gymEquipment={null}
                   nextLabel={nextLabel}
                   onLayout={(e) => {
                     anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
@@ -1347,7 +1423,18 @@ export default function Logg() {
         visible={altPickerOpen}
         onClose={() => { setAltPickerOpen(false); setAltPickerBase(null); }}
         baseExId={altPickerBase}
-        alternativeIds={altPickerBase ? [altPickerBase, ...(alternatives[activeDayIndex]?.[altPickerBase] ?? [])] : []}
+        alternativeIds={(() => {
+          if (!altPickerBase) return [];
+          const fullList = [altPickerBase, ...(alternatives[activeDayIndex]?.[altPickerBase] ?? [])];
+          const activeGym = getActiveGym();
+          const gymEquipment = activeGym ? getGymEquipmentSet(activeGym) : null;
+          if (!gymEquipment) return fullList;
+          return fullList.filter((exId) => {
+            const eq = getExercise(exId)?.equipment;
+            if (!eq) return true;
+            return isEquipmentAvailable(eq, activeGym);
+          });
+        })()}
         resolvedExId={altPickerBase ? resolveSelectedExId(altPickerBase) : null}
         onChoose={chooseAlternative}
         onSetDefault={handleSetAlternativeAsDefault}
@@ -1378,6 +1465,19 @@ export default function Logg() {
           </View>
         </Pressable>
       </Modal>
+
+      <GymPickerModal
+        visible={gymPickerOpen}
+        onClose={() => setGymPickerOpen(false)}
+        gyms={gyms}
+        activeGymId={activeGymId}
+        onSelect={(gymId) => {
+          setActiveGymIdStore(gymId);
+          setActiveGymId(gymId);
+          setGymPickerOpen(false);
+        }}
+        disabled={!!activeWorkoutId}
+      />
 
       {/* Edit Set Modal */}
       <Modal visible={editSetOpen} transparent animationType="fade" onRequestClose={() => setEditSetOpen(false)}>
@@ -1413,6 +1513,7 @@ export default function Logg() {
         onClose={() => setPlateCalcExId(null)}
         weightStr={plateCalcExId ? (inputs[plateCalcExId]?.weight ?? "") : ""}
         exerciseId={plateCalcExId}
+        gymId={activeGymId}
       />
 
       {/* Undo Toast */}

@@ -73,7 +73,7 @@ export type PlateResult = {
 };
 
 const DEFAULT_BAR_KG = 20;
-const DEFAULT_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+export const DEFAULT_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
 
 /**
  * Calculate plate breakdown for a target weight.

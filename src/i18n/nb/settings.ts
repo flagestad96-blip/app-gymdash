@@ -133,6 +133,23 @@ const settings: TranslationMap = {
   "settings.privacy.offlineDesc": "Gymdash er 100\u00a0% offline. Ingen data sendes til noen server \u2014 alt forblir p\u00e5 enheten din.",
   "settings.privacy.storageTitle": "Datalagring",
   "settings.privacy.storageDesc": "All data lagres lokalt i en SQLite-database p\u00e5 enheten. Ingen konto, ingen sky, ingen sporing.",
+
+  // ── Gym Locations ──
+  "settings.gymLocations": "TRENINGSSTEDER",
+  "settings.gymLocations.desc": "Opprett og administrer dine treningssteder.",
+  "settings.gymLocations.manage": "Administrer treningssteder",
+  "settings.gymLocations.empty": "Ingen treningssteder enn\u00e5. Trykk \u00ABAdministrer treningssteder\u00BB for \u00e5 legge til.",
+  "settings.gym.title": "Administrer treningssteder",
+  "settings.gym.add": "Legg til treningssenter",
+  "settings.gym.addTitle": "Nytt treningssenter",
+  "settings.gym.editTitle": "Rediger treningssenter",
+  "settings.gym.namePlaceholder": "Navn p\u00e5 treningssenter",
+  "settings.gym.colorLabel": "Farge",
+  "settings.gym.save": "Lagre",
+  "settings.gym.delete": "Slett",
+  "settings.gym.confirmDelete": "Slette treningssenter?",
+  "settings.gym.confirmDeleteMsg": "Slette \u00AB{name}\u00BB? Historikk slettes ikke.",
+  "settings.gym.nameRequired": "Navn er p\u00e5krevd.",
 };
 
 export default settings;

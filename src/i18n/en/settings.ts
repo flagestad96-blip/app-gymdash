@@ -133,6 +133,23 @@ const settings: TranslationMap = {
   "settings.privacy.offlineDesc": "Gymdash is 100\u00a0% offline. No data is sent to any server \u2014 everything stays on your device.",
   "settings.privacy.storageTitle": "Data storage",
   "settings.privacy.storageDesc": "All data is stored locally in a SQLite database on your device. No account, no cloud, no tracking.",
+
+  // ── Gym Locations ──
+  "settings.gymLocations": "GYM LOCATIONS",
+  "settings.gymLocations.desc": "Create and manage your gym locations.",
+  "settings.gymLocations.manage": "Manage Gyms",
+  "settings.gymLocations.empty": "No gyms yet. Tap \u201cManage Gyms\u201d to add one.",
+  "settings.gym.title": "Manage Gyms",
+  "settings.gym.add": "Add Gym",
+  "settings.gym.addTitle": "New Gym",
+  "settings.gym.editTitle": "Edit Gym",
+  "settings.gym.namePlaceholder": "Gym name",
+  "settings.gym.colorLabel": "Color",
+  "settings.gym.save": "Save",
+  "settings.gym.delete": "Delete",
+  "settings.gym.confirmDelete": "Delete gym?",
+  "settings.gym.confirmDeleteMsg": "Delete \u201c{name}\u201d? This does not delete workout history.",
+  "settings.gym.nameRequired": "Gym name is required.",
 };
 
 export default settings;

@@ -13,6 +13,7 @@ import nbAchievements from "./nb/achievements";
 import nbOnboarding from "./nb/onboarding";
 import nbPatchNotes from "./nb/patchNotes";
 import nbNotifications from "./nb/notifications";
+import nbGym from "./nb/gym";
 
 import enCommon from "./en/common";
 import enHome from "./en/home";
@@ -27,6 +28,7 @@ import enAchievements from "./en/achievements";
 import enOnboarding from "./en/onboarding";
 import enPatchNotes from "./en/patchNotes";
 import enNotifications from "./en/notifications";
+import enGym from "./en/gym";
 
 function merge(...maps: TranslationMap[]): TranslationMap {
   const result: TranslationMap = {};
@@ -38,17 +40,19 @@ export const nb: TranslationMap = merge(
   nbCommon, nbHome, nbLog, nbProgram, nbAnalysis,
   nbCalendar, nbHistory, nbBody, nbSettings,
   nbAchievements, nbOnboarding, nbPatchNotes, nbNotifications,
+  nbGym,
 );
 
 export const en: TranslationMap = merge(
   enCommon, enHome, enLog, enProgram, enAnalysis,
   enCalendar, enHistory, enBody, enSettings,
   enAchievements, enOnboarding, enPatchNotes, enNotifications,
+  enGym,
 );
 
 // Key count assertion — ensures no keys are accidentally lost during splits.
 // If you add/remove keys, update the expected count here.
-const EXPECTED_MIN_KEYS = 560;
+const EXPECTED_MIN_KEYS = 580;
 if (__DEV__) {
   const nbCount = Object.keys(nb).length;
   const enCount = Object.keys(en).length;

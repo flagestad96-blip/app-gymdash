@@ -10,6 +10,7 @@ import {
   loadCustomBars, saveCustomBars,
   loadExerciseBarPrefs, saveExerciseBarPref,
 } from "../../plateCalculator";
+import { getGym, getGymPlates } from "../../gymStore";
 
 export type PlateCalcModalProps = {
   visible: boolean;
@@ -18,19 +19,22 @@ export type PlateCalcModalProps = {
   weightStr: string;
   /** Exercise ID — used to remember bar preference per exercise */
   exerciseId?: string | null;
+  /** Active gym ID — used to resolve gym-specific plate set */
+  gymId?: string | null;
 };
 
-export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId }: PlateCalcModalProps) {
+export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId, gymId }: PlateCalcModalProps) {
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
 
   const [allBars, setAllBars] = useState<BarType[]>(BUILT_IN_BARS);
   const [selectedBarId, setSelectedBarId] = useState("olympic");
-  const [exercisePrefs, setExercisePrefs] = useState<Record<string, string>>({});
+  const [, setExercisePrefs] = useState<Record<string, string>>({});
   const [showAddBar, setShowAddBar] = useState(false);
   const [newBarName, setNewBarName] = useState("");
   const [newBarWeight, setNewBarWeight] = useState("");
+  const [gymPlates, setGymPlates] = useState<number[] | null>(null);
 
   // Load custom bars + exercise preferences on mount
   const loadData = useCallback(async () => {
@@ -46,7 +50,11 @@ export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId
     } else if (!merged.some((b) => b.id === selectedBarId)) {
       setSelectedBarId("olympic");
     }
-  }, [exerciseId]);
+
+    // Resolve gym-specific plates
+    const activeGym = gymId ? getGym(gymId) : null;
+    setGymPlates(getGymPlates(activeGym));
+  }, [exerciseId, gymId]);
 
   useEffect(() => {
     if (visible) loadData();
@@ -113,7 +121,7 @@ export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId
 
   const displayVal = parseFloat(weightStr);
   const targetKg = Number.isFinite(displayVal) ? wu.toKg(displayVal) : 0;
-  const result = calculatePlates(targetKg, barKg);
+  const result = calculatePlates(targetKg, barKg, gymPlates ?? undefined);
 
   const activeBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)";
 

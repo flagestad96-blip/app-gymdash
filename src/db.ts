@@ -568,6 +568,23 @@ export async function initDb() {
             ["program_standard_v1"]
           );
         }},
+        // 22: gym_locations table + workouts.gym_id column + index
+        { version: 22, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS gym_locations (
+              id                  TEXT    PRIMARY KEY NOT NULL,
+              name                TEXT    NOT NULL,
+              color               TEXT,
+              icon                TEXT,
+              available_equipment TEXT,
+              available_plates    TEXT,
+              sort_index          INTEGER NOT NULL DEFAULT 0,
+              created_at          TEXT    NOT NULL
+            );
+          `);
+          try { d.execSync(`ALTER TABLE workouts ADD COLUMN gym_id TEXT;`); } catch {}
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_gym ON workouts(gym_id);`);
+        }},
       ];
 
       // Run pending migrations
