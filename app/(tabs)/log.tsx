@@ -32,6 +32,7 @@ import {
   type Equipment,
   isBodyweight,
   bodyweightFactorFor,
+  isPerSideExercise,
 } from "../../src/exerciseLibrary";
 import ProgramStore from "../../src/programStore";
 import type { Program, ProgramBlock, AlternativesMap } from "../../src/programStore";
@@ -45,7 +46,7 @@ import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../sr
 import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
-import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, type PrMap } from "../../src/prEngine";
+import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, type PrMap } from "../../src/prEngine";
 import { getAllNotes, setNote, deleteNote } from "../../src/exerciseNotes";
 import { AchievementToast, UndoToast } from "../../src/ui/modern";
 import { listGyms, getActiveGymId, setActiveGymId as setActiveGymIdStore, getActiveGym, getGymEquipmentSet, isEquipmentAvailable } from "../../src/gymStore";
@@ -682,7 +683,7 @@ export default function Logg() {
     setAltPickerBase(null);
   }
 
-  async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[]) {
+  async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[], isPerSide: boolean = false) {
     if (!program?.id) return;
     const base = getExercise(baseExId);
     const newId = await createCustomExercise({
@@ -690,6 +691,7 @@ export default function Logg() {
       equipment,
       tags: tags.length > 0 ? tags : tagsFor(baseExId),
       defaultIncrementKg: base?.defaultIncrementKg ?? 2.5,
+      isPerSide,
     });
 
     // Add as a permanent alternative for this exercise on this day
@@ -1012,11 +1014,12 @@ export default function Logg() {
     setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
 
     // Convert coded messages to display strings
+    const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
     const messages: string[] = rawMsgs.map((msg) => {
       const [type, val] = msg.split(":");
       const num = Number(val);
-      if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) });
-      return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) });
+      if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
+      return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
     });
 
     if (messages.length) {
@@ -1104,10 +1107,12 @@ export default function Logg() {
     const reps = parseInt(editReps, 10);
     const rpe = parseFloat(editRpe);
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
+    let estTotalLoadKgForCheck: number | null = null;
     try {
       if (isBw && editSet.exercise_id) {
         const dateOnly = editSet.created_at ? editSet.created_at.slice(0, 10) : isoDateOnly();
         const bwData = await computeBodyweightLoad(editSet.exercise_id, dateOnly, weight);
+        estTotalLoadKgForCheck = bwData.est_total_load_kg ?? null;
         await getDb().runAsync(
           `UPDATE sets SET weight = ?, reps = ?, rpe = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
           [weight, reps, Number.isFinite(rpe) ? rpe : null, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
@@ -1116,6 +1121,38 @@ export default function Logg() {
         await getDb().runAsync(`UPDATE sets SET weight = ?, reps = ?, rpe = ? WHERE id = ?`, [weight, reps, Number.isFinite(rpe) ? rpe : null, editSet.id]);
       }
       refreshWorkoutSets();
+
+      // PR recalculation after edit
+      const exId = editSet.exercise_id ?? editSet.exercise_name;
+      const pid = program?.id ?? "";
+      if (exId && pid) {
+        // 1) Forward check — fires banner if edited values beat the current record
+        const { messages: rawMsgs } = await checkSetPRs({
+          exerciseId: exId, weight, reps, setId: editSet.id,
+          workoutId: activeWorkoutId ?? "", programId: pid,
+          currentVolumeRecord: prRecords[exId]?.volume,
+          isBw, estTotalLoadKg: estTotalLoadKgForCheck,
+        });
+        // 2) Full historical recompute — fixes ghost PRs if edited down
+        const recomputed = recomputePRForExercise(exId, pid);
+        setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
+
+        // Show banner if forward check found a new PR
+        const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
+        const messages: string[] = rawMsgs.map((msg) => {
+          const [type, val] = msg.split(":");
+          const num = Number(val);
+          if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
+          return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
+        });
+        if (messages.length) {
+          const bannerText = messages.join(" \u00B7 ");
+          setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
+          setTimeout(() => {
+            setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
+          }, 3500);
+        }
+      }
     } catch { Alert.alert(t("common.error"), t("log.couldNotUpdate")); }
     finally { setEditSetOpen(false); setEditSet(null); }
   }
@@ -1124,7 +1161,19 @@ export default function Logg() {
     Alert.alert(t("log.deleteSetTitle"), t("log.deleteSetMsg"), [
       { text: t("common.cancel"), style: "cancel" },
       { text: t("common.delete"), style: "destructive", onPress: async () => {
-        try { await getDb().runAsync(`DELETE FROM sets WHERE id = ?`, [row.id]); refreshWorkoutSets(); }
+        try {
+          await getDb().runAsync(`DELETE FROM sets WHERE id = ?`, [row.id]);
+          refreshWorkoutSets();
+          // Recompute PRs for the affected exercise
+          const exId = row.exercise_id ?? row.exercise_name;
+          const pid = program?.id ?? "";
+          if (exId && pid) {
+            const recomputed = recomputePRForExercise(exId, pid);
+            setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
+            // Clear any lingering banner for this exercise
+            setPrBanners((prev) => { const next = { ...prev }; delete next[exId]; return next; });
+          }
+        }
         catch { Alert.alert(t("common.error"), t("log.couldNotDelete")); }
       }},
     ]);

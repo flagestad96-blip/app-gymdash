@@ -527,6 +527,17 @@ function ExerciseHalf({
           />
         </Pressable>
       </View>
+      {isPerSideExercise(exId) ? (
+        <Text style={{
+          color: theme.muted,
+          fontFamily: theme.mono,
+          fontSize: 9,
+          marginTop: 1,
+          opacity: 0.7,
+        }}>
+          {t("log.perSideHint")}
+        </Text>
+      ) : null}
       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9, textAlign: "right", marginTop: 2, opacity: 0.7 }}>
         {t("log.rpeHoldHint")}
       </Text>

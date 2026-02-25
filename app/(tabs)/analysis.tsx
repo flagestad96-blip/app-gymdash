@@ -8,6 +8,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync, listBodyMetrics, type BodyMetricRow } from "../../src/db";
 import LineChart from "../../src/components/charts/LineChart";
 import MuscleGroupBars, { MUSCLE_GROUPS, primaryMuscleGroups } from "../../src/components/charts/MuscleGroupBars";
+import RpeHistogram from "../../src/components/charts/RpeHistogram";
 import { getStandard, getStandardExerciseIds, hasStandard, getTargetWeights, type StrengthLevel, type Gender } from "../../src/strengthStandards";
 import RadarChart, { type RadarDataPoint } from "../../src/components/charts/RadarChart";
 import { getGoalsForExercise, createGoal, deleteGoal, getCurrentValueForGoal, type ExerciseGoal, type GoalType } from "../../src/goals";
@@ -19,6 +20,10 @@ import { useWeightUnit, unitLabel } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
 import { epley1RM } from "../../src/metrics";
 import { parseTimeMs } from "../../src/format";
+import { generateExerciseInsight } from "../../src/analysisInsights";
+import TrainingStatusCard from "../../src/components/TrainingStatusCard";
+import { computeTrainingStatus, type TrainingStatusResult } from "../../src/trainingStatus";
+import { toggleManualDeload } from "../../src/periodization";
 
 type RangeKey = "week" | "month" | "year";
 type ChartMetric = "e1rm" | "volume" | "repsPr" | "topSet";
@@ -31,6 +36,7 @@ type RowSet = {
   reps: number;
   rpe?: number | null;
   created_at: string;
+  workout_date: string;
   est_total_load_kg?: number | null;
   rest_seconds?: number | null;
 };
@@ -145,6 +151,10 @@ export default function Analysis() {
   const [bodyMetrics90, setBodyMetrics90] = useState<BodyMetricRow[]>([]);
   const [allPrRecords, setAllPrRecords] = useState<PrRow[]>([]);
   const [prevPeriodData, setPrevPeriodData] = useState<{ workouts: number; sets: number; volume: number; bestE1rm: number }>({ workouts: 0, sets: 0, volume: 0, bestE1rm: 0 });
+  const [trainingStatus, setTrainingStatus] = useState<TrainingStatusResult | null>(null);
+  const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
+  const [analysisProgramId, setAnalysisProgramId] = useState<string | null>(null);
+  const [deloadToast, setDeloadToast] = useState(false);
 
   useEffect(() => {
     // Skip loading screen if already initialized (tab re-focus)
@@ -184,6 +194,22 @@ export default function Analysis() {
     return () => { alive = false; };
   }, [ready]);
 
+  useEffect(() => {
+    if (!ready) return;
+    let alive = true;
+    (async () => {
+      try {
+        const mode = (await getSettingAsync("programMode")) || "normal";
+        const progId = await getSettingAsync(`activeProgramId_${mode}`);
+        if (alive) setAnalysisProgramId(progId);
+        const result = await computeTrainingStatus(progId);
+        if (alive) setTrainingStatus(result);
+      } catch {}
+      if (alive) setTrainingStatusLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [ready]);
+
   // Load all PR records for strength standards
   useEffect(() => {
     if (!ready) return;
@@ -214,10 +240,11 @@ export default function Analysis() {
     setWorkouts(Array.isArray(w) ? w : []);
 
     const s = getDb().getAllSync<RowSet>(
-      `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at, est_total_load_kg, rest_seconds
-       FROM sets
-       WHERE created_at >= ?
-       ORDER BY created_at ASC`,
+      `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at, w.date as workout_date, s.est_total_load_kg, s.rest_seconds
+       FROM sets s
+       JOIN workouts w ON s.workout_id = w.id
+       WHERE w.date >= ?
+       ORDER BY w.date ASC, s.created_at ASC`,
       [fromDate]
     );
     setSets(Array.isArray(s) ? s : []);
@@ -378,7 +405,7 @@ export default function Analysis() {
       if (key !== selectedExerciseKey) continue;
 
 
-      const day = isoDateOnly(new Date(row.created_at));
+      const day = row.workout_date;
       const w = weightForSet(row);
       if (w == null) continue;
 
@@ -422,7 +449,7 @@ export default function Analysis() {
       const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
       if (key !== comparisonExerciseKey) continue;
 
-      const day = isoDateOnly(new Date(row.created_at));
+      const day = row.workout_date;
       const w = weightForSet(row);
       if (w == null) continue;
       if (chartMetric === "e1rm") {
@@ -471,9 +498,9 @@ export default function Analysis() {
     const iso28 = isoDateOnly(d28);
     const iso14 = isoDateOnly(d14);
 
-    const recent = filtered.filter((s) => isoDateOnly(new Date(s.created_at)) >= iso28);
-    const firstHalf = recent.filter((s) => isoDateOnly(new Date(s.created_at)) < iso14);
-    const secondHalf = recent.filter((s) => isoDateOnly(new Date(s.created_at)) >= iso14);
+    const recent = filtered.filter((s) => s.workout_date >= iso28);
+    const firstHalf = recent.filter((s) => s.workout_date < iso14);
+    const secondHalf = recent.filter((s) => s.workout_date >= iso14);
 
     const avg1rm = (rows: RowSet[]) => {
       if (!rows.length) return 0;
@@ -485,7 +512,7 @@ export default function Analysis() {
       : null;
 
     // Consistency: distinct dates with this exercise / weeks in period
-    const distinctDates = new Set(filtered.map((s) => isoDateOnly(new Date(s.created_at))));
+    const distinctDates = new Set(filtered.map((s) => s.workout_date));
     const periodWeeks = Math.max(1, daysBack(range) / 7);
     const consistencyValue = Math.round((distinctDates.size / periodWeeks) * 10) / 10;
 
@@ -499,6 +526,57 @@ export default function Analysis() {
       consistency: consistencyValue,
     };
   }, [sets, selectedExerciseKey, range]);
+
+  // ── Insight inputs: e1RM % change + RPE delta ────────────────────
+  const insightInputs = useMemo(() => {
+    if (!selectedExerciseKey) return { e1rmPctChange: null, rpeDelta: null, sessionCount: 0 };
+
+    const filtered = sets.filter((row) => {
+      const key = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
+      return key === selectedExerciseKey;
+    });
+
+    // 4-week split: first 2 weeks vs last 2 weeks
+    const d14 = new Date(); d14.setDate(d14.getDate() - 14);
+    const d28 = new Date(); d28.setDate(d28.getDate() - 28);
+    const iso14 = isoDateOnly(d14);
+    const iso28 = isoDateOnly(d28);
+
+    const recent = filtered.filter((s) => s.workout_date >= iso28);
+
+    // Count distinct sessions within the 28-day window (not the full range)
+    const sessionCount = new Set(recent.map((s) => s.workout_id)).size;
+    const firstHalf = recent.filter((s) => s.workout_date < iso14);
+    const secondHalf = recent.filter((s) => s.workout_date >= iso14);
+
+    // e1RM % change
+    let e1rmPctChange: number | null = null;
+    if (firstHalf.length > 0 && secondHalf.length > 0) {
+      const avg1rm = (rows: RowSet[]) => {
+        const vals = rows.map((s) => { const w = weightForSet(s); return w == null ? 0 : epley1RM(w, s.reps); });
+        return vals.reduce((a, b) => a + b, 0) / vals.length;
+      };
+      const early = avg1rm(firstHalf);
+      const late  = avg1rm(secondHalf);
+      if (early > 0) {
+        e1rmPctChange = ((late - early) / early) * 100;
+      }
+    }
+
+    // RPE delta: avg RPE in first half vs second half
+    let rpeDelta: number | null = null;
+    const rpeOf = (rows: RowSet[]) => {
+      const vals = rows.map((s) => s.rpe).filter((v): v is number => v != null && Number.isFinite(v));
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    };
+    const earlyRpe = rpeOf(firstHalf);
+    const lateRpe  = rpeOf(secondHalf);
+    if (earlyRpe !== null && lateRpe !== null) {
+      rpeDelta = lateRpe - earlyRpe;
+    }
+
+    return { e1rmPctChange, rpeDelta, sessionCount };
+  }, [sets, selectedExerciseKey]);
 
   const restStats = useMemo(() => {
     const allRest = sets.filter(s => s.rest_seconds != null && s.rest_seconds > 0);
@@ -521,9 +599,9 @@ export default function Analysis() {
     const d14 = new Date(); d14.setDate(d14.getDate() - 14);
     const iso14 = isoDateOnly(d14);
     const iso28 = isoDateOnly(d28);
-    const recent = exRest.filter(s => isoDateOnly(new Date(s.created_at)) >= iso28);
-    const firstHalf = recent.filter(s => isoDateOnly(new Date(s.created_at)) < iso14);
-    const secondHalf = recent.filter(s => isoDateOnly(new Date(s.created_at)) >= iso14);
+    const recent = exRest.filter(s => s.workout_date >= iso28);
+    const firstHalf = recent.filter(s => s.workout_date < iso14);
+    const secondHalf = recent.filter(s => s.workout_date >= iso14);
     const avgOf = (arr: typeof exRest) => arr.length ? Math.round(arr.reduce((a, b) => a + b.rest_seconds!, 0) / arr.length) : null;
     const trendDiff = (firstHalf.length > 0 && secondHalf.length > 0)
       ? (avgOf(secondHalf)! - avgOf(firstHalf)!)
@@ -532,11 +610,31 @@ export default function Analysis() {
     return { overallAvg, exercise: { avg, min, max, trend: trendDiff, count: exRest.length } };
   }, [sets, selectedExerciseKey]);
 
+  // ── RPE Distribution ──────────────────────────────────────────────
+  const rpeDistribution = useMemo(() => {
+    const rpeSets = sets.filter((s) => s.rpe != null && Number.isFinite(s.rpe as number) && (s.rpe as number) >= 6);
+    if (rpeSets.length === 0) return null;
+
+    let light = 0, moderate = 0, hard = 0;
+    for (const s of rpeSets) {
+      const rpe = s.rpe as number;
+      if (rpe <= 7) light++;
+      else if (rpe <= 8.5) moderate++;
+      else hard++;
+    }
+    const total = rpeSets.length;
+    return {
+      light:    (light    / total) * 100,
+      moderate: (moderate / total) * 100,
+      hard:     (hard     / total) * 100,
+    };
+  }, [sets]);
+
   const volumeSeries = useMemo(() => {
     const volumeByDay: Record<string, number> = {};
     for (const row of sets) {
 
-      const day = isoDateOnly(new Date(row.created_at));
+      const day = row.workout_date;
       const w = weightForSet(row);
       if (w == null) continue;
       const multiplier = row.exercise_id && isPerSideExercise(row.exercise_id) ? 2 : 1;
@@ -594,7 +692,7 @@ export default function Analysis() {
     const byWeek: Record<string, Record<string, number>> = {};
     for (const row of sets) {
 
-      const wk = weekStartKey(new Date(row.created_at));
+      const wk = weekStartKey(new Date(row.workout_date));
       if (!byWeek[wk]) byWeek[wk] = {};
       const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
       for (const g of groups) {
@@ -658,7 +756,7 @@ export default function Analysis() {
     const perDayPerEx: Record<string, Record<string, number>> = {};
 
     for (const row of sets) {
-      const day = isoDateOnly(new Date(row.created_at));
+      const day = row.workout_date;
       const exKey = (row.exercise_id && String(row.exercise_id)) || row.exercise_name;
       if (!perDayPerEx[day]) perDayPerEx[day] = {};
       const w = weightForSet(row);
@@ -765,7 +863,7 @@ export default function Analysis() {
     const cutoff = isoDateOnly(d30);
 
     const recentWorkouts = workouts.filter((w) => w.date >= cutoff);
-    const recentSets = sets.filter((s) => isoDateOnly(new Date(s.created_at)) >= cutoff);
+    const recentSets = sets.filter((s) => s.workout_date >= cutoff);
     const vol = recentSets.reduce((sum, s) => {
       const w = weightForSet(s);
       return sum + (w != null ? w * s.reps : 0);
@@ -842,8 +940,7 @@ export default function Analysis() {
     let totalSets = 0;
     for (const row of sets) {
 
-      const d = isoDateOnly(new Date(row.created_at));
-      if (d < cutoffIso) continue;
+      if (row.workout_date < cutoffIso) continue;
       const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
       for (const g of groups) {
         if (g in setsByGroup) {
@@ -909,6 +1006,33 @@ export default function Analysis() {
     <Screen>
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
         <TopBar title={t("analysis.title")} subtitle={t("analysis.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+
+        {/* ── Program Overview Hero ─────────────────────────────── */}
+        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
+          {t("analysis.overview")}
+        </Text>
+        <TrainingStatusCard
+          result={trainingStatus}
+          loading={trainingStatusLoading}
+          onViewAnalysis={() => {/* already on analysis */}}
+          onStartDeload={async () => {
+            try {
+              const programMode = (await getSettingAsync("programMode")) || "normal";
+              const programId = await getSettingAsync(`activeProgramId_${programMode}`);
+              if (!programId) return;
+              await toggleManualDeload(programId);
+              const freshStatus = await computeTrainingStatus(programId);
+              setTrainingStatus(freshStatus);
+              setDeloadToast(true);
+              setTimeout(() => setDeloadToast(false), 3000);
+            } catch {}
+          }}
+        />
+
+        {/* ── Exercise Detail Section ───────────────────────────── */}
+        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
+          {t("analysis.exerciseDetail")}
+        </Text>
 
         <Card title={t("analysis.range")}>
           <View style={{ flexDirection: "row", gap: 8 }}>
@@ -989,6 +1113,13 @@ export default function Analysis() {
             </View>
           )}
         </Card>
+
+        {/* ── RPE Distribution ──────────────────────────────── */}
+        {rpeDistribution && (
+          <Card title={t("analysis.rpeDistribution")}>
+            <RpeHistogram data={rpeDistribution} />
+          </Card>
+        )}
 
         <Card title={t("analysis.exercise")}>
           <View style={{ flexDirection: "row", gap: 8 }}>
@@ -1106,6 +1237,22 @@ export default function Analysis() {
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 13 }}>
                 {t("analysis.consistencyLabel")}: {t("analysis.sessionsPerWeek", { value: exerciseStats.consistency })}
               </Text>
+              {/* ── Exercise insight sentence ── */}
+              {(() => {
+                const insight = generateExerciseInsight(insightInputs);
+                return (
+                  <Text style={{
+                    color: theme.muted,
+                    fontFamily: theme.mono,
+                    fontSize: 12,
+                    fontStyle: "italic",
+                    marginTop: 6,
+                    lineHeight: 17,
+                  }}>
+                    {t(insight.key, insight.params)}
+                  </Text>
+                );
+              })()}
             </View>
           )}
         </Card>
@@ -1422,6 +1569,30 @@ export default function Analysis() {
           </Text>
         ) : null}
       </ScrollView>
+
+      {/* Deload activated toast */}
+      {deloadToast && (
+        <View
+          style={{
+            position: "absolute",
+            bottom: 50,
+            left: 24,
+            right: 24,
+            backgroundColor: theme.glass,
+            borderColor: theme.success,
+            borderWidth: 1,
+            borderRadius: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 18,
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+        >
+          <Text style={{ color: theme.success, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+            {t("home.deloadStarted")}
+          </Text>
+        </View>
+      )}
 
       <Modal visible={exercisePickerOpen} animationType="slide" transparent>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>

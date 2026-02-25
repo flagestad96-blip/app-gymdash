@@ -150,6 +150,12 @@ const settings: TranslationMap = {
   "settings.gym.confirmDelete": "Delete gym?",
   "settings.gym.confirmDeleteMsg": "Delete \u201c{name}\u201d? This does not delete workout history.",
   "settings.gym.nameRequired": "Gym name is required.",
+  "settings.repairPrs": "Repair PRs",
+  "settings.repairPrs.desc": "Scans all workout history and recalculates PRs (heaviest, e1RM). Use this if your PRs seem incorrect.",
+  "settings.repairPrs.confirm": "Repair all PRs?",
+  "settings.repairPrs.confirmMsg": "This will recalculate all personal records from your workout history.",
+  "settings.repairPrs.done": "Done",
+  "settings.repairPrs.doneMsg": "{n} exercises scanned. PRs have been updated.",
 };
 
 export default settings;

@@ -1871,6 +1871,7 @@ type CustomExRow = {
   default_increment_kg: number;
   is_bodyweight: number;
   bodyweight_factor: number | null;
+  is_per_side: number;
   created_at: string;
 };
 
@@ -1885,6 +1886,7 @@ function rowToExerciseDef(row: CustomExRow): ExerciseDef {
     defaultIncrementKg: row.default_increment_kg,
     isBodyweight: !!row.is_bodyweight,
     bodyweightFactor: row.bodyweight_factor ?? undefined,
+    isPerSide: row.is_per_side === 1,
   };
 }
 
@@ -1917,13 +1919,14 @@ export async function createCustomExercise(args: {
   defaultIncrementKg: number;
   isBodyweight?: boolean;
   bodyweightFactor?: number;
+  isPerSide?: boolean;
 }): Promise<string> {
   const { ensureDb, getDb } = require("./db") as typeof import("./db");
   await ensureDb();
   const id = uid("custom");
   await getDb().runAsync(
-    `INSERT INTO custom_exercises (id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO custom_exercises (id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, is_per_side, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       args.displayName,
@@ -1932,6 +1935,7 @@ export async function createCustomExercise(args: {
       args.defaultIncrementKg,
       args.isBodyweight ? 1 : 0,
       args.bodyweightFactor ?? null,
+      args.isPerSide ? 1 : 0,
       new Date().toISOString(),
     ]
   );
@@ -1948,12 +1952,13 @@ export async function updateCustomExercise(
     defaultIncrementKg: number;
     isBodyweight?: boolean;
     bodyweightFactor?: number;
+    isPerSide?: boolean;
   }
 ): Promise<void> {
   const { ensureDb, getDb } = require("./db") as typeof import("./db");
   await ensureDb();
   await getDb().runAsync(
-    `UPDATE custom_exercises SET display_name=?, equipment=?, tags=?, default_increment_kg=?, is_bodyweight=?, bodyweight_factor=? WHERE id=?`,
+    `UPDATE custom_exercises SET display_name=?, equipment=?, tags=?, default_increment_kg=?, is_bodyweight=?, bodyweight_factor=?, is_per_side=? WHERE id=?`,
     [
       args.displayName,
       args.equipment,
@@ -1961,6 +1966,7 @@ export async function updateCustomExercise(
       args.defaultIncrementKg,
       args.isBodyweight ? 1 : 0,
       args.bodyweightFactor ?? null,
+      args.isPerSide ? 1 : 0,
       id,
     ]
   );

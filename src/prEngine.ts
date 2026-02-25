@@ -129,6 +129,86 @@ export async function checkSetPRs(params: CheckSetPRsParams): Promise<CheckSetPR
   return { updatedRecords: nextMap, messages };
 }
 
+// ── Recompute PRs for an exercise (full historical scan) ──────────────────
+
+export function recomputePRForExercise(
+  exerciseId: string,
+  programId: string,
+): Partial<Record<PrType, PrRecord>> {
+  if (!exerciseId || !programId) return {};
+  try {
+    const db = getDb();
+    const isBw = isBodyweight(exerciseId);
+
+    const rows = db.getAllSync<{
+      set_id: string; weight: number; reps: number;
+      est_total_load_kg: number | null; date: string;
+    }>(
+      `SELECT s.id AS set_id, s.weight, s.reps, s.est_total_load_kg, w.date
+       FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       WHERE s.exercise_id = ?
+         AND w.program_id = ?
+         AND (s.is_warmup IS NULL OR s.is_warmup = 0)`,
+      [exerciseId, programId]
+    );
+
+    if (!rows || rows.length === 0) {
+      db.runSync(
+        `DELETE FROM pr_records WHERE exercise_id = ? AND program_id = ? AND type IN ('heaviest', 'e1rm')`,
+        [exerciseId, programId]
+      );
+      return {};
+    }
+
+    let bestHeaviestValue = -Infinity;
+    let bestHeaviestRow: (typeof rows)[0] | null = null;
+    let bestE1rmValue = -Infinity;
+    let bestE1rmRow: (typeof rows)[0] | null = null;
+    let bestE1rmReps = 0;
+    let bestE1rmWeight = 0;
+
+    for (const row of rows) {
+      const prWeight = isBw && row.est_total_load_kg != null ? row.est_total_load_kg : row.weight;
+
+      if (prWeight > bestHeaviestValue) {
+        bestHeaviestValue = prWeight;
+        bestHeaviestRow = row;
+      }
+
+      const e1rmVal = round1(epley1RM(prWeight, row.reps));
+      if (e1rmVal > bestE1rmValue) {
+        bestE1rmValue = e1rmVal;
+        bestE1rmRow = row;
+        bestE1rmReps = row.reps;
+        bestE1rmWeight = prWeight;
+      }
+    }
+
+    const result: Partial<Record<PrType, PrRecord>> = {};
+
+    if (bestHeaviestRow) {
+      db.runSync(
+        `INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'heaviest', ?, ?, ?, ?, ?, ?)`,
+        [exerciseId, bestHeaviestValue, bestHeaviestRow.reps, bestHeaviestValue, bestHeaviestRow.set_id, bestHeaviestRow.date, programId]
+      );
+      result.heaviest = { value: bestHeaviestValue, reps: bestHeaviestRow.reps, weight: bestHeaviestValue, setId: bestHeaviestRow.set_id, date: bestHeaviestRow.date };
+    }
+
+    if (bestE1rmRow) {
+      db.runSync(
+        `INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'e1rm', ?, ?, ?, ?, ?, ?)`,
+        [exerciseId, bestE1rmValue, bestE1rmReps, bestE1rmWeight, bestE1rmRow.set_id, bestE1rmRow.date, programId]
+      );
+      result.e1rm = { value: bestE1rmValue, reps: bestE1rmReps, weight: bestE1rmWeight, setId: bestE1rmRow.set_id, date: bestE1rmRow.date };
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
 // ── Session volume PR check ────────────────────────────────────────────────
 
 export type SetForVolume = {

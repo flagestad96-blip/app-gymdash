@@ -2,12 +2,14 @@
 const mockGetAllSync = jest.fn((): any[] => []);
 const mockGetFirstSync = jest.fn((): any => null);
 const mockRunAsync = jest.fn(async () => ({ changes: 0, lastInsertRowId: 0 }));
+const mockRunSync = jest.fn(() => ({ changes: 0, lastInsertRowId: 0 }));
 
 jest.mock("../db", () => ({
   getDb: () => ({
     getAllSync: mockGetAllSync,
     getFirstSync: mockGetFirstSync,
     runAsync: mockRunAsync,
+    runSync: mockRunSync,
   }),
 }));
 
@@ -16,12 +18,13 @@ jest.mock("../exerciseLibrary", () => ({
   isPerSideExercise: (id: string) => id === "dumbbell_curl",
 }));
 
-import { checkSetPRs, checkSessionVolumePRs } from "../prEngine";
+import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise } from "../prEngine";
 
 beforeEach(() => {
   mockGetAllSync.mockReset().mockReturnValue([]);
   mockGetFirstSync.mockReset().mockReturnValue(null);
   mockRunAsync.mockReset().mockResolvedValue({ changes: 0, lastInsertRowId: 0 });
+  mockRunSync.mockReset().mockReturnValue({ changes: 0, lastInsertRowId: 0 });
 });
 
 describe("checkSetPRs", () => {
@@ -252,5 +255,83 @@ describe("checkSessionVolumePRs", () => {
     // 100*10 = 1000 > 500 → new PR
     expect(result.volumePrs.length).toBeGreaterThan(0);
     expect(result.volumePrs[0]).toContain("volume:");
+  });
+});
+
+describe("recomputePRForExercise", () => {
+  it("returns empty and deletes pr_records when no sets exist", () => {
+    mockGetAllSync.mockReturnValue([]);
+
+    const result = recomputePRForExercise("bench_press", "prog_1");
+
+    expect(result).toEqual({});
+    // Should DELETE existing pr_records for this exercise
+    expect(mockRunSync).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM pr_records"),
+      ["bench_press", "prog_1"]
+    );
+  });
+
+  it("finds heaviest weight from historical sets", () => {
+    mockGetAllSync.mockReturnValue([
+      { set_id: "s1", weight: 80, reps: 5, est_total_load_kg: null, date: "2026-01-01" },
+      { set_id: "s2", weight: 100, reps: 3, est_total_load_kg: null, date: "2026-01-15" },
+      { set_id: "s3", weight: 90, reps: 8, est_total_load_kg: null, date: "2026-02-01" },
+    ]);
+
+    const result = recomputePRForExercise("bench_press", "prog_1");
+
+    expect(result.heaviest?.value).toBe(100);
+    expect(result.heaviest?.setId).toBe("s2");
+    expect(result.heaviest?.date).toBe("2026-01-15");
+  });
+
+  it("finds best e1RM from historical sets", () => {
+    // 90kg x 8 reps → e1RM = 90 * (1 + 8/30) = 90 * 1.2667 ≈ 114
+    // 100kg x 3 reps → e1RM = 100 * (1 + 3/30) = 100 * 1.1 = 110
+    mockGetAllSync.mockReturnValue([
+      { set_id: "s1", weight: 100, reps: 3, est_total_load_kg: null, date: "2026-01-15" },
+      { set_id: "s2", weight: 90, reps: 8, est_total_load_kg: null, date: "2026-02-01" },
+    ]);
+
+    const result = recomputePRForExercise("bench_press", "prog_1");
+
+    // s2 should win on e1RM despite lower weight
+    expect(result.e1rm?.value).toBeCloseTo(114, 0);
+    expect(result.e1rm?.setId).toBe("s2");
+  });
+
+  it("uses est_total_load_kg for bodyweight exercises", () => {
+    // pull_up is mocked as isBodyweight
+    mockGetAllSync.mockReturnValue([
+      { set_id: "s1", weight: 10, reps: 5, est_total_load_kg: 90, date: "2026-01-01" },
+      { set_id: "s2", weight: 20, reps: 5, est_total_load_kg: 100, date: "2026-02-01" },
+    ]);
+
+    const result = recomputePRForExercise("pull_up", "prog_1");
+
+    // Should use est_total_load_kg (100), not raw weight (20)
+    expect(result.heaviest?.value).toBe(100);
+    expect(result.heaviest?.setId).toBe("s2");
+  });
+
+  it("writes results to pr_records via runSync", () => {
+    mockGetAllSync.mockReturnValue([
+      { set_id: "s1", weight: 100, reps: 5, est_total_load_kg: null, date: "2026-01-01" },
+    ]);
+
+    recomputePRForExercise("bench_press", "prog_1");
+
+    // Should call runSync for heaviest and e1rm INSERT OR REPLACE
+    const calls = mockRunSync.mock.calls;
+    const sqlStatements = calls.map((c: any[]) => c[0] as string);
+    expect(sqlStatements.some((s) => s.includes("'heaviest'"))).toBe(true);
+    expect(sqlStatements.some((s) => s.includes("'e1rm'"))).toBe(true);
+  });
+
+  it("returns empty for empty exerciseId or programId", () => {
+    expect(recomputePRForExercise("", "prog_1")).toEqual({});
+    expect(recomputePRForExercise("bench_press", "")).toEqual({});
+    expect(mockGetAllSync).not.toHaveBeenCalled();
   });
 });

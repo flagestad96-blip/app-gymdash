@@ -87,7 +87,7 @@ export async function exportFullBackup(): Promise<string> {
     `SELECT id, exercise_id, goal_type, target_value, created_at, achieved_at, program_id FROM exercise_goals`
   );
   const customExercises = await db.getAllAsync(
-    `SELECT id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, created_at FROM custom_exercises`
+    `SELECT id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, is_per_side, created_at FROM custom_exercises`
   );
   const progressionLog = await db.getAllAsync(
     `SELECT id, program_id, exercise_id, old_weight_kg, new_weight_kg, reason, created_at, applied, dismissed FROM progression_log`
@@ -406,12 +406,12 @@ export async function importBackup(
 
     for (const ce of customExercises) {
       await db.runAsync(
-        `${verb} custom_exercises(id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, created_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+        `${verb} custom_exercises(id, display_name, equipment, tags, default_increment_kg, is_bodyweight, bodyweight_factor, is_per_side, created_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ce.id, ce.display_name, ce.equipment, ce.tags,
           ce.default_increment_kg ?? 2.5, ce.is_bodyweight ?? 0,
-          ce.bodyweight_factor ?? null, ce.created_at,
+          ce.bodyweight_factor ?? null, ce.is_per_side ?? 0, ce.created_at,
         ]
       );
     }

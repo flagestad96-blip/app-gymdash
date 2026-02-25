@@ -372,6 +372,7 @@ export async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_sets_workout ON sets(workout_id);
       CREATE INDEX IF NOT EXISTS idx_sets_exercise ON sets(exercise_id);
       CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);
+      CREATE INDEX IF NOT EXISTS idx_workouts_date_id ON workouts(date, id);
       CREATE INDEX IF NOT EXISTS idx_program_days_program ON program_days(program_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_program_days_unique ON program_days(program_id, day_index);
       CREATE INDEX IF NOT EXISTS idx_program_day_exercises_program ON program_day_exercises(program_id);
@@ -584,6 +585,16 @@ export async function initDb() {
           `);
           try { d.execSync(`ALTER TABLE workouts ADD COLUMN gym_id TEXT;`); } catch {}
           d.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_gym ON workouts(gym_id);`);
+        }},
+        // 23: custom_exercises — is_per_side column
+        { version: 23, up: (d) => {
+          if (!hasColumn("custom_exercises", "is_per_side")) {
+            d.execSync(`ALTER TABLE custom_exercises ADD COLUMN is_per_side INTEGER NOT NULL DEFAULT 0;`);
+          }
+        }},
+        // 24: workouts — composite (date, id) covering index for training status queries
+        { version: 24, up: (d) => {
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_date_id ON workouts(date, id);`);
         }},
       ];
 

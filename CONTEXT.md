@@ -25,6 +25,9 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Hjem: varighet vises for fullførte økter (fra ended_at).
 - Hjem: snitt RPE (fatigue score) i ukentlig statistikk — fargekoding grønn (≤7), oransje (7.1–8.5), rød (>8.5).
 - Hjem: progresjonsforslag-kort (bruk/avvis vektøkninger etter auto-progresjon).
+- Hjem: per-side volum-korreksjon — ukentlig volum multipliseres ×2 for unilaterale øvelser.
+- Hjem: uke-over-uke volumtrend-pil — % endring vs forrige uke vises ved siden av volumstat.
+- Hjem: treningsstatus-kort — flerfaktor trafikklys (grønn/gul/rød) basert på e1RM-trend, RPE-drift, volumtrend og rep-konsistens over 28-dagers vindu.
 - Logg: dagvalg (1—10), start/avslutt økt (ended_at persisteres), sett-logg med kg/reps/RPE.
 - Logg: økt-maler — lagre økt som mal, last inn maler, mal-picker modal.
 - Logg: del økt-oppsummering via native share sheet.
@@ -49,6 +52,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Logg: RPE-hjelper — hold inne RPE-feltet for hurtigvelger (skala 6—10 med beskrivelser).
 - Logg: oppsummeringsmodal ved økt-slutt — varighet, antall sett, volum, topp e1RM, PR-badges.
 - Logg: utstyrstype (barbell/dumbbell/cable/machine/etc.) vises ved siden av øvelsesnavnet.
+- Logg: per-side-hint ("each") i SetEntryRow og PR-bannere for unilaterale øvelser.
 - Navigasjon: Drawer med hamburger, ingen bottom tabs.
 - Program: program builder, flere programmer, alternativer per øvelse (0—3).
 - Program: fleksibelt antall dager per program (1—10), +/- knapper i ukeoversikt.
@@ -75,6 +79,10 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Analyse: 4-ukers trend — lineær e1RM-trend med fargekoding (grønn/rød) + konsistens (økter/uke).
 - Analyse: PR-markører — oransje diamant-ikoner på grafen der PRs ble satt.
 - Analyse: periodesammenligning — side-om-side-kort som viser denne mnd vs forrige mnd (økter, volum, sett, e1RM) med %-endring.
+- Analyse: treningsstatus-hero-kort — TrainingStatusCard øverst på analyse-skjermen med deload-knapp ved rød/gul status.
+- Analyse: per-øvelse innsiktssetning — 8-greners beslutningstre (e1RM-retning × RPE-retning) genererer tekst under 4-ukers trend.
+- Analyse: RPE-distribusjon-histogram — horisontale stolper for Light (6–7), Moderate (7.5–8.5), Hard (9+).
+- Analyse: MuscleGroupBars — reelle horisontale fylte stolper (LinearGradient) erstatter ListRow-tekst.
 - Kalender: månedsoverblikk med økter per dato + detaljvisning per økt.
 - Kalender: fargekodede prikker per treningstype (Push/Pull/Ben/Annet) — auto-klassifisert fra øvelsestagger.
 - Kalender: dagsoppsummering — øvelser + beste sett (vekt×reps) vises ved valgt dato.
@@ -99,6 +107,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Øvelsesbibliotek: 183 innebygde øvelser med tags, equipment, aliases, alternatives, backImpact.
 - Øvelsesbibliotek: alle øvelser har predefinerte alternativer.
 - Øvelsesbibliotek: egne øvelser — lagres i DB (custom_exercises), integrert i søk/visning/program.
+- Øvelsesbibliotek: egendefinerte øvelser støtter is_per_side-flagg (migration 23).
 - Ryggbelastning: backImpact-felt per øvelse (red/yellow/green/null) — 14 røde, 16 gule, 29 grønne.
 - Ryggbelastning: BackImpactDot-komponent vises på alle skjermer ved øvelsesnavn.
 - Ryggbelastning: trykk på dot viser label (Høy/Moderat/Ryggvennlig).
@@ -162,11 +171,16 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - src/components/modals/ExerciseSwapModal.tsx: øvelsesbytte-modal med BackImpactDot + inline opprett ny øvelse (navn + utstyr).
 - src/components/modals/TemplatePickerModal.tsx: mal-velger modal.
 - src/components/charts/LineChart.tsx: SVG linjegraf (ekstrahert fra analysis.tsx).
-- src/components/charts/MuscleGroupBars.tsx: muskelgruppe-volumbjelker (ekstrahert fra analysis.tsx).
+- src/components/charts/MuscleGroupBars.tsx: muskelgruppe-volumbjelker med reelle horisontale LinearGradient-stolper.
 - src/components/charts/RadarChart.tsx: SVG radarkart for muskelbalanse.
+- src/components/charts/RpeHistogram.tsx: RPE-distribusjon-histogram med tre bøtter (Light 6-7 / Moderate 7.5-8.5 / Hard 9+).
 - components/SplashScreen.tsx: splash med logo + fade.
 - components/OnboardingModal.tsx: 10-stegs intro med glassmorphism + skip.
 - src/components/Skeleton.tsx: animerte skjelett-plassholdere for tab-innlasting.
+- src/components/TrainingStatusCard.tsx: GlassCard-komponent for treningsstatus — viser statusnivå, faktorlinjer, CTA-lenke til analyse, og valgfri deload-knapp.
+- src/trainingStatus.ts: treningsstatus-beregning — computeTrainingStatus(programId) returnerer TrainingStatusResult med level/score/factors/sessionsInWindow.
+- src/analysisInsights.ts: per-øvelse innsikts-generator — generateExerciseInsight() ren funksjon, 8-greners beslutningstre basert på e1rmPctChange og rpeDelta.
+- src/prEngine.ts: PR-beregnings-motor (ekstrahert fra log.tsx) med tilhørende tester i src/__tests__/prEngine.test.ts.
 
 ## Database (skjema)
 - workouts: id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, ended_at
@@ -181,11 +195,12 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - program_day_exercises: id, program_id, day_index, sort_index, type, ex_id, a_id, b_id
 - program_exercise_alternatives: id, program_id, day_index, exercise_id, alt_exercise_id, sort_index
 - exercise_targets: id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress
-- custom_exercises: id, display_name, equipment, tags (JSON), default_increment_kg, is_bodyweight, bodyweight_factor, created_at
+- custom_exercises: id, display_name, equipment, tags (JSON), default_increment_kg, is_bodyweight, bodyweight_factor, created_at, is_per_side (migration 23)
 - progression_log: id, program_id, exercise_id, old_weight_kg, new_weight_kg, reason, created_at, applied, dismissed
 - achievements: id, category, name, description, icon, requirement_type, requirement_value, requirement_exercise_id, tier, points, created_at
 - user_achievements: id, achievement_id, unlocked_at, workout_id, set_id, value_achieved
 - exercise_goals: id, exercise_id, goal_type, target_value, created_at, achieved_at, program_id
+- idx_workouts_date_id: composite index on workouts(date, id) (migration 24)
 - backup JSON: schemaVersion, exportedAt, appVersion + alle tabeller
 
 ## Konvensjoner / constraints
@@ -221,6 +236,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
 - App icon PNG (1024×1024) — SVG-filer generert (assets/gymdash-icon.svg + foreground), må konverteres til PNG for Play Store.
 - ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.
+- trainingStatus.ts: computeTrainingStatus() kan gi synlig lag på hjemskjermen med stor treningshistorikk. Bruk loading skeleton.
 
 ## Build — Preview APK (Android)
 - Kommandoer: `npx eas login` (ved behov) og `npx eas build --platform android --profile preview`
@@ -233,6 +249,13 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-02-25: Training Intelligence — bug-fix runde: 7 stille catch{} erstattet med console.warn, sessionsInWindow-felt lagt til TrainingStatusResult, warmup-filtrering i sesjonstellingsqueries.
+- 2026-02-25: Analyse — fikset feil fallthrough i analysisInsights.ts: flat e1RM + flat RPE returnerte nå plateau (ikke strongStableRpe), ny i18n-nøkkel analysis.insight.plateau.
+- 2026-02-25: Analyse — insightInputs.sessionCount teller sessions i 28-dagers vindu (ikke full historikk).
+- 2026-02-25: Analyse — datofiltrering bruker w.date (workouts-tabell) i stedet for sets.created_at for å unngå midnatt-grense-mismatch.
+- 2026-02-25: Analyse — RPE-distribusjon filtrerer rpe >= 6 slik at sub-6 RPE ikke forurenser Light (6-7)-bøtten.
+- 2026-02-25: RpeHistogram — theme.warn erstatter (theme as any).secondary med typet fargetoken.
+- 2026-02-25: Training Intelligence — ny feature: trainingStatus.ts, analysisInsights.ts, TrainingStatusCard.tsx, RpeHistogram.tsx, per-side volum-korreksjon, uke-over-uke trend, is_per_side på custom_exercises (migration 23), composite index workouts(date,id) (migration 24).
 - 2026-02-17: Logg — PR-system: heaviest/e1rm-sjekk leser fra DB (ikke React state) for å forhindre falske PR-bannere.
 - 2026-02-17: Logg — Volum-PR beregnes som session-total ved økt-slutt, ikke per-sett. Leser fra DB.
 - 2026-02-17: Logg — Undo-sett laster PR-records fra DB etter sletting (i stedet for å slette alt fra state).

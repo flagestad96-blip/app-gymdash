@@ -25,6 +25,27 @@ const home: TranslationMap = {
   "home.backupNever": "Du har aldri tatt backup. Sikre dataene dine!",
   "home.backupNow": "Sikkerhetskopier n\u00e5",
   "home.lastBackup": "Siste backup: {date}",
+  "home.volumeTrend.up": "\u2191 +{pct}% vs forrige uke",
+  "home.volumeTrend.down": "\u2193 {pct}% vs forrige uke",
+  "home.volumeTrend.flat": "\u2192 Flatt vs forrige uke",
+  // Training status card
+  "home.status.green": "P\u00e5 rett spor",
+  "home.status.yellow": "F\u00f8lg med n\u00f8ye",
+  "home.status.red": "Tegn p\u00e5 utmattelse",
+  "home.status.insufficientData": "Samler data...",
+  "home.status.deloadActive": "Deload-uke aktiv",
+  "home.status.e1rmTrend": "Styrketrend",
+  "home.status.rpeDrift": "Anstrengelsesutvikling",
+  "home.status.volumeTrend": "Volumtrend",
+  "home.status.repConsistency": "Reps-konsistens",
+  "home.status.trendUp": "Forbedring",
+  "home.status.trendDown": "Nedgang",
+  "home.status.trendFlat": "Stabilt",
+  "home.status.viewAnalysis": "Se full analyse",
+  "home.status.startDeload": "Start deload-uke",
+  "home.status.collectingHint": "Logg {n} \u00f8kter til for treningsinnsikt",
+  // ── Deload feedback (Task 10) ──
+  "home.deloadStarted": "Deload-uke aktivert",
 };
 
 export default home;

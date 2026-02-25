@@ -117,6 +117,23 @@ const analysis: TranslationMap = {
   "analysis.noRestData": "No rest time data logged",
   "analysis.restTrend": "Trend (4 weeks)",
   "rest.restSeconds": "Rest time",
+  // ── Analysis screen sections ──
+  "analysis.overview": "Program Overview",
+  "analysis.exerciseDetail": "Exercise Detail",
+  // ── Exercise Insights (Task 9) ──
+  "analysis.insight.strongAndEasy": "Strength is up and effort is down — you're adapting well.",
+  "analysis.insight.strongButHarder": "Strength is up but RPE is rising — monitor fatigue.",
+  "analysis.insight.strongStableRpe": "Steady strength gains with consistent effort — keep going.",
+  "analysis.insight.flatButEasier": "Strength is plateauing but getting easier — ready to push harder.",
+  "analysis.insight.flatAndHard": "Strength plateau with rising effort — consider a deload.",
+  "analysis.insight.decliningFatigued": "Strength and effort both declining — rest may be needed.",
+  "analysis.insight.plateau": "Strength and effort are stable \u2014 consider increasing load or volume.",
+  "analysis.insight.notEnoughData": "Log {n} more sessions to see insights.",
+  // ── RPE Distribution (Task 11) ──
+  "analysis.rpeDistribution": "RPE DISTRIBUTION",
+  "analysis.rpeLight": "Light (6\u20137)",
+  "analysis.rpeModerate": "Moderate (7.5\u20138.5)",
+  "analysis.rpeHard": "Hard (9+)",
 };
 
 export default analysis;

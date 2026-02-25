@@ -34,6 +34,7 @@ import { useWeightUnit, type WeightUnit } from "../../src/units";
 import { uid, isoDateOnly } from "../../src/storage";
 import { clampInt } from "../../src/format";
 import { listGyms, createGym, updateGym, deleteGym, type GymLocation } from "../../src/gymStore";
+import { recomputePRForExercise } from "../../src/prEngine";
 import { MaterialIcons } from "@expo/vector-icons";
 
 type ProgramMode = "normal" | "back";
@@ -757,6 +758,32 @@ export default function Settings() {
     }
   }
 
+  function repairAllPRs() {
+    Alert.alert(t("settings.repairPrs.confirm"), t("settings.repairPrs.confirmMsg"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("settings.repairPrs"),
+        onPress: () => {
+          try {
+            const db = getDb();
+            const programs = db.getAllSync<{ id: string }>(`SELECT id FROM programs`);
+            const exercises = db.getAllSync<{ exercise_id: string }>(`SELECT DISTINCT exercise_id FROM sets WHERE exercise_id IS NOT NULL`);
+            let count = 0;
+            for (const ex of exercises ?? []) {
+              for (const prog of programs ?? []) {
+                recomputePRForExercise(ex.exercise_id, prog.id);
+              }
+              count++;
+            }
+            Alert.alert(t("settings.repairPrs.done"), t("settings.repairPrs.doneMsg", { n: count }));
+          } catch {
+            Alert.alert(t("common.error"));
+          }
+        },
+      },
+    ]);
+  }
+
   async function resetAllData() {
     Alert.alert(
       t("settings.resetAll"),
@@ -1147,6 +1174,10 @@ export default function Settings() {
             <Btn label={t("settings.dataCleanup.open")} onPress={() => openDataTools(false)} tone="accent" />
             <Btn label={t("settings.dataCleanup.deleteEmpty")} onPress={deleteEmptyWorkouts} />
           </View>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <Btn label={t("settings.repairPrs")} onPress={repairAllPRs} />
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>{t("settings.repairPrs.desc")}</Text>
           {dataToolsBusy ? <Text style={{ color: theme.muted }}>{t("settings.fetchingHistory")}</Text> : null}
         </Card>
 

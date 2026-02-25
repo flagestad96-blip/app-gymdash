@@ -40,6 +40,7 @@ const common: TranslationMap = {
   "common.day": "Day",
   "common.days": "Days",
   "common.week": "Week",
+  "common.perSide": "Per side (unilateral)",
 };
 
 export default common;

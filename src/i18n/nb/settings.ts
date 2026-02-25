@@ -149,7 +149,13 @@ const settings: TranslationMap = {
   "settings.gym.delete": "Slett",
   "settings.gym.confirmDelete": "Slette treningssenter?",
   "settings.gym.confirmDeleteMsg": "Slette \u00AB{name}\u00BB? Historikk slettes ikke.",
-  "settings.gym.nameRequired": "Navn er p\u00e5krevd.",
+  "settings.gym.nameRequired": "Navn er påkrevd.",
+  "settings.repairPrs": "Reparer PR-er",
+  "settings.repairPrs.desc": "Skanner all treningshistorikk og beregner PR-er (tyngste, e1RM) på nytt. Bruk dette hvis PR-ene ikke stemmer.",
+  "settings.repairPrs.confirm": "Reparer alle PR-er?",
+  "settings.repairPrs.confirmMsg": "Dette beregner alle personlige rekorder på nytt fra treningshistorikken.",
+  "settings.repairPrs.done": "Ferdig",
+  "settings.repairPrs.doneMsg": "{n} øvelser skannet. PR-er er oppdatert.",
 };
 
 export default settings;

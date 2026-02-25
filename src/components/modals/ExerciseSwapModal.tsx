@@ -42,7 +42,7 @@ export type ExerciseSwapModalProps = {
   /** Called when user wants to make the current selection the new default */
   onSetDefault?: (baseExId: string, newDefaultExId: string) => void;
   /** Called when user creates a new custom exercise from the picker */
-  onCreateCustom?: (baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[]) => void;
+  onCreateCustom?: (baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[], isPerSide: boolean) => void;
   /** Last sets lookup for showing history */
   lastSets: Record<string, LastSetInfo>;
   /** Exercise notes lookup */
@@ -69,6 +69,7 @@ export default function ExerciseSwapModal({
   const [newName, setNewName] = useState("");
   const [newEquipment, setNewEquipment] = useState<Equipment>("machine");
   const [newTags, setNewTags] = useState<ExerciseTag[]>([]);
+  const [newIsPerSide, setNewIsPerSide] = useState(false);
 
   function startCreating() {
     // Pre-populate tags from base exercise (only user-facing tags)
@@ -82,12 +83,13 @@ export default function ExerciseSwapModal({
     setNewName("");
     setNewEquipment("machine");
     setNewTags([]);
+    setNewIsPerSide(false);
   }
 
   function handleSaveCustom() {
     const name = newName.trim();
     if (!name || !baseExId || !onCreateCustom) return;
-    onCreateCustom(baseExId, name, newEquipment, newTags);
+    onCreateCustom(baseExId, name, newEquipment, newTags, newIsPerSide);
     resetForm();
   }
 
@@ -284,6 +286,41 @@ export default function ExerciseSwapModal({
                       );
                     })}
                   </View>
+                  {/* Per-side toggle */}
+                  <Pressable
+                    onPress={() => setNewIsPerSide((p) => !p)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 8,
+                      paddingHorizontal: 4,
+                    }}
+                  >
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                      {t("common.perSide")}
+                    </Text>
+                    <View
+                      style={{
+                        width: 36,
+                        height: 20,
+                        borderRadius: 10,
+                        backgroundColor: newIsPerSide ? theme.accent : theme.glassBorder,
+                        justifyContent: "center",
+                        paddingHorizontal: 2,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: 8,
+                          backgroundColor: "#FFFFFF",
+                          alignSelf: newIsPerSide ? "flex-end" : "flex-start",
+                        }}
+                      />
+                    </View>
+                  </Pressable>
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     <Btn label={t("common.save")} tone="accent" onPress={handleSaveCustom} />
                     <Btn label={t("common.cancel")} onPress={resetForm} />

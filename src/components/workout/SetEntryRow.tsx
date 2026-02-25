@@ -5,7 +5,7 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { IconButton } from "../../ui";
-import { isBodyweight, bodyweightFactorFor } from "../../exerciseLibrary";
+import { isBodyweight, bodyweightFactorFor, isPerSideExercise } from "../../exerciseLibrary";
 import { formatWeight } from "../../format";
 
 export type SetRow = {
@@ -70,6 +70,9 @@ export default function SetEntryRow({ set: s, highlight, highlightBg, onEdit, on
       <View style={{ flex: 1 }}>
         <Text style={{ color: theme.text, fontWeight: theme.fontWeight.semibold }}>
           {formatWeight(wu.toDisplay(s.weight))}
+          {s.exercise_id && isPerSideExercise(s.exercise_id)
+            ? ` (${t("log.each")})`
+            : null}
         </Text>
         {bwInfo ? (
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>

@@ -10,13 +10,16 @@ import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, IconButton, Card } from "../../src/ui";
 import { GradientButton } from "../../src/ui/modern";
-import { displayNameFor } from "../../src/exerciseLibrary";
+import { displayNameFor, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
 import { getNextWorkoutPreview } from "../../src/programStore";
 import { getPendingSuggestions, applySuggestion, dismissSuggestion, type ProgressionSuggestion } from "../../src/progressionStore";
 import { isoDateOnly } from "../../src/storage";
 import { getActiveGym } from "../../src/gymStore";
+import TrainingStatusCard from "../../src/components/TrainingStatusCard";
+import { computeTrainingStatus, type TrainingStatusResult } from "../../src/trainingStatus";
+import { toggleManualDeload } from "../../src/periodization";
 
 const BACKUP_REMINDER_DAYS = 14;
 
@@ -45,6 +48,14 @@ function getMonday(): string {
   return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
 }
 
+function getPrevMonday(): string {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1) - 7;
+  const mon = new Date(d.setDate(diff));
+  return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
+}
+
 export default function HomeScreen() {
   const theme = useTheme();
   const { t } = useI18n();
@@ -58,9 +69,15 @@ export default function HomeScreen() {
     else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
   }, [navigation]);
 
+  const showDeloadToast = useCallback(() => {
+    setDeloadToast(true);
+    setTimeout(() => setDeloadToast(false), 3000);
+  }, []);
+
   const [ready, setReady] = useState(false);
   const [todayWorkout, setTodayWorkout] = useState<TodayWorkout | null>(null);
   const [weekStats, setWeekStats] = useState({ days: 0, sets: 0, volume: 0, avgRpe: null as number | null });
+  const [volumeTrend, setVolumeTrend] = useState<{ pct: number; dir: "up" | "down" | "flat" } | null>(null);
   const [streak, setStreak] = useState(0);
   const [recentPRs, setRecentPRs] = useState<PrRow[]>([]);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
@@ -69,6 +86,10 @@ export default function HomeScreen() {
   const [backupDaysAgo, setBackupDaysAgo] = useState<number | null>(null);
   const [backupDismissed, setBackupDismissed] = useState(false);
   const [activeGymName, setActiveGymName] = useState<string | null>(null);
+  const [trainingStatus, setTrainingStatus] = useState<TrainingStatusResult | null>(null);
+  const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
+  const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
+  const [deloadToast, setDeloadToast] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -104,26 +125,62 @@ export default function HomeScreen() {
         }
       } catch {}
 
-      // Week stats
+      // Week stats — per-side-corrected volume
       try {
-        const ws = db.getFirstSync<{ days: number; sets: number; vol: number }>(
-          `SELECT COUNT(DISTINCT w.date) as days,
-                  COUNT(s.id) as sets,
-                  COALESCE(SUM(s.weight * s.reps), 0) as vol
-           FROM workouts w
-           LEFT JOIN sets s ON s.workout_id = w.id
+        const wsMeta = db.getFirstSync<{ days: number; sets: number }>(
+          `SELECT COUNT(DISTINCT w.date) as days, COUNT(s.id) as sets
+           FROM workouts w LEFT JOIN sets s ON s.workout_id = w.id
            WHERE w.date >= ?`,
           [monday]
         );
+
+        const thisWeekRows = db.getAllSync<{ exercise_id: string | null; vol: number }>(
+          `SELECT s.exercise_id, COALESCE(SUM(s.weight * s.reps), 0) as vol
+           FROM workouts w LEFT JOIN sets s ON s.workout_id = w.id
+           WHERE w.date >= ? AND s.is_warmup IS NOT 1
+           GROUP BY s.exercise_id`,
+          [monday]
+        );
+        const thisWeekVol = (thisWeekRows ?? []).reduce((total, row) => {
+          const multiplier = isPerSideExercise(row.exercise_id ?? "") ? 2 : 1;
+          return total + row.vol * multiplier;
+        }, 0);
+
+        const prevMonday = getPrevMonday();
+        const prevWeekRows = db.getAllSync<{ exercise_id: string | null; vol: number }>(
+          `SELECT s.exercise_id, COALESCE(SUM(s.weight * s.reps), 0) as vol
+           FROM workouts w LEFT JOIN sets s ON s.workout_id = w.id
+           WHERE w.date >= ? AND w.date < ? AND s.is_warmup IS NOT 1
+           GROUP BY s.exercise_id`,
+          [prevMonday, monday]
+        );
+        const prevWeekVol = (prevWeekRows ?? []).reduce((total, row) => {
+          const multiplier = isPerSideExercise(row.exercise_id ?? "") ? 2 : 1;
+          return total + row.vol * multiplier;
+        }, 0);
+
+        if (prevWeekVol > 0) {
+          const pct = Math.round(((thisWeekVol - prevWeekVol) / prevWeekVol) * 100);
+          const dir = pct > 3 ? "up" : pct < -3 ? "down" : "flat";
+          setVolumeTrend({ pct: Math.abs(pct), dir });
+        } else {
+          setVolumeTrend(null);
+        }
+
         const rpeRow = db.getFirstSync<{ avg: number | null }>(
           `SELECT AVG(s.rpe) as avg
-           FROM sets s
-           JOIN workouts w ON s.workout_id = w.id
+           FROM sets s JOIN workouts w ON s.workout_id = w.id
            WHERE w.date >= ? AND s.rpe IS NOT NULL`,
           [monday]
         );
         const avgRpe = rpeRow?.avg != null ? Math.round(rpeRow.avg * 10) / 10 : null;
-        if (ws) setWeekStats({ days: ws.days ?? 0, sets: ws.sets ?? 0, volume: Math.round(ws.vol ?? 0), avgRpe });
+
+        if (wsMeta) setWeekStats({
+          days: wsMeta.days ?? 0,
+          sets: wsMeta.sets ?? 0,
+          volume: Math.round(thisWeekVol),
+          avgRpe,
+        });
       } catch {}
 
       // Streak
@@ -224,6 +281,21 @@ export default function HomeScreen() {
       } catch {}
     }, [])
   );
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const mode = (await getSettingAsync("programMode")) || "normal";
+        const progId = await getSettingAsync(`activeProgramId_${mode}`);
+        if (alive) setActiveProgramId(progId);
+        const result = await computeTrainingStatus(progId);
+        if (alive) setTrainingStatus(result);
+      } catch {}
+      if (alive) setTrainingStatusLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();
@@ -388,7 +460,39 @@ export default function HomeScreen() {
               />
             )}
           </View>
+          {volumeTrend && (
+            <Text style={{
+              color: volumeTrend.dir === "up" ? theme.success : volumeTrend.dir === "down" ? theme.danger : theme.muted,
+              fontFamily: theme.mono,
+              fontSize: 11,
+              marginTop: 4,
+            }}>
+              {volumeTrend.dir === "up"
+                ? t("home.volumeTrend.up", { pct: String(volumeTrend.pct) })
+                : volumeTrend.dir === "down"
+                  ? t("home.volumeTrend.down", { pct: String(volumeTrend.pct) })
+                  : t("home.volumeTrend.flat")}
+            </Text>
+          )}
         </Card>
+
+        {/* Training Status */}
+        <TrainingStatusCard
+          result={trainingStatus}
+          loading={trainingStatusLoading}
+          onViewAnalysis={() => router.push("/analysis")}
+          onStartDeload={async () => {
+            try {
+              const programMode = (await getSettingAsync("programMode")) || "normal";
+              const programId = await getSettingAsync(`activeProgramId_${programMode}`);
+              if (!programId) return;
+              await toggleManualDeload(programId);
+              const freshStatus = await computeTrainingStatus(programId);
+              setTrainingStatus(freshStatus);
+              showDeloadToast();
+            } catch {}
+          }}
+        />
 
         {/* Progression Suggestions */}
         {suggestions.length > 0 ? (
@@ -534,6 +638,29 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+      {/* Deload activated toast */}
+      {deloadToast && (
+        <View
+          style={{
+            position: "absolute",
+            bottom: 50,
+            left: 24,
+            right: 24,
+            backgroundColor: theme.glass,
+            borderColor: theme.success,
+            borderWidth: 1,
+            borderRadius: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 18,
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+        >
+          <Text style={{ color: theme.success, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+            {t("home.deloadStarted")}
+          </Text>
+        </View>
+      )}
     </Screen>
   );
 }

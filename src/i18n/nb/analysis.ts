@@ -117,6 +117,23 @@ const analysis: TranslationMap = {
   "analysis.noRestData": "Ingen hviletidsdata logget",
   "analysis.restTrend": "Trend (4 uker)",
   "rest.restSeconds": "Hviletid",
+  // ── Analysis screen sections ──
+  "analysis.overview": "Programoversikt",
+  "analysis.exerciseDetail": "\u00d8velsesdetaljer",
+  // ── Exercise Insights (Task 9) ──
+  "analysis.insight.strongAndEasy": "Styrken \u00f8ker og innsatsen g\u00e5r ned \u2014 du tilpasser deg bra.",
+  "analysis.insight.strongButHarder": "Styrken \u00f8ker, men RPE stiger \u2014 f\u00f8lg med p\u00e5 trettheten.",
+  "analysis.insight.strongStableRpe": "Stabil styrke\u00f8kning med jevn innsats \u2014 fortsett slik.",
+  "analysis.insight.flatButEasier": "Styrken flater ut, men \u00f8velsen f\u00f8les lettere \u2014 klar for mer?",
+  "analysis.insight.flatAndHard": "Styrkeplateu med stigende innsats \u2014 vurder en deload-uke.",
+  "analysis.insight.decliningFatigued": "B\u00e5de styrke og innsats synker \u2014 hvile kan v\u00e6re n\u00f8dvendig.",
+  "analysis.insight.plateau": "Styrke og innsats er stabile \u2014 vurder \u00e5 \u00f8ke belastning eller volum.",
+  "analysis.insight.notEnoughData": "Logg {n} flere \u00f8kter for \u00e5 se innsikt.",
+  // ── RPE Distribution (Task 11) ──
+  "analysis.rpeDistribution": "RPE-FORDELING",
+  "analysis.rpeLight": "Lett (6\u20137)",
+  "analysis.rpeModerate": "Moderat (7,5\u20138,5)",
+  "analysis.rpeHard": "Hard (9+)",
 };
 
 export default analysis;

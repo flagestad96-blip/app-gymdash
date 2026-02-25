@@ -25,6 +25,27 @@ const home: TranslationMap = {
   "home.backupNever": "You have never backed up. Protect your data!",
   "home.backupNow": "Back up now",
   "home.lastBackup": "Last backup: {date}",
+  "home.volumeTrend.up": "\u2191 +{pct}% vs last week",
+  "home.volumeTrend.down": "\u2193 {pct}% vs last week",
+  "home.volumeTrend.flat": "\u2192 Flat vs last week",
+  // Training status card
+  "home.status.green": "On track",
+  "home.status.yellow": "Monitor closely",
+  "home.status.red": "Signs of fatigue",
+  "home.status.insufficientData": "Collecting data...",
+  "home.status.deloadActive": "Deload week active",
+  "home.status.e1rmTrend": "Strength trend",
+  "home.status.rpeDrift": "Effort trend",
+  "home.status.volumeTrend": "Volume trend",
+  "home.status.repConsistency": "Rep consistency",
+  "home.status.trendUp": "Improving",
+  "home.status.trendDown": "Declining",
+  "home.status.trendFlat": "Stable",
+  "home.status.viewAnalysis": "View full analysis",
+  "home.status.startDeload": "Start deload week",
+  "home.status.collectingHint": "Log {n} more sessions for training insights",
+  // ── Deload feedback (Task 10) ──
+  "home.deloadStarted": "Deload week activated",
 };
 
 export default home;
