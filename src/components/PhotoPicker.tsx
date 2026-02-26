@@ -39,7 +39,7 @@ export default function PhotoPicker({ onPicked, existingUri, onRemove }: Props) 
   async function pickFromGallery() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(t("body.photoPermission"), t("body.photoPermission"));
+      Alert.alert(t("body.photoPermTitle"), t("body.photoPermission"));
       return;
     }
 
@@ -59,7 +59,7 @@ export default function PhotoPicker({ onPicked, existingUri, onRemove }: Props) 
   async function pickFromCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(t("body.photoPermission"), t("body.photoPermission"));
+      Alert.alert(t("body.photoPermTitle"), t("body.photoPermission"));
       return;
     }
 
@@ -122,7 +122,7 @@ export default function PhotoPicker({ onPicked, existingUri, onRemove }: Props) 
       )}
 
       {/* Full-screen preview modal */}
-      <Modal visible={previewVisible} transparent animationType="fade">
+      <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={() => setPreviewVisible(false)}>
         <Pressable
           onPress={() => setPreviewVisible(false)}
           style={{

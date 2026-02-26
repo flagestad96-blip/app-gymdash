@@ -29,9 +29,11 @@ import {
   type AchievementTier,
 } from "../../src/achievements";
 import { shareAchievementText } from "../../src/sharing";
+import { SkeletonCard } from "../../src/components/Skeleton";
 import { getDb } from "../../src/db";
 import { displayNameFor } from "../../src/exerciseLibrary";
 import { useWeightUnit } from "../../src/units";
+import HintBanner from "../../src/components/HintBanner";
 
 type AchievementWithStatus = Achievement & {
   unlocked: boolean;
@@ -55,6 +57,9 @@ type PrCabinetEntry = {
   prs: { type: string; value: number; reps: number | null; weight: number | null; date: string | null }[];
 };
 
+// Module-level flag - persists across component remounts (tab switches)
+let _achievementsTabInitialized = false;
+
 export default function AchievementsScreen() {
   const theme = useTheme();
   const { t } = useI18n();
@@ -71,6 +76,7 @@ export default function AchievementsScreen() {
     else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
   }, [navigation]);
 
+  const [ready, setReady] = useState(_achievementsTabInitialized);
   const [achievements, setAchievements] = useState<AchievementWithStatus[]>([]);
   const [totalPoints, setTotalPoints] = useState(0);
   const [progress, setProgress] = useState<{
@@ -159,7 +165,15 @@ export default function AchievementsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadAchievements();
+      if (_achievementsTabInitialized) {
+        setReady(true);
+        loadAchievements().catch(() => {});
+        return;
+      }
+      loadAchievements().finally(() => {
+        setReady(true);
+        _achievementsTabInitialized = true;
+      });
     }, [loadAchievements])
   );
 
@@ -203,6 +217,19 @@ export default function AchievementsScreen() {
     legendary: t("achievements.tierLegendary"),
   };
 
+  if (!ready) {
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar title={t("achievements.title")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={3} />
+        </ScrollView>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <ScrollView
@@ -215,6 +242,11 @@ export default function AchievementsScreen() {
           subtitle={t("achievements.subtitle", { n: progress.unlocked, total: progress.total })}
           left={<IconButton icon="menu" onPress={openDrawer} />}
         />
+
+        <HintBanner hintKey="achievements_intro" icon="emoji-events">
+          {t("hint.achievementsIntro")}
+        </HintBanner>
+
         {/* Header Card */}
         <GlassCard gradient shadow="lg">
           <View style={{ gap: theme.space.sm }}>
@@ -430,7 +462,7 @@ function AchievementCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
     <Pressable
@@ -502,7 +534,7 @@ function AchievementCard({
               </View>
               {achievement.unlocked && achievement.unlockedAt && (
                 <Text style={{ color: theme.muted, fontSize: 10, fontFamily: theme.mono }}>
-                  {new Date(achievement.unlockedAt).toLocaleDateString("no-NO")}
+                  {new Date(achievement.unlockedAt).toLocaleDateString(locale === "nb" ? "no-NO" : "en-US")}
                 </Text>
               )}
             </View>
@@ -528,7 +560,7 @@ function AchievementDetailModal({
   onClose: () => void;
 }) {
   const theme = useTheme();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -618,7 +650,7 @@ function AchievementDetailModal({
                     {t("achievements.unlocked")}
                   </Text>
                   <Text style={{ color: theme.muted, fontSize: theme.fontSize.sm, fontFamily: theme.mono }}>
-                    {new Date(achievement.unlockedAt).toLocaleDateString("no-NO", {
+                    {new Date(achievement.unlockedAt).toLocaleDateString(locale === "nb" ? "no-NO" : "en-US", {
                       year: "numeric",
                       month: "long",
                       day: "numeric",

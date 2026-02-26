@@ -99,8 +99,8 @@ export async function checkGoalAchievement(goal: ExerciseGoal): Promise<boolean>
   if (goal.goalType === "weight") {
     const pr = await db.getFirstAsync<{ value: number }>(
       `SELECT MAX(value) as value FROM pr_records
-       WHERE exercise_id = ? AND type = 'heaviest'`,
-      [goal.exerciseId]
+       WHERE exercise_id = ? AND type = 'heaviest' AND program_id = ?`,
+      [goal.exerciseId, goal.programId]
     );
     return pr ? (pr.value ?? 0) >= goal.targetValue : false;
   }
@@ -108,17 +108,18 @@ export async function checkGoalAchievement(goal: ExerciseGoal): Promise<boolean>
   if (goal.goalType === "volume") {
     const pr = await db.getFirstAsync<{ value: number }>(
       `SELECT MAX(value) as value FROM pr_records
-       WHERE exercise_id = ? AND type = 'volume'`,
-      [goal.exerciseId]
+       WHERE exercise_id = ? AND type = 'volume' AND program_id = ?`,
+      [goal.exerciseId, goal.programId]
     );
     return pr ? (pr.value ?? 0) >= goal.targetValue : false;
   }
 
   if (goal.goalType === "reps") {
     const maxReps = await db.getFirstAsync<{ max_reps: number }>(
-      `SELECT MAX(reps) as max_reps FROM sets
-       WHERE exercise_id = ?`,
-      [goal.exerciseId]
+      `SELECT MAX(s.reps) as max_reps FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       WHERE s.exercise_id = ? AND w.program_id = ? AND s.is_warmup IS NOT 1`,
+      [goal.exerciseId, goal.programId]
     );
     return maxReps ? (maxReps.max_reps ?? 0) >= goal.targetValue : false;
   }
@@ -147,8 +148,8 @@ export async function getCurrentValueForGoal(goal: ExerciseGoal): Promise<number
   if (goal.goalType === "weight") {
     const pr = await db.getFirstAsync<{ value: number }>(
       `SELECT MAX(value) as value FROM pr_records
-       WHERE exercise_id = ? AND type = 'heaviest'`,
-      [goal.exerciseId]
+       WHERE exercise_id = ? AND type = 'heaviest' AND program_id = ?`,
+      [goal.exerciseId, goal.programId]
     );
     return pr?.value ?? 0;
   }
@@ -156,17 +157,18 @@ export async function getCurrentValueForGoal(goal: ExerciseGoal): Promise<number
   if (goal.goalType === "volume") {
     const pr = await db.getFirstAsync<{ value: number }>(
       `SELECT MAX(value) as value FROM pr_records
-       WHERE exercise_id = ? AND type = 'volume'`,
-      [goal.exerciseId]
+       WHERE exercise_id = ? AND type = 'volume' AND program_id = ?`,
+      [goal.exerciseId, goal.programId]
     );
     return pr?.value ?? 0;
   }
 
   if (goal.goalType === "reps") {
     const maxReps = await db.getFirstAsync<{ max_reps: number }>(
-      `SELECT MAX(reps) as max_reps FROM sets
-       WHERE exercise_id = ?`,
-      [goal.exerciseId]
+      `SELECT MAX(s.reps) as max_reps FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       WHERE s.exercise_id = ? AND w.program_id = ? AND s.is_warmup IS NOT 1`,
+      [goal.exerciseId, goal.programId]
     );
     return maxReps?.max_reps ?? 0;
   }

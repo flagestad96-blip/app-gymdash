@@ -33,6 +33,9 @@ const calendar: TranslationMap = {
   "calendar.mark.rest": "Rest day",
   "calendar.mark.skipped": "Skipped",
   "calendar.mark.sick": "Sick",
+  "calendar.legendRest": "Rest",
+  "calendar.legendSkipped": "Skipped",
+  "calendar.legendSick": "Sick",
 };
 
 export default calendar;

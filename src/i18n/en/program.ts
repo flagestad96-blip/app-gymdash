@@ -101,6 +101,7 @@ const program: TranslationMap = {
   "periodization.deloadBanner": "DELOAD \u2014 {percent}% intensity",
   "periodization.deloadBannerSets": "DELOAD \u2014 \u22121 set per exercise",
   "periodization.deloadWeek": "DELOAD",
+  "program.saved": "Program saved",
 };
 
 export default program;

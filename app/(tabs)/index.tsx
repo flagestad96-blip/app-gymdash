@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx — Home Dashboard
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -69,10 +69,13 @@ export default function HomeScreen() {
     else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
   }, [navigation]);
 
+  const deloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showDeloadToast = useCallback(() => {
     setDeloadToast(true);
-    setTimeout(() => setDeloadToast(false), 3000);
+    if (deloadTimerRef.current) clearTimeout(deloadTimerRef.current);
+    deloadTimerRef.current = setTimeout(() => setDeloadToast(false), 3000);
   }, []);
+  useEffect(() => () => { if (deloadTimerRef.current) clearTimeout(deloadTimerRef.current); }, []);
 
   const [ready, setReady] = useState(false);
   const [todayWorkout, setTodayWorkout] = useState<TodayWorkout | null>(null);
@@ -106,21 +109,28 @@ export default function HomeScreen() {
           [today]
         );
         if (w?.id) {
-          const stats = db.getFirstSync<{ c: number; vol: number; ex: number }>(
-            `SELECT COUNT(1) as c,
-                    COALESCE(SUM(weight * reps), 0) as vol,
-                    COUNT(DISTINCT exercise_id) as ex
+          const setRows = db.getAllSync<{ exercise_id: string | null; vol: number }>(
+            `SELECT exercise_id, COALESCE(SUM(weight * reps), 0) as vol
+             FROM sets WHERE workout_id = ? GROUP BY exercise_id`,
+            [w.id]
+          );
+          const countStats = db.getFirstSync<{ c: number; ex: number }>(
+            `SELECT COUNT(1) as c, COUNT(DISTINCT exercise_id) as ex
              FROM sets WHERE workout_id = ?`,
             [w.id]
           );
+          const todayVol = (setRows ?? []).reduce((total, row) => {
+            const multiplier = isPerSideExercise(row.exercise_id ?? "") ? 2 : 1;
+            return total + row.vol * multiplier;
+          }, 0);
           setTodayWorkout({
             id: w.id,
             day_index: w.day_index,
             started_at: w.started_at,
             ended_at: w.ended_at ?? null,
-            totalSets: stats?.c ?? 0,
-            totalVolume: Math.round(stats?.vol ?? 0),
-            exercises: stats?.ex ?? 0,
+            totalSets: countStats?.c ?? 0,
+            totalVolume: Math.round(todayVol),
+            exercises: countStats?.ex ?? 0,
           });
         }
       } catch {}
@@ -685,7 +695,7 @@ function StatBadge({ label, value, theme, accent, accentColor }: { label: string
       <Text style={{ color: highlighted ? color : theme.text, fontFamily: theme.fontFamily.bold, fontSize: 18 }}>
         {value}
       </Text>
-      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9 }}>{label}</Text>
+      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{label}</Text>
     </View>
   );
 }

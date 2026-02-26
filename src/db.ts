@@ -751,7 +751,7 @@ export async function getLatestBodyMetricBeforeOrOn(date: string): Promise<BodyM
   await ensureDb();
   const database = getDb();
   const row = await database.getFirstAsync<BodyMetricRow>(
-    `SELECT date, weight_kg, note FROM body_metrics WHERE date <= ? ORDER BY date DESC LIMIT 1`,
+    `SELECT date, weight_kg, note, photo_uri FROM body_metrics WHERE date <= ? ORDER BY date DESC LIMIT 1`,
     [date]
   );
   return row ?? null;

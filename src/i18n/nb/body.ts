@@ -29,7 +29,9 @@ const body: TranslationMap = {
   "body.changePhoto": "Endre bilde",
   "body.removePhoto": "Fjern bilde",
   "body.viewPhoto": "Se bilde",
+  "body.photoPermTitle": "Tillatelse kreves",
   "body.photoPermission": "Tilgang til kamera/galleri er n\u00f8dvendig.",
+  "body.saved": "Lagret",
 };
 
 export default body;

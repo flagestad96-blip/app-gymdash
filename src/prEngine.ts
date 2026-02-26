@@ -95,7 +95,7 @@ export async function checkSetPRs(params: CheckSetPRsParams): Promise<CheckSetPR
   if (!dbHeaviest && !dbE1rm) {
     try {
       const prior = getDb().getFirstSync<{ c: number }>(
-        `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND w.id != ? LIMIT 1`,
+        `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND w.id != ? AND s.is_warmup IS NOT 1 LIMIT 1`,
         [exerciseId, workoutId]
       );
       isBaseline = !(prior && prior.c > 0);
@@ -271,7 +271,7 @@ export async function checkSessionVolumePRs(params: CheckSessionVolumePRsParams)
       if (!dbPrMap[exId]?.heaviest && !dbPrMap[exId]?.e1rm && !dbVolume) {
         try {
           const prior = getDb().getFirstSync<{ c: number }>(
-            `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND w.id != ? LIMIT 1`,
+            `SELECT COUNT(1) as c FROM sets s JOIN workouts w ON w.id = s.workout_id WHERE s.exercise_id = ? AND w.id != ? AND s.is_warmup IS NOT 1 LIMIT 1`,
             [exId, workoutId]
           );
           isBaseline = !(prior && prior.c > 0);

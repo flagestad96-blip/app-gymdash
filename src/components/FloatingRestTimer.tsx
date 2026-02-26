@@ -1,5 +1,5 @@
 // src/components/FloatingRestTimer.tsx — Floating rest timer overlay visible across the app
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import { useTheme } from "../theme";
 import { useI18n } from "../i18n";
 import { useRestTimer, mmss } from "../restTimerContext";
 import { displayNameFor, tagsFor } from "../exerciseLibrary";
+import { getSettingAsync, setSettingAsync } from "../db";
 import RestSettingsModal from "./workout/RestTimer";
 
 export default function FloatingRestTimer() {
@@ -57,8 +58,21 @@ export default function FloatingRestTimer() {
     }
   }, [restRunning, pulseAnim]);
 
-  // Don't show if no active workout
-  if (!activeWorkoutId) return null;
+  // First-time hint for long-press
+  const [showHint, setShowHint] = useState(false);
+  useEffect(() => {
+    if (!activeWorkoutId) return;
+    let alive = true;
+    getSettingAsync("hint_dismissed_timer_long_press").then((v) => {
+      if (alive && v !== "1") setShowHint(true);
+    });
+    return () => { alive = false; };
+  }, [activeWorkoutId]);
+
+  function dismissHint() {
+    setShowHint(false);
+    setSettingAsync("hint_dismissed_timer_long_press", "1").catch(() => {});
+  }
 
   // Compute display values for settings modal
   const focusedExerciseName = focusedExerciseId ? displayNameFor(focusedExerciseId) : null;
@@ -90,7 +104,8 @@ export default function FloatingRestTimer() {
 
   return (
     <>
-      <Animated.View
+      {/* Floating pill only visible during active workout */}
+      {activeWorkoutId ? <Animated.View
         style={[
           styles.container,
           {
@@ -136,7 +151,30 @@ export default function FloatingRestTimer() {
             {displayLabel}
           </Text>
         </Pressable>
-      </Animated.View>
+      </Animated.View> : null}
+
+      {activeWorkoutId && showHint ? (
+        <Pressable
+          onPress={dismissHint}
+          style={{
+            position: "absolute",
+            bottom: insets.bottom + 45,
+            right: 16,
+            zIndex: 999,
+            backgroundColor: theme.glass,
+            borderColor: theme.glassBorder,
+            borderWidth: 1,
+            borderRadius: theme.radius.md,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            maxWidth: 240,
+          }}
+        >
+          <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 15 }}>
+            {t("hint.timerLongPress")}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <RestSettingsModal
         visible={restSettingsOpen}

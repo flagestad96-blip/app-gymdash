@@ -2,6 +2,7 @@
 import { Share, Platform } from "react-native";
 import { ensureDb, getDb, formatDuration } from "./db";
 import { displayNameFor, isPerSideExercise } from "./exerciseLibrary";
+import { t } from "./i18n";
 
 /**
  * Generate and share a workout summary via native share sheet.
@@ -28,7 +29,7 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
     reps: number;
   }>(
     `SELECT exercise_id, exercise_name, weight, reps
-     FROM sets WHERE workout_id = ? ORDER BY created_at`,
+     FROM sets WHERE workout_id = ? AND is_warmup IS NOT 1 ORDER BY created_at`,
     [workoutId]
   );
 
@@ -56,8 +57,8 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
   // Build summary text
   const lines: string[] = [];
   lines.push(`Gymdash - ${workout.date}`);
-  if (duration) lines.push(`Varighet: ${duration}`);
-  lines.push(`${totalSets} sett | ${Math.round(totalVolume)} kg volum`);
+  if (duration) lines.push(`${t("common.duration")}: ${duration}`);
+  lines.push(`${totalSets} ${t("common.sets").toLowerCase()} | ${Math.round(totalVolume)} ${t("common.kg")} ${t("common.volume").toLowerCase()}`);
   lines.push("");
 
   for (const [, ex] of Object.entries(byExercise)) {
@@ -67,7 +68,7 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
   }
 
   lines.push("");
-  lines.push("Logget med Gymdash");
+  lines.push(t("share.loggedWith"));
 
   const message = lines.join("\n");
 
@@ -110,14 +111,14 @@ export async function shareAchievementText(
   tier: string
 ): Promise<void> {
   const tierEmoji: Record<string, string> = {
-    bronze: "🥉",
-    silver: "🥈",
-    gold: "🥇",
-    platinum: "💎",
+    common: "🏅",
+    rare: "🥉",
+    epic: "🥇",
+    legendary: "💎",
   };
   const emoji = tierEmoji[tier] ?? "🏆";
 
-  const message = `${emoji} ${name}\n${description}\n\nOpplast med Gymdash`;
+  const message = `${emoji} ${name}\n${description}\n\n${t("share.sharedWith")}`;
 
   await Share.share({
     message,

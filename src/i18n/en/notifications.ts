@@ -18,9 +18,16 @@ const notifications: TranslationMap = {
   "share.program": "Share program",
   "share.achievement": "Share achievement",
   "share.failed": "Sharing failed.",
+  "share.loggedWith": "Logged with Gymdash",
+  "share.sharedWith": "Shared with Gymdash",
 
   // ── Notifications ──
   "notifications.title": "NOTIFICATIONS",
+  "notifications.restDone": "Rest done!",
+  "notifications.nextSet": "Ready for the next set",
+  "notifications.workoutTime": "Workout time!",
+  "notifications.readyForSession": "Ready for today's session?",
+  "notifications.restDayCheck": "Rest day check",
   "notifications.workoutReminders": "Workout reminders",
   "notifications.restDaySuggestions": "Rest day suggestions",
   "notifications.reminderTime": "Time",

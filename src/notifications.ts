@@ -1,6 +1,7 @@
 // src/notifications.ts
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import { t } from "./i18n";
 
 // NOTE: Expo Go doesn't support expo-notifications on Android. Re-verify in preview/dev builds before release.
 const IS_EXPO_GO =
@@ -98,8 +99,8 @@ export async function scheduleRestNotification(seconds: number): Promise<string 
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Hvil ferdig! 💪",
-        body: "Klar for neste sett",
+        title: `${t("notifications.restDone")} 💪`,
+        body: t("notifications.nextSet"),
         sound: true,
         vibrate: [0, 250, 250, 250],
         data: { type: "rest_timer" },
@@ -176,8 +177,8 @@ export async function scheduleWorkoutReminder(
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Treningstid! 💪",
-        body: "Klar for dagens økt?",
+        title: `${t("notifications.workoutTime")} 💪`,
+        body: t("notifications.readyForSession"),
         sound: true,
         data: { type: "workout_reminder" },
       },
@@ -225,8 +226,8 @@ export async function scheduleRestDayCheck(): Promise<string | null> {
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Hviledagssjekk",
-        body: "Du har ikke trent på en stund. Tid for en økt?",
+        title: t("notifications.restDayCheck"),
+        body: t("notifications.restDayMessage"),
         sound: true,
         data: { type: "rest_day_check" },
       },

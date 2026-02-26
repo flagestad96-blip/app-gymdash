@@ -100,7 +100,7 @@ export async function getTargets(programId: string): Promise<Record<string, Exer
       targetSets: Number.isFinite(r.target_sets ?? NaN) ? Number(r.target_sets) : 3,
       incrementKg: r.increment_kg,
       updatedAt: r.updated_at,
-      autoProgress: r.auto_progress !== 0,
+      autoProgress: r.auto_progress === 1,
     };
   }
   return map;
@@ -151,7 +151,7 @@ export async function analyzeWorkoutForProgression(
 
   const sets = await db.getAllAsync<SetRow>(
     `SELECT exercise_id, weight, reps FROM sets
-     WHERE workout_id = ?
+     WHERE workout_id = ? AND is_warmup IS NOT 1
      ORDER BY exercise_id, created_at`,
     [workoutId]
   );

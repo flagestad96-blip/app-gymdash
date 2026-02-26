@@ -793,14 +793,17 @@ export async function getEstimatedDuration(programId: string, dayIndex: number):
   );
   if (!rows || rows.length === 0) return null;
   let totalMin = 0;
+  let validCount = 0;
   for (const r of rows) {
     const start = new Date(r.started_at).getTime();
     const end = new Date(r.ended_at).getTime();
     if (!isNaN(start) && !isNaN(end) && end > start) {
       totalMin += (end - start) / 60000;
+      validCount++;
     }
   }
-  const avgMin = Math.round(totalMin / rows.length);
+  if (validCount === 0) return null;
+  const avgMin = Math.round(totalMin / validCount);
   if (avgMin < 1) return "< 1 min";
   if (avgMin < 60) return `${avgMin} min`;
   const hours = Math.floor(avgMin / 60);

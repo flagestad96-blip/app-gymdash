@@ -54,7 +54,7 @@ export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId
     // Resolve gym-specific plates
     const activeGym = gymId ? getGym(gymId) : null;
     setGymPlates(getGymPlates(activeGym));
-  }, [exerciseId, gymId]);
+  }, [exerciseId, gymId]); // selectedBarId intentionally excluded — only read during initial load
 
   useEffect(() => {
     if (visible) loadData();

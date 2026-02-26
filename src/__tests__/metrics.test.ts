@@ -2,9 +2,8 @@ import { e1rmEpley, epley1RM, round1, suggestNextWeight } from "../metrics";
 import { formatWeight, mmss } from "../format";
 
 describe("epley1RM", () => {
-  it("applies formula even for 1 rep (clamps to min 1)", () => {
-    // epley1RM: weight * (1 + max(1,reps)/30) → 100 * (1 + 1/30) ≈ 103.33
-    expect(epley1RM(100, 1)).toBeCloseTo(103.333, 1);
+  it("returns weight for 1 rep (actual 1RM)", () => {
+    expect(epley1RM(100, 1)).toBe(100);
   });
 
   it("calculates 100kg x 10 ≈ 133.3", () => {
@@ -15,9 +14,8 @@ describe("epley1RM", () => {
     expect(epley1RM(0, 10)).toBe(0);
   });
 
-  it("clamps reps to minimum 1 so 0 reps equals 1 rep", () => {
-    // reps = 0 → max(1, 0) = 1 → same as 1 rep
-    expect(epley1RM(80, 0)).toBeCloseTo(epley1RM(80, 1), 5);
+  it("returns weight for 0 reps (same as 1 rep)", () => {
+    expect(epley1RM(80, 0)).toBe(80);
   });
 });
 

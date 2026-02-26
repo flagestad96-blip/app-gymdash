@@ -768,14 +768,23 @@ export default function Settings() {
             const db = getDb();
             const programs = db.getAllSync<{ id: string }>(`SELECT id FROM programs`);
             const exercises = db.getAllSync<{ exercise_id: string }>(`SELECT DISTINCT exercise_id FROM sets WHERE exercise_id IS NOT NULL`);
-            let count = 0;
-            for (const ex of exercises ?? []) {
-              for (const prog of programs ?? []) {
-                recomputePRForExercise(ex.exercise_id, prog.id);
+            const exList = exercises ?? [];
+            const progList = programs ?? [];
+            let idx = 0;
+            function processBatch() {
+              const batchEnd = Math.min(idx + 5, exList.length);
+              for (; idx < batchEnd; idx++) {
+                for (const prog of progList) {
+                  recomputePRForExercise(exList[idx].exercise_id, prog.id);
+                }
               }
-              count++;
+              if (idx < exList.length) {
+                setTimeout(processBatch, 0);
+              } else {
+                Alert.alert(t("settings.repairPrs.done"), t("settings.repairPrs.doneMsg", { n: exList.length }));
+              }
             }
-            Alert.alert(t("settings.repairPrs.done"), t("settings.repairPrs.doneMsg", { n: count }));
+            processBatch();
           } catch {
             Alert.alert(t("common.error"));
           }

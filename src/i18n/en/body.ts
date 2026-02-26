@@ -29,7 +29,9 @@ const body: TranslationMap = {
   "body.changePhoto": "Change photo",
   "body.removePhoto": "Remove photo",
   "body.viewPhoto": "View photo",
+  "body.photoPermTitle": "Permission required",
   "body.photoPermission": "Camera/gallery access is required.",
+  "body.saved": "Saved",
 };
 
 export default body;

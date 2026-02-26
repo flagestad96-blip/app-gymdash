@@ -156,6 +156,8 @@ const log: TranslationMap = {
   "templates.namePlaceholder": "Template name...",
   "templates.savedMsg": "Template saved successfully.",
   "templates.saveFailed": "Could not save template.",
+  "log.type": "Type",
+  "log.endAndSwitch": "End & Switch",
 };
 
 export default log;

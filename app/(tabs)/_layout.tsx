@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { Platform, Text, View } from "react-native";
 import { useTheme } from "../../src/theme";
+import { useI18n } from "../../src/i18n";
 import { getDbInfo } from "../../src/db";
 
 type WebInfo = {
@@ -12,6 +13,7 @@ type WebInfo = {
 
 export default function TabLayout() {
   const theme = useTheme();
+  const { t } = useI18n();
   const [webInfo, setWebInfo] = useState<WebInfo | null>(null);
 
   useEffect(() => {
@@ -42,7 +44,7 @@ export default function TabLayout() {
           }}
         >
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-            Web: lagring er deaktivert ({webInfo.note}).
+            {t("web.storageDisabled", { note: webInfo.note })}
           </Text>
         </View>
       ) : null}

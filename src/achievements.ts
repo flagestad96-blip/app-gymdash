@@ -483,19 +483,21 @@ async function getPRCount(): Promise<number> {
 }
 
 /**
- * Check if a weight threshold is met for an exercise
+ * Check if a weight threshold is met for an exercise.
+ * Also checks max reps (for bodyweight exercises like pull-ups).
  */
 async function checkWeightThreshold(exerciseId: string, threshold: number): Promise<boolean> {
   const db = getDbHelpers().getDb();
-  const row = await db.getFirstAsync<{ max_weight: number | null }>(
-    `SELECT MAX(weight) as max_weight FROM sets WHERE exercise_id = ?`,
+  const row = await db.getFirstAsync<{ max_weight: number | null; max_reps: number | null }>(
+    `SELECT MAX(weight) as max_weight, MAX(reps) as max_reps FROM sets WHERE exercise_id = ? AND is_warmup IS NOT 1`,
     [exerciseId]
   );
-  return (row?.max_weight ?? 0) >= threshold;
+  return (row?.max_weight ?? 0) >= threshold || (row?.max_reps ?? 0) >= threshold;
 }
 
 /**
- * Get current workout streak
+ * Get current workout streak.
+ * A streak counts consecutive days with workouts, starting from today or yesterday.
  */
 async function getCurrentStreak(): Promise<number> {
   const db = getDbHelpers().getDb();
@@ -505,22 +507,32 @@ async function getCurrentStreak(): Promise<number> {
 
   if (!rows || rows.length === 0) return 0;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Parse first workout date to see if streak starts today or yesterday
+  const [fy, fm, fd] = rows[0].date.split("-").map(Number);
+  const firstDate = new Date(fy, fm - 1, fd);
+  const daysFromToday = Math.floor((today.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Streak must start from today or yesterday to be "current"
+  if (daysFromToday > 1) return 0;
+
   let streak = 0;
-  let currentDate = new Date();
-  currentDate.setHours(0, 0, 0, 0);
+  let expectedDate = firstDate.getTime();
+  const oneDay = 1000 * 60 * 60 * 24;
 
   for (const row of rows) {
-    const workoutDate = new Date(row.date);
-    workoutDate.setHours(0, 0, 0, 0);
+    const [y, m, d] = row.date.split("-").map(Number);
+    const workoutDate = new Date(y, m - 1, d).getTime();
 
-    const dayDiff = Math.floor((currentDate.getTime() - workoutDate.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (dayDiff === streak) {
+    if (workoutDate === expectedDate) {
       streak++;
-      currentDate = workoutDate;
-    } else if (dayDiff > streak) {
+      expectedDate = workoutDate - oneDay;
+    } else if (workoutDate < expectedDate) {
       break;
     }
+    // skip duplicates (same date)
   }
 
   return streak;
@@ -531,6 +543,7 @@ async function getCurrentStreak(): Promise<number> {
  */
 export async function checkAndUnlockAchievements(context: AchievementContext = {}): Promise<Achievement[]> {
   await getDbHelpers().ensureDb();
+  const db = getDbHelpers().getDb();
   const achievements = await getAllAchievements();
   const unlocked: Achievement[] = [];
 
@@ -567,7 +580,64 @@ export async function checkAndUnlockAchievements(context: AchievementContext = {
         shouldUnlock = currentStreak >= achievement.requirementValue;
         break;
 
-      // Add more requirement type checks as needed
+      case "volume_workout":
+        if (context.workoutId) {
+          const volRow = await db.getFirstAsync<{ vol: number | null }>(
+            `SELECT SUM(weight * reps) as vol FROM sets WHERE workout_id = ? AND is_warmup IS NOT 1`,
+            [context.workoutId]
+          );
+          shouldUnlock = (volRow?.vol ?? 0) >= achievement.requirementValue;
+        }
+        break;
+
+      case "volume_week": {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const weekStr = weekAgo.toISOString().slice(0, 10);
+        const vwRow = await db.getFirstAsync<{ vol: number | null }>(
+          `SELECT SUM(s.weight * s.reps) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND s.is_warmup IS NOT 1`,
+          [weekStr]
+        );
+        shouldUnlock = (vwRow?.vol ?? 0) >= achievement.requirementValue;
+        break;
+      }
+
+      case "volume_lifetime": {
+        const vlRow = await db.getFirstAsync<{ vol: number | null }>(
+          `SELECT SUM(weight * reps) as vol FROM sets WHERE is_warmup IS NOT 1`
+        );
+        shouldUnlock = (vlRow?.vol ?? 0) >= achievement.requirementValue;
+        break;
+      }
+
+      case "time_of_day":
+        if (context.workoutDate) {
+          // Check started_at for the current workout
+          const wRow = await db.getFirstAsync<{ started_at: string | null }>(
+            `SELECT started_at FROM workouts WHERE id = ?`,
+            [context.workoutId ?? ""]
+          );
+          if (wRow?.started_at) {
+            const hour = new Date(wRow.started_at).getHours();
+            // "Early Riser": requirement=8 means before 8am
+            // "Night Grinder": requirement=22 means after 10pm
+            if (achievement.requirementValue <= 12) {
+              shouldUnlock = hour < achievement.requirementValue;
+            } else {
+              shouldUnlock = hour >= achievement.requirementValue;
+            }
+          }
+        }
+        break;
+
+      case "weekend_count": {
+        const wcRow = await db.getFirstAsync<{ count: number }>(
+          `SELECT COUNT(DISTINCT id) as count FROM workouts WHERE CAST(strftime('%w', date) AS INTEGER) IN (0, 6)`
+        );
+        shouldUnlock = (wcRow?.count ?? 0) >= achievement.requirementValue;
+        break;
+      }
+
       default:
         break;
     }

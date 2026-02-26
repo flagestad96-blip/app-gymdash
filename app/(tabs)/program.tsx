@@ -22,6 +22,7 @@ import { shareFile, saveBackupFile } from "../../src/fileSystem";
 import { getShareableProgramJson } from "../../src/sharing";
 import { SkeletonProgramCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
+import { SuccessToast } from "../../src/ui/modern";
 import { uid, isoNow } from "../../src/storage";
 import { clampInt } from "../../src/format";
 
@@ -98,6 +99,7 @@ export default function ProgramScreen() {
   const theme = useTheme();
   const { t } = useI18n();
   const [ready, setReady] = useState(_programTabInitialized);
+  const [successToast, setSuccessToast] = useState(false);
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
@@ -290,7 +292,7 @@ export default function ProgramScreen() {
     const base = altQuery.trim() ? searchExercises(altQuery.trim()) : allExList;
     const withTag = altTag === "all" ? base : base.filter((e) => e.tags.includes(altTag));
     return withTag;
-  }, [altQuery, altTag]);
+  }, [altQuery, altTag, allExList]);
 
   const canDeleteProgram = !!(
     activeProgram &&
@@ -313,6 +315,7 @@ export default function ProgramScreen() {
     setActiveProgram(next);
     const list = await ProgramStore.listPrograms(programMode);
     setPrograms(list);
+    setSuccessToast(true);
   }
 
   function buildEmptyDay(name: string): ProgramDay {
@@ -1175,7 +1178,7 @@ export default function ProgramScreen() {
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Text style={{ color: theme.text, fontSize: 16, flex: 1 }} numberOfLines={1}>{ex.displayName}</Text>
                       {isCustomExercise(ex.id) ? (
-                        <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 9, borderWidth: 1, borderColor: theme.accent, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 }}>
+                        <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 10, borderWidth: 1, borderColor: theme.accent, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 }}>
                           {t("program.customExercise")}
                         </Text>
                       ) : null}
@@ -1626,6 +1629,7 @@ export default function ProgramScreen() {
           </View>
         </View>
       </Modal>
+      <SuccessToast visible={successToast} message={t("program.saved")} onDismiss={() => setSuccessToast(false)} />
     </Screen>
   );
 }

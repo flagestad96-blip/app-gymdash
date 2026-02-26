@@ -8,9 +8,14 @@ import { deleteBodyMetric, listBodyMetrics, upsertBodyMetric, getSettingAsync, s
 import { Screen, TopBar, Card, Btn, TextField, IconButton } from "../../src/ui";
 import { useWeightUnit } from "../../src/units";
 import PhotoPicker from "../../src/components/PhotoPicker";
+import { SkeletonCard } from "../../src/components/Skeleton";
+import { SuccessToast } from "../../src/ui/modern";
 import LineChart from "../../src/components/charts/LineChart";
 import { isoDateOnly } from "../../src/storage";
 import { round1 } from "../../src/metrics";
+
+// Module-level flag - persists across component remounts (tab switches)
+let _bodyTabInitialized = false;
 
 export default function BodyScreen() {
   const theme = useTheme();
@@ -23,6 +28,7 @@ export default function BodyScreen() {
     else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
   }, [navigation]);
 
+  const [ready, setReady] = useState(_bodyTabInitialized);
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([]);
   const [heightCm, setHeightCm] = useState("");
   const [dateInput, setDateInput] = useState(isoDateOnly());
@@ -30,6 +36,7 @@ export default function BodyScreen() {
   const [noteInput, setNoteInput] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [successToast, setSuccessToast] = useState(false);
 
   const refresh = useCallback(async () => {
     const rows = await listBodyMetrics();
@@ -37,13 +44,23 @@ export default function BodyScreen() {
   }, []);
 
   useEffect(() => {
+    if (_bodyTabInitialized) {
+      setReady(true);
+      refresh().catch(() => {});
+      getSettingAsync("height_cm").then((h) => { if (h) setHeightCm(h); }).catch(() => {});
+      return;
+    }
     let alive = true;
     (async () => {
       const h = await getSettingAsync("height_cm");
       if (!alive) return;
       if (h) setHeightCm(h);
       await refresh();
-    })();
+    })().finally(() => {
+      if (!alive) return;
+      setReady(true);
+      _bodyTabInitialized = true;
+    });
     return () => { alive = false; };
   }, [refresh]);
 
@@ -64,7 +81,7 @@ export default function BodyScreen() {
     if (!Number.isFinite(w ?? NaN)) return null;
     const hM = hCm / 100;
     return round1((w as number) / (hM * hM));
-  }, [parsedHeight, parsedWeightInput, latestMetric]);
+  }, [parsedHeight, parsedWeightInput, latestMetric, wu]);
 
   const weightTrend = useMemo(() => {
     if (metrics.length < 2) return null;
@@ -75,7 +92,8 @@ export default function BodyScreen() {
     // 7-day rolling average
     const smoothed: number[] = [];
     for (let i = 0; i < sorted.length; i++) {
-      const cutoff = new Date(sorted[i].date);
+      const [cy, cm, cd] = sorted[i].date.split("-").map(Number);
+      const cutoff = new Date(cy, cm - 1, cd);
       cutoff.setDate(cutoff.getDate() - 7);
       const cutoffIso = isoDateOnly(cutoff);
       const window = sorted.filter((m) => m.date > cutoffIso && m.date <= sorted[i].date);
@@ -108,6 +126,7 @@ export default function BodyScreen() {
     setNoteInput("");
     setPhotoUri(null);
     await refresh();
+    setSuccessToast(true);
   }
 
   function startEdit(row: BodyMetricRow) {
@@ -139,6 +158,18 @@ export default function BodyScreen() {
         },
       },
     ]);
+  }
+
+  if (!ready) {
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar title={t("body.title")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+          <SkeletonCard lines={4} />
+          <SkeletonCard lines={3} />
+        </ScrollView>
+      </Screen>
+    );
   }
 
   return (
@@ -332,6 +363,7 @@ export default function BodyScreen() {
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
+      <SuccessToast visible={successToast} message={t("body.saved")} onDismiss={() => setSuccessToast(false)} />
     </Screen>
   );
 }

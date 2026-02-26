@@ -1,7 +1,7 @@
 // src/ui/modern.tsx
 // Modern UI components with glassmorphism, gradients, and animations
 
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -13,10 +13,12 @@ import {
   Animated,
   Easing,
 } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
+import { useI18n } from "../i18n";
 
 /**
  * GradientButton - Modern button with gradient background and animations
@@ -108,7 +110,7 @@ export function GradientButton({
                   style={{ marginRight: 8 }}
                 />
               )}
-              <Text style={styles.gradientButtonText}>{text}</Text>
+              <Text style={[styles.gradientButtonText, { fontFamily: theme.fontFamily.semibold }]}>{text}</Text>
             </View>
           )}
         </LinearGradient>
@@ -202,7 +204,13 @@ export function ProgressRing({
   animated = true,
 }: ProgressRingProps) {
   const theme = useTheme();
+  const [displayProgress, setDisplayProgress] = useState(animated ? 0 : progress);
   const animatedProgress = React.useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const id = animatedProgress.addListener(({ value }) => setDisplayProgress(value));
+    return () => animatedProgress.removeListener(id);
+  }, [animatedProgress]);
 
   useEffect(() => {
     if (animated) {
@@ -225,23 +233,31 @@ export function ProgressRing({
 
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
+  const strokeDashoffset = circumference * (1 - displayProgress);
 
   return (
     <View style={[styles.progressRing, { width: size, height: size }]}>
-      {/* Background circle */}
-      <View
-        style={[
-          styles.progressRingBackground,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: strokeWidth,
-            borderColor: theme.line,
-          },
-        ]}
-      />
-      {/* Progress indicator - simplified for now, would use SVG in production */}
+      <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={theme.line}
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={colorValue}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+        />
+      </Svg>
       {showPercentage && (
         <View style={styles.progressRingCenter}>
           <Text style={[styles.progressRingText, { color: theme.text }]}>
@@ -490,6 +506,7 @@ export function AchievementToast({
   onTap,
 }: AchievementToastProps) {
   const theme = useTheme();
+  const { t } = useI18n();
   const translateY = React.useRef(new Animated.Value(-200)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
   const onDismissRef = React.useRef(onDismiss);
@@ -566,9 +583,9 @@ export function AchievementToast({
             <MaterialIcons name={achievementIcon as any} size={32} color="#FFFFFF" />
           </View>
           <View style={styles.toastTextContainer}>
-            <Text style={styles.toastTitle}>🏆 Prestasjon låst opp!</Text>
+            <Text style={styles.toastTitle}>🏆 {t("achievements.toast")}</Text>
             <Text style={styles.toastName}>{achievementName}</Text>
-            <Text style={styles.toastPoints}>+{points} poeng</Text>
+            <Text style={styles.toastPoints}>+{t("achievements.points", { n: points })}</Text>
           </View>
         </LinearGradient>
       </Pressable>
@@ -588,6 +605,8 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
   const theme = useTheme();
   const translateY = React.useRef(new Animated.Value(100)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
+  const onDismissRef = React.useRef(onDismiss);
+  onDismissRef.current = onDismiss;
 
   useEffect(() => {
     if (visible) {
@@ -618,7 +637,7 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
             duration: theme.animation.normal,
             useNativeDriver: true,
           }),
-        ]).start(() => onDismiss());
+        ]).start(() => onDismissRef.current());
       }, 5000);
 
       return () => clearTimeout(timeout);
@@ -659,7 +678,7 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
           shadowRadius: 8,
         }}
       >
-        <Text style={{ color: theme.text, fontFamily: "Manrope_500Medium", fontSize: 14, flex: 1 }}>
+        <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14, flex: 1 }}>
           {message}
         </Text>
         <Pressable
@@ -672,12 +691,58 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
             marginLeft: 12,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontFamily: "Manrope_600SemiBold", fontSize: 13 }}>
+          <Text style={{ color: "#FFFFFF", fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
             {undoLabel}
           </Text>
         </Pressable>
       </View>
     </Animated.View>
+  );
+}
+
+// ── Success Toast ─────────────────────────────────────────
+
+export function SuccessToast({
+  visible,
+  message,
+  onDismiss,
+}: {
+  visible: boolean;
+  message: string;
+  onDismiss: () => void;
+}) {
+  const theme = useTheme();
+  const stableDismiss = useCallback(onDismiss, [onDismiss]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const id = setTimeout(stableDismiss, 3000);
+    return () => clearTimeout(id);
+  }, [visible, stableDismiss]);
+
+  if (!visible) return null;
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        bottom: 50,
+        left: 24,
+        right: 24,
+        backgroundColor: theme.glass,
+        borderColor: theme.success,
+        borderWidth: 1,
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        alignItems: "center",
+        zIndex: 9999,
+      }}
+    >
+      <Text style={{ color: theme.success, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+        {message}
+      </Text>
+    </View>
   );
 }
 

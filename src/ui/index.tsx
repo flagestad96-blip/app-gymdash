@@ -84,20 +84,22 @@ export function TopBar({
       </View>
       <View style={{ alignItems: "flex-end", gap: 6 }}>
         {right}
-        <View
-          style={{
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            borderColor: theme.glassBorder,
-            backgroundColor: theme.glass,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-          }}
-        >
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-            {WATERMARK}
-          </Text>
-        </View>
+        {__DEV__ ? (
+          <View
+            style={{
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              borderColor: theme.glassBorder,
+              backgroundColor: theme.glass,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+            }}
+          >
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+              {WATERMARK}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -163,12 +165,14 @@ export function Button({
   tone = "normal",
   small,
   disabled,
+  accessibilityLabel,
 }: {
   label: string;
   onPress: () => void;
   tone?: "normal" | "danger" | "accent" | "ghost";
   small?: boolean;
   disabled?: boolean;
+  accessibilityLabel?: string;
 }) {
   const theme = useTheme();
   const isGhost = tone === "ghost";
@@ -181,6 +185,9 @@ export function Button({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      hitSlop={small ? theme.hitSlop.sm : undefined}
       style={({ pressed }) => ({
         height: small ? 34 : 46,
         paddingHorizontal: small ? 12 : 18,
@@ -211,11 +218,13 @@ export function Chip({
   active,
   onPress,
   tone,
+  accessibilityLabel,
 }: {
   text: string;
   active?: boolean;
   onPress?: () => void;
   tone?: "normal" | "accent" | "danger";
+  accessibilityLabel?: string;
 }) {
   const theme = useTheme();
   const isAccent = tone === "accent" || active;
@@ -242,7 +251,7 @@ export function Chip({
   );
   if (!onPress) return body;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+    <Pressable onPress={onPress} hitSlop={theme.hitSlop.md} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? text} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
       {body}
     </Pressable>
   );
@@ -254,12 +263,14 @@ export function IconButton({
   size = 18,
   tone = "normal",
   disabled,
+  accessibilityLabel,
 }: {
   icon: keyof typeof MaterialIcons.glyphMap;
   onPress: () => void;
   size?: number;
   tone?: "normal" | "accent" | "danger";
   disabled?: boolean;
+  accessibilityLabel?: string;
 }) {
   const theme = useTheme();
   const borderColor = tone === "danger" ? theme.danger : tone === "accent" ? theme.accent : theme.glassBorder;
@@ -269,7 +280,13 @@ export function IconButton({
       onPress={onPress}
       disabled={disabled}
       hitSlop={theme.hitSlop.md}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? String(icon)}
       style={({ pressed }) => ({
+        minWidth: 44,
+        minHeight: 44,
+        alignItems: "center",
+        justifyContent: "center",
         borderColor,
         borderWidth: 1,
         borderRadius: theme.radius.md,

@@ -101,6 +101,7 @@ const program: TranslationMap = {
   "periodization.deloadBanner": "DELOAD \u2014 {percent}% intensitet",
   "periodization.deloadBannerSets": "DELOAD \u2014 \u22121 sett per \u00f8velse",
   "periodization.deloadWeek": "DELOAD",
+  "program.saved": "Program lagret",
 };
 
 export default program;

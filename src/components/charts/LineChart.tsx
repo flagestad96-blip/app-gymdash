@@ -73,7 +73,8 @@ function LineChart({
 
   const points = values.map((v, i) => {
     const x = leftPad + (i * chartW) / Math.max(1, values.length - 1);
-    const y = topPad + ((maxV - v) * chartH) / span;
+    const safeV = Number.isFinite(v) ? v : minV;
+    const y = topPad + ((maxV - safeV) * chartH) / span;
     return { x, y, value: v };
   });
 

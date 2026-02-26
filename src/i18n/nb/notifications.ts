@@ -18,9 +18,16 @@ const notifications: TranslationMap = {
   "share.program": "Del program",
   "share.achievement": "Del prestasjon",
   "share.failed": "Deling feilet.",
+  "share.loggedWith": "Logget med Gymdash",
+  "share.sharedWith": "Delt med Gymdash",
 
   // ── Notifications ──
   "notifications.title": "VARSLER",
+  "notifications.restDone": "Hvil ferdig!",
+  "notifications.nextSet": "Klar for neste sett",
+  "notifications.workoutTime": "Treningstid!",
+  "notifications.readyForSession": "Klar for dagens \u00f8kt?",
+  "notifications.restDayCheck": "Hviledagssjekk",
   "notifications.workoutReminders": "Treningsp\u00e5minnelser",
   "notifications.restDaySuggestions": "Hviledag-forslag",
   "notifications.reminderTime": "Tidspunkt",

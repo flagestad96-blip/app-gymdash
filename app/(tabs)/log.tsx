@@ -42,6 +42,7 @@ import ProgressionStore, {
 } from "../../src/progressionStore";
 import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
+import HintBanner from "../../src/components/HintBanner";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
@@ -784,7 +785,7 @@ export default function Logg() {
       Alert.alert(t("log.setAsDefaultDone"));
     } catch (err) {
       console.error("Failed to set alternative as default:", err);
-      Alert.alert("Error", String(err));
+      Alert.alert(t("common.error"), String(err));
     }
   }
 
@@ -792,7 +793,20 @@ export default function Logg() {
   function getDayKey() { return dayKeyForIndex(activeDayIndex); }
 
   function selectDayIndex(i: number) {
-    if (activeWorkoutId) { Alert.alert(t("log.lockedAlert"), t("log.lockedSwitchDay")); return; }
+    if (activeWorkoutId) {
+      Alert.alert(t("log.lockedAlert"), t("log.lockedSwitchDay"), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("log.endAndSwitch"),
+          style: "destructive",
+          onPress: async () => {
+            await endWorkout();
+            setActiveDayIndex(i);
+          },
+        },
+      ]);
+      return;
+    }
     setActiveDayIndex(i);
   }
 
@@ -833,7 +847,10 @@ export default function Logg() {
     const nextIdx = (activeDayIndex + 1) % dayCount;
 
     // Build summary before clearing state
-    const totalVolume = workoutSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
+    const totalVolume = workoutSets.reduce((sum, s) => {
+      const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
+      return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
+    }, 0);
     const exerciseIds = new Set(workoutSets.map((s) => s.exercise_id ?? s.exercise_name));
     let topE1rm: { name: string; value: number } | null = null;
     for (const s of workoutSets) {
@@ -995,7 +1012,6 @@ export default function Logg() {
     setWorkoutSets((prev) => [...prev, row]);
     flashSetRow(row.id);
     fireHapticLight();
-    restTimer.startRestTimer(restTimer.getRestForExercise(exId));
     Keyboard.dismiss();
 
     const programId = program?.id ?? "";
@@ -1334,7 +1350,12 @@ export default function Logg() {
             <View style={{ marginTop: 12 }}>
               {activeWorkoutId ? (
                 <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Btn label={t("log.endWorkout")} onPress={endWorkout} tone="danger" />
+                  <Btn label={t("log.endWorkout")} onPress={() => {
+                    Alert.alert(t("log.confirmEnd"), t("log.confirmEndMsg"), [
+                      { text: t("common.cancel"), style: "cancel" },
+                      { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
+                    ]);
+                  }} tone="danger" />
                   <Btn label={t("templates.save")} onPress={() => { setTemplateName(""); setSaveTemplateOpen(true); }} />
                 </View>
               ) : (
@@ -1382,6 +1403,17 @@ export default function Logg() {
               ))}
             </ScrollView>
           </Card>
+
+          {!activeWorkoutId && (
+            <HintBanner hintKey="log_first_set" icon="play-circle-outline">
+              {t("hint.logFirstSet")}
+            </HintBanner>
+          )}
+          {activeWorkoutId && (
+            <HintBanner hintKey="rest_timer" icon="timer">
+              {t("hint.restTimer")}
+            </HintBanner>
+          )}
 
           <View style={{ gap: 12 }}>
             {renderBlocks.map((block, blockIdx) => {
@@ -1450,7 +1482,7 @@ export default function Logg() {
                   workoutId={activeWorkoutId}
                   exerciseIndex={blockIdx}
                   gymId={activeGymId}
-                  gymEquipment={null}
+                  gymEquipment={activeGymEquipment}
                   nextLabel={nextLabel}
                   onLayout={(e) => {
                     anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;

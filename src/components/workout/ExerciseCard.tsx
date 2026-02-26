@@ -128,8 +128,8 @@ function SetTable({ sets, lastAddedSetId, lastAddedAnim, onEditSet, onDeleteSet 
       >
         <Text style={{ width: 28, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>#</Text>
         <Text style={{ flex: 1, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{wu.unitLabel()}</Text>
-        <Text style={{ width: 44, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>REPS</Text>
-        <Text style={{ width: 48, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>TYPE</Text>
+        <Text style={{ width: 44, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{t("common.reps").toUpperCase()}</Text>
+        <Text style={{ width: 48, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{t("log.type").toUpperCase()}</Text>
         <View style={{ width: 70 }} />
       </View>
       {sets.map((s) => (
@@ -360,7 +360,8 @@ function ExerciseHalf({
               historySessions.map((session) => {
                 const [, mo, da] = session.date.split("-");
                 const dateLabel = `${parseInt(da)}.${parseInt(mo)}`;
-                const best = session.sets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b), session.sets[0]);
+                if (session.sets.length === 0) return null;
+                const best = session.sets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b));
                 const setsLine = session.sets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");
                 const orderDiffers = session.exerciseOrder !== exerciseIndex;
                 return (
@@ -531,19 +532,19 @@ function ExerciseHalf({
         <Text style={{
           color: theme.muted,
           fontFamily: theme.mono,
-          fontSize: 9,
+          fontSize: 10,
           marginTop: 1,
-          opacity: 0.7,
+          opacity: 0.85,
         }}>
           {t("log.perSideHint")}
         </Text>
       ) : null}
-      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9, textAlign: "right", marginTop: 2, opacity: 0.7 }}>
+      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, textAlign: "right", marginTop: 2, opacity: 0.85 }}>
         {t("log.rpeHoldHint")}
       </Text>
 
       {/* RPE helper modal */}
-      <Modal visible={rpeHelperOpen} transparent animationType="fade">
+      <Modal visible={rpeHelperOpen} transparent animationType="fade" onRequestClose={() => setRpeHelperOpen(false)}>
         <Pressable
           onPress={() => setRpeHelperOpen(false)}
           style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", alignItems: "center" }}

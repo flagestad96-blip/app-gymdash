@@ -52,7 +52,7 @@ export const en: TranslationMap = merge(
 
 // Key count assertion — ensures no keys are accidentally lost during splits.
 // If you add/remove keys, update the expected count here.
-const EXPECTED_MIN_KEYS = 619;
+const EXPECTED_MIN_KEYS = 627;
 if (__DEV__) {
   const nbCount = Object.keys(nb).length;
   const enCount = Object.keys(en).length;

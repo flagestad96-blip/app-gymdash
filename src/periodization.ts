@@ -82,7 +82,7 @@ export function isDeloadWeek(config: Periodization): boolean {
  * Calculate the deloaded weight for a given normal weight.
  */
 export function deloadWeight(weight: number, config: Periodization): number {
-  if (!config.enabled || !isDeloadWeek(config)) return weight;
+  if (!isDeloadWeek(config)) return weight;
   return Math.round((weight * config.deloadPercent) / 100 * 2) / 2; // Round to 0.5
 }
 

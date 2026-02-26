@@ -54,7 +54,7 @@ export async function exportFullBackup(): Promise<string> {
   );
   const settings = await db.getAllAsync(`SELECT key, value FROM settings`);
   const programs = await db.getAllAsync(
-    `SELECT id, name, mode, json, created_at, updated_at FROM programs`
+    `SELECT id, name, mode, json, created_at, updated_at, periodization_json FROM programs`
   );
   const programDays = await db.getAllAsync(
     `SELECT id, program_id, day_index, name FROM program_days`
@@ -75,7 +75,7 @@ export async function exportFullBackup(): Promise<string> {
     `SELECT exercise_id, type, value, reps, weight, set_id, date, program_id FROM pr_records`
   );
   const bodyMetrics = await db.getAllAsync(
-    `SELECT date, weight_kg, note FROM body_metrics`
+    `SELECT date, weight_kg, note, photo_uri FROM body_metrics`
   );
   const achievements = await db.getAllAsync(
     `SELECT id, category, name, description, icon, requirement_type, requirement_value, requirement_exercise_id, tier, points, created_at FROM achievements`
@@ -229,7 +229,7 @@ export async function importBackup(
   try {
     await ensureDb();
     const db = getDb();
-    const verb = mode === "fresh" ? "INSERT INTO" : "INSERT OR REPLACE INTO";
+    const verb = mode === "fresh" ? "INSERT INTO" : "INSERT OR IGNORE INTO";
 
     await db.execAsync("BEGIN");
 
@@ -258,17 +258,19 @@ export async function importBackup(
 
     for (const w of workouts) {
       await db.runAsync(
-        `${verb} workouts(id, date, program_mode, day_key, back_status, notes, day_index, started_at, gym_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `${verb} workouts(id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, ended_at, gym_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           w.id,
           w.date,
           w.program_mode,
+          w.program_id ?? null,
           w.day_key,
           w.back_status,
           w.notes ?? null,
           w.day_index ?? null,
           w.started_at ?? null,
+          w.ended_at ?? null,
           w.gym_id ?? null,
         ]
       );
@@ -276,8 +278,8 @@ export async function importBackup(
 
     for (const s of sets) {
       await db.runAsync(
-        `${verb} sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, rest_seconds)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `${verb} sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, notes, rest_seconds)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           s.id,
           s.workout_id,
@@ -288,6 +290,13 @@ export async function importBackup(
           s.rpe ?? null,
           s.created_at,
           s.exercise_id ?? null,
+          s.set_type ?? null,
+          s.is_warmup ?? 0,
+          s.external_load_kg ?? 0,
+          s.bodyweight_kg_used ?? null,
+          s.bodyweight_factor ?? null,
+          s.est_total_load_kg ?? null,
+          s.notes ?? null,
           s.rest_seconds ?? null,
         ]
       );
@@ -299,9 +308,9 @@ export async function importBackup(
 
     for (const p of programs) {
       await db.runAsync(
-        `${verb} programs(id, name, mode, json, created_at, updated_at)
-         VALUES(?, ?, ?, ?, ?, ?)`,
-        [p.id, p.name, p.mode ?? null, p.json, p.created_at, p.updated_at]
+        `${verb} programs(id, name, mode, json, created_at, updated_at, periodization_json)
+         VALUES(?, ?, ?, ?, ?, ?, ?)`,
+        [p.id, p.name, p.mode ?? null, p.json, p.created_at, p.updated_at, p.periodization_json ?? null]
       );
     }
 
@@ -339,9 +348,9 @@ export async function importBackup(
 
     for (const t of exerciseTargets) {
       await db.runAsync(
-        `${verb} exercise_targets(id, program_id, exercise_id, rep_min, rep_max, increment_kg, updated_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?)`,
-        [t.id, t.program_id, t.exercise_id, t.rep_min, t.rep_max, t.increment_kg, t.updated_at]
+        `${verb} exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [t.id, t.program_id, t.exercise_id, t.rep_min, t.rep_max, t.target_sets ?? null, t.increment_kg, t.updated_at, t.auto_progress ?? 1]
       );
     }
 
@@ -364,9 +373,9 @@ export async function importBackup(
 
     for (const bm of bodyMetrics) {
       await db.runAsync(
-        `${verb} body_metrics(date, weight_kg, note)
-         VALUES(?, ?, ?)`,
-        [bm.date, bm.weight_kg, bm.note ?? null]
+        `${verb} body_metrics(date, weight_kg, note, photo_uri)
+         VALUES(?, ?, ?, ?)`,
+        [bm.date, bm.weight_kg, bm.note ?? null, bm.photo_uri ?? null]
       );
     }
 

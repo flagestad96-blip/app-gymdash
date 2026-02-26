@@ -41,14 +41,20 @@ type GymRow = {
   created_at: string;
 };
 
+function safeJsonParse<T>(json: string | null): T | null {
+  if (!json) return null;
+  try { return JSON.parse(json); }
+  catch { return null; }
+}
+
 function rowToGym(row: GymRow): GymLocation {
   return {
     id: row.id,
     name: row.name,
     color: row.color,
     icon: row.icon,
-    availableEquipment: row.available_equipment ? JSON.parse(row.available_equipment) : null,
-    availablePlates: row.available_plates ? JSON.parse(row.available_plates) : null,
+    availableEquipment: safeJsonParse<Equipment[]>(row.available_equipment),
+    availablePlates: safeJsonParse<number[]>(row.available_plates),
     sortIndex: row.sort_index,
     createdAt: row.created_at,
   };
@@ -99,7 +105,9 @@ export function createGym(input: CreateGymInput): GymLocation {
       now,
     ]
   );
-  return getGym(id)!;
+  const gym = getGym(id);
+  if (!gym) throw new Error(`createGym: failed to read back gym ${id}`);
+  return gym;
 }
 
 export function updateGym(id: string, input: UpdateGymInput): GymLocation | null {

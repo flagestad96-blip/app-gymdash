@@ -1957,19 +1957,21 @@ export async function updateCustomExercise(
 ): Promise<void> {
   const { ensureDb, getDb } = require("./db") as typeof import("./db");
   await ensureDb();
-  await getDb().runAsync(
-    `UPDATE custom_exercises SET display_name=?, equipment=?, tags=?, default_increment_kg=?, is_bodyweight=?, bodyweight_factor=?, is_per_side=? WHERE id=?`,
-    [
-      args.displayName,
-      args.equipment,
-      JSON.stringify(args.tags),
-      args.defaultIncrementKg,
-      args.isBodyweight ? 1 : 0,
-      args.bodyweightFactor ?? null,
-      args.isPerSide ? 1 : 0,
-      id,
-    ]
-  );
+  const db = getDb();
+  const cols = [
+    "display_name=?", "equipment=?", "tags=?", "default_increment_kg=?",
+    "is_bodyweight=?", "bodyweight_factor=?",
+  ];
+  const vals: (string | number | null)[] = [
+    args.displayName, args.equipment, JSON.stringify(args.tags),
+    args.defaultIncrementKg, args.isBodyweight ? 1 : 0, args.bodyweightFactor ?? null,
+  ];
+  if (args.isPerSide !== undefined) {
+    cols.push("is_per_side=?");
+    vals.push(args.isPerSide ? 1 : 0);
+  }
+  vals.push(id);
+  await db.runAsync(`UPDATE custom_exercises SET ${cols.join(", ")} WHERE id=?`, vals);
   await loadCustomExercises();
 }
 

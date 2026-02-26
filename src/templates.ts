@@ -75,8 +75,9 @@ export async function saveWorkoutAsTemplate(
 
   // Get distinct exercises from the workout sets (in order)
   const rows = await db.getAllAsync<{ exercise_id: string | null }>(
-    `SELECT DISTINCT exercise_id FROM sets
-     WHERE workout_id = ? AND exercise_id IS NOT NULL
+    `SELECT exercise_id FROM sets
+     WHERE workout_id = ? AND exercise_id IS NOT NULL AND is_warmup IS NOT 1
+     GROUP BY exercise_id
      ORDER BY MIN(set_index)`,
     [workoutId]
   );

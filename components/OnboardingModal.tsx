@@ -3,11 +3,13 @@ import { Animated, Modal, Pressable, Text, View, ScrollView } from "react-native
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../src/theme";
 import { useI18n } from "../src/i18n";
+import { useWeightUnit } from "../src/units";
 
 type Slide = {
   titleKey: string;
   bodyKey: string;
   icon: keyof typeof MaterialIcons.glyphMap;
+  interactive?: "unit-picker";
 };
 
 const SLIDES: Slide[] = [
@@ -17,54 +19,10 @@ const SLIDES: Slide[] = [
     icon: "fitness-center",
   },
   {
-    titleKey: "onboarding.program.title",
-    bodyKey: "onboarding.program.body",
-    icon: "event-available",
-  },
-  {
-    titleKey: "onboarding.logging.title",
-    bodyKey: "onboarding.logging.body",
-    icon: "edit",
-  },
-  {
-    titleKey: "onboarding.exerciseNotes.title",
-    bodyKey: "onboarding.exerciseNotes.body",
-    icon: "lightbulb-outline",
-  },
-  {
-    titleKey: "onboarding.rest.title",
-    bodyKey: "onboarding.rest.body",
-    icon: "timer",
-  },
-  {
-    titleKey: "onboarding.alternatives.title",
-    bodyKey: "onboarding.alternatives.body",
-    icon: "swap-horiz",
-  },
-  {
-    titleKey: "onboarding.body.title",
-    bodyKey: "onboarding.body.body",
-    icon: "monitor-weight",
-  },
-  {
-    titleKey: "onboarding.analysis.title",
-    bodyKey: "onboarding.analysis.body",
-    icon: "insights",
-  },
-  {
-    titleKey: "onboarding.history.title",
-    bodyKey: "onboarding.history.body",
-    icon: "history",
-  },
-  {
-    titleKey: "onboarding.achievements.title",
-    bodyKey: "onboarding.achievements.body",
-    icon: "emoji-events",
-  },
-  {
-    titleKey: "onboarding.backup.title",
-    bodyKey: "onboarding.backup.body",
-    icon: "cloud-upload",
+    titleKey: "onboarding.setup.title",
+    bodyKey: "onboarding.setup.body",
+    icon: "tune",
+    interactive: "unit-picker",
   },
   {
     titleKey: "onboarding.ready.title",
@@ -84,6 +42,7 @@ export default function OnboardingModal({
 }) {
   const theme = useTheme();
   const { t } = useI18n();
+  const { unit, setUnit } = useWeightUnit();
   const [step, setStep] = useState(0);
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -91,11 +50,13 @@ export default function OnboardingModal({
     if (!visible) return;
     setStep(0);
     opacity.setValue(0);
-    Animated.timing(opacity, {
+    const anim = Animated.timing(opacity, {
       toValue: 1,
       duration: 250,
       useNativeDriver: true,
-    }).start();
+    });
+    anim.start();
+    return () => { anim.stop(); };
   }, [visible, opacity]);
 
   const current = SLIDES[step];
@@ -143,27 +104,47 @@ export default function OnboardingModal({
             <Text style={{ color: theme.muted, textAlign: "center", lineHeight: 22, fontSize: 14 }}>
               {t(current.bodyKey)}
             </Text>
+
+            {/* Interactive unit picker on slide 2 */}
+            {current.interactive === "unit-picker" && (
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 16 }}>
+                {(["kg", "lbs"] as const).map((u) => {
+                  const selected = unit === u;
+                  return (
+                    <Pressable
+                      key={u}
+                      onPress={() => setUnit(u)}
+                      style={{
+                        flex: 1,
+                        maxWidth: 160,
+                        paddingVertical: 14,
+                        borderRadius: theme.radius.md,
+                        borderWidth: 2,
+                        borderColor: selected ? theme.accent : theme.glassBorder,
+                        backgroundColor: selected ? theme.accent + "18" : theme.glass,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: selected ? theme.accent : theme.muted,
+                          fontFamily: theme.fontFamily.semibold,
+                          fontSize: 15,
+                        }}
+                      >
+                        {t(u === "kg" ? "onboarding.setup.kg" : "onboarding.setup.lbs")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </ScrollView>
 
           {/* Step counter */}
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, textAlign: "center" }}>
             {step + 1} / {SLIDES.length}
           </Text>
-
-          {/* Progress dots */}
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: 5 }}>
-            {SLIDES.map((_, i) => (
-              <View
-                key={`dot_${i}`}
-                style={{
-                  width: i === step ? 18 : 8,
-                  height: 6,
-                  borderRadius: 999,
-                  backgroundColor: i === step ? theme.accent : theme.glassBorder,
-                }}
-              />
-            ))}
-          </View>
 
           {/* Navigation */}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -181,7 +162,7 @@ export default function OnboardingModal({
 
             {!isLast ? (
               <Pressable
-                onPress={() => { onClose?.() ?? onDone(); }}
+                onPress={() => { (onClose ?? onDone)(); }}
                 style={{ paddingVertical: 8, paddingHorizontal: 12 }}
               >
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("onboarding.skip")}</Text>

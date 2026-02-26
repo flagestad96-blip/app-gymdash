@@ -1,5 +1,5 @@
 ﻿// app/(tabs)/analysis.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, ScrollView, Modal, FlatList, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
@@ -22,6 +22,7 @@ import { epley1RM } from "../../src/metrics";
 import { parseTimeMs } from "../../src/format";
 import { generateExerciseInsight } from "../../src/analysisInsights";
 import TrainingStatusCard from "../../src/components/TrainingStatusCard";
+import HintBanner from "../../src/components/HintBanner";
 import { computeTrainingStatus, type TrainingStatusResult } from "../../src/trainingStatus";
 import { toggleManualDeload } from "../../src/periodization";
 
@@ -79,6 +80,11 @@ function addDays(d: Date, n: number) {
   const next = new Date(d);
   next.setDate(next.getDate() + n);
   return next;
+}
+
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function weekStartKey(d: Date) {
@@ -155,6 +161,8 @@ export default function Analysis() {
   const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
   const [analysisProgramId, setAnalysisProgramId] = useState<string | null>(null);
   const [deloadToast, setDeloadToast] = useState(false);
+  const deloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (deloadTimerRef.current) clearTimeout(deloadTimerRef.current); }, []);
 
   useEffect(() => {
     // Skip loading screen if already initialized (tab re-focus)
@@ -536,18 +544,15 @@ export default function Analysis() {
       return key === selectedExerciseKey;
     });
 
-    // 4-week split: first 2 weeks vs last 2 weeks
-    const d14 = new Date(); d14.setDate(d14.getDate() - 14);
-    const d28 = new Date(); d28.setDate(d28.getDate() - 28);
-    const iso14 = isoDateOnly(d14);
-    const iso28 = isoDateOnly(d28);
+    // Split selected range in half: first half vs second half
+    const totalDays = daysBack(range);
+    const halfDays = Math.floor(totalDays / 2);
+    const dMid = new Date(); dMid.setDate(dMid.getDate() - halfDays);
+    const isoMid = isoDateOnly(dMid);
 
-    const recent = filtered.filter((s) => s.workout_date >= iso28);
-
-    // Count distinct sessions within the 28-day window (not the full range)
-    const sessionCount = new Set(recent.map((s) => s.workout_id)).size;
-    const firstHalf = recent.filter((s) => s.workout_date < iso14);
-    const secondHalf = recent.filter((s) => s.workout_date >= iso14);
+    const sessionCount = new Set(filtered.map((s) => s.workout_id)).size;
+    const firstHalf = filtered.filter((s) => s.workout_date < isoMid);
+    const secondHalf = filtered.filter((s) => s.workout_date >= isoMid);
 
     // e1RM % change
     let e1rmPctChange: number | null = null;
@@ -576,7 +581,7 @@ export default function Analysis() {
     }
 
     return { e1rmPctChange, rpeDelta, sessionCount };
-  }, [sets, selectedExerciseKey]);
+  }, [sets, selectedExerciseKey, range]);
 
   const restStats = useMemo(() => {
     const allRest = sets.filter(s => s.rest_seconds != null && s.rest_seconds > 0);
@@ -658,7 +663,7 @@ export default function Analysis() {
     if (range === "month") {
       const weekMap: Record<string, number> = {};
       for (const day of Object.keys(volumeByDay)) {
-        const wk = weekStartKey(new Date(day));
+        const wk = weekStartKey(parseLocalDate(day));
         weekMap[wk] = (weekMap[wk] ?? 0) + (volumeByDay[day] ?? 0);
       }
       const weeks = Object.keys(weekMap).sort();
@@ -670,7 +675,7 @@ export default function Analysis() {
 
     const monthMap: Record<string, number> = {};
     for (const day of Object.keys(volumeByDay)) {
-      const mk = monthKey(new Date(day));
+      const mk = monthKey(parseLocalDate(day));
       monthMap[mk] = (monthMap[mk] ?? 0) + (volumeByDay[day] ?? 0);
     }
     const months = Object.keys(monthMap).sort();
@@ -692,7 +697,7 @@ export default function Analysis() {
     const byWeek: Record<string, Record<string, number>> = {};
     for (const row of sets) {
 
-      const wk = weekStartKey(new Date(row.workout_date));
+      const wk = weekStartKey(parseLocalDate(row.workout_date));
       if (!byWeek[wk]) byWeek[wk] = {};
       const groups = primaryMuscleGroups(row.exercise_id, row.exercise_name);
       for (const g of groups) {
@@ -732,7 +737,7 @@ export default function Analysis() {
 
     const perWeek: Record<string, { count: number; totalMin: number }> = {};
     for (const w of workouts) {
-      const wk = weekStartKey(new Date(w.date));
+      const wk = weekStartKey(parseLocalDate(w.date));
       if (!perWeek[wk]) perWeek[wk] = { count: 0, totalMin: 0 };
       perWeek[wk].count += 1;
 
@@ -1007,6 +1012,18 @@ export default function Analysis() {
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
         <TopBar title={t("analysis.title")} subtitle={t("analysis.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
 
+        <HintBanner hintKey="analysis_intro" icon="insights">
+          {t("hint.analysisIntro")}
+        </HintBanner>
+
+        {sets.length === 0 && workouts.length === 0 ? (
+          <Card>
+            <Text style={{ color: theme.muted, textAlign: "center", paddingVertical: theme.space.md }}>
+              {t("analysis.emptyState")}
+            </Text>
+          </Card>
+        ) : null}
+
         {/* ── Program Overview Hero ─────────────────────────────── */}
         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
           {t("analysis.overview")}
@@ -1024,7 +1041,8 @@ export default function Analysis() {
               const freshStatus = await computeTrainingStatus(programId);
               setTrainingStatus(freshStatus);
               setDeloadToast(true);
-              setTimeout(() => setDeloadToast(false), 3000);
+              if (deloadTimerRef.current) clearTimeout(deloadTimerRef.current);
+              deloadTimerRef.current = setTimeout(() => setDeloadToast(false), 3000);
             } catch {}
           }}
         />
@@ -1047,7 +1065,7 @@ export default function Analysis() {
           <Text style={{ color: theme.muted }}>
             {t("analysis.e1rmNote")}
           </Text>
-          <LineChart values={strengthIndexSeries.values.map(v => wu.toDisplay(v))} labels={strengthIndexSeries.labels} unit={wu.unitLabel()} />
+          <LineChart values={strengthIndexSeries.values} labels={strengthIndexSeries.labels} unit="%" />
         </Card>
 
         <Card title={t("analysis.volume")}>
@@ -1060,7 +1078,7 @@ export default function Analysis() {
           </Text>
           <LineChart values={volumeSeries.values.map(v => wu.toDisplay(v))} labels={volumeSeries.labels} unit={wu.unitLabel()} />
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-            Totalt: {wu.toDisplay(volumeSeries.values.reduce((a, b) => a + b, 0)).toFixed(0)} {wu.unitLabel().toLowerCase()}-reps
+            {t("analysis.total")} {wu.toDisplay(volumeSeries.values.reduce((a, b) => a + b, 0)).toFixed(0)} {wu.unitLabel().toLowerCase()}-reps
           </Text>
         </Card>
 
@@ -1276,7 +1294,7 @@ export default function Analysis() {
               ) : null}
               {prStats.volume ? (
                 <Text style={{ color: theme.text }}>
-                  {t("analysis.prVolume")}: {prStats.volume.value.toFixed(1)}
+                  {t("analysis.prVolume")}: {wu.formatWeight(prStats.volume.value)}
                   {prStats.volume.date ? ` (${prStats.volume.date})` : ""}
                 </Text>
               ) : null}

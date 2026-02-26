@@ -156,6 +156,8 @@ const log: TranslationMap = {
   "templates.namePlaceholder": "Navn p\u00e5 mal...",
   "templates.savedMsg": "Malen ble lagret.",
   "templates.saveFailed": "Kunne ikke lagre mal.",
+  "log.type": "Type",
+  "log.endAndSwitch": "Avslutt og bytt",
 };
 
 export default log;

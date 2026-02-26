@@ -93,6 +93,15 @@ export default function RestSettingsModal({
   const [newPresetText, setNewPresetText] = useState("");
   const [exerciseRestText, setExerciseRestText] = useState("");
 
+  // Reset local state when modal opens with a different exercise
+  React.useEffect(() => {
+    if (visible) {
+      setAddingPreset(false);
+      setNewPresetText("");
+      setExerciseRestText("");
+    }
+  }, [visible, focusedExerciseName]);
+
   const sortedPresets = [...presets].sort((a, b) => a - b);
 
   function handleAddPreset() {

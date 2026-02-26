@@ -6,8 +6,9 @@ import { ensureDb, getDb, formatDuration } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, IconButton, Card, ListRow, Btn } from "../../src/ui";
-import { displayNameFor, tagsFor } from "../../src/exerciseLibrary";
+import { displayNameFor, tagsFor, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
+import { SkeletonCard } from "../../src/components/Skeleton";
 import { useWeightUnit } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
 import { epley1RM } from "../../src/metrics";
@@ -57,6 +58,9 @@ const DAY_MARK_COLORS: Record<DayMark, string> = {
   sick: "#F87171",
 };
 
+// Module-level flag - persists across component remounts (tab switches)
+let _calendarTabInitialized = false;
+
 function classifyWorkout(exerciseIds: string[]): WorkoutType {
   let push = 0, pull = 0, legs = 0;
   for (const id of exerciseIds) {
@@ -105,6 +109,7 @@ export default function CalendarScreen() {
     else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
   }, [navigation]);
 
+  const [ready, setReady] = useState(_calendarTabInitialized);
   const [workouts, setWorkouts] = useState<WorkoutRow[]>([]);
   const [setsByWorkout, setSetsByWorkout] = useState<Record<string, number>>({});
   const [monthOffset, setMonthOffset] = useState(0);
@@ -214,7 +219,17 @@ export default function CalendarScreen() {
     } catch {}
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    if (_calendarTabInitialized) {
+      setReady(true);
+      loadData().catch(() => {});
+      return;
+    }
+    loadData().finally(() => {
+      setReady(true);
+      _calendarTabInitialized = true;
+    });
+  }, [loadData]);
 
   const setDayMark = useCallback(async (date: string, status: DayMark | null) => {
     try {
@@ -312,7 +327,10 @@ export default function CalendarScreen() {
   // Summary stats
   const detailSummary = useMemo(() => {
     if (!detailSets.length) return { totalSets: 0, totalVolume: 0, exercises: 0, duration: "" };
-    const totalVolume = detailSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
+    const totalVolume = detailSets.reduce((sum, s) => {
+      const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
+      return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
+    }, 0);
     const lastSet = detailSets[detailSets.length - 1];
     const endRef = detailWorkout?.ended_at || lastSet?.created_at;
     return {
@@ -377,6 +395,18 @@ export default function CalendarScreen() {
     Alert.alert(t("calendar.markDay"), t("calendar.markDayMsg"), options);
   }
 
+  if (!ready) {
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
+          <TopBar title={t("calendar.title")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+          <SkeletonCard lines={4} />
+          <SkeletonCard lines={3} />
+        </ScrollView>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 80 }}>
@@ -394,7 +424,7 @@ export default function CalendarScreen() {
             {(["push", "pull", "legs", "other"] as WorkoutType[]).map((wt) => (
               <View key={wt} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: WORKOUT_TYPE_COLORS[wt] }} />
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9 }}>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
                   {t(`calendar.type.${wt}`)}
                 </Text>
               </View>
@@ -457,9 +487,9 @@ export default function CalendarScreen() {
                     <Text style={{
                       color: DAY_MARK_COLORS[mark],
                       fontFamily: theme.mono,
-                      fontSize: 7,
+                      fontSize: 10,
                       marginTop: 3,
-                      lineHeight: 8,
+                      lineHeight: 12,
                     }}>
                       {DAY_MARK_LABELS[mark].icon}
                     </Text>
@@ -469,6 +499,27 @@ export default function CalendarScreen() {
             })}
           </View>
         </Card>
+
+        {Object.keys(dayMarks).length > 0 ? (
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, paddingVertical: 4 }}>
+            {(["rest", "skipped", "sick"] as DayMark[]).map((mark) => (
+              <View key={mark} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{
+                  width: 16, height: 16, borderRadius: 4,
+                  backgroundColor: DAY_MARK_COLORS[mark],
+                  alignItems: "center", justifyContent: "center",
+                }}>
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>
+                    {DAY_MARK_LABELS[mark].icon}
+                  </Text>
+                </View>
+                <Text style={{ color: theme.muted, fontSize: theme.fontSize.xs, fontFamily: theme.mono }}>
+                  {t(`calendar.legend${mark.charAt(0).toUpperCase() + mark.slice(1)}` as any)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <Card title={t("calendar.workouts")}>
           {!selectedDate ? (
@@ -544,7 +595,7 @@ export default function CalendarScreen() {
                   borderColor: theme.glassBorder,
                   gap: 4,
                 }}>
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>
                     {t("calendar.daySummary")}
                   </Text>
                   {selectedSummary.map((ex) => (
@@ -748,7 +799,12 @@ function BtnSmall({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={theme.hitSlop.sm}
       style={{
+        minWidth: 44,
+        minHeight: 44,
+        alignItems: "center",
+        justifyContent: "center",
         borderColor: theme.glassBorder,
         borderWidth: 1,
         borderRadius: theme.radius.md,

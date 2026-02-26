@@ -4,8 +4,8 @@ export function e1rmEpley(weight: number, reps: number) {
 }
 
 export function epley1RM(weight: number, reps: number) {
-  const r = Math.max(1, reps);
-  return weight * (1 + r / 30);
+  if (reps <= 1) return weight;
+  return weight * (1 + reps / 30);
 }
 
 export function round1(n: number) {
