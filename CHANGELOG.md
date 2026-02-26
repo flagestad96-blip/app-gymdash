@@ -1,5 +1,54 @@
 # Gymdash Changelog
 
+## v0.9.5-beta — 2026-02-26
+
+### Features
+- **Exercise goals modal**: Set, view, and delete per-exercise goals directly from log screen exercise cards using the flag icon. Goals integrate with training analysis for progress tracking.
+
+### Improvements
+- **Drawer menu cleanup**: Removed duplicate "Backup / Import" entry that redundantly pointed to the same Settings page, streamlining navigation.
+- **Console cleanup**: Removed unnecessary console.warn statements from log.tsx for cleaner debugging output.
+
+### Bug Fixes
+- **Training intelligence enhancements**: Multiple stability fixes from previous session:
+  - Replaced 7 silent `catch {}` blocks with proper console warnings to prevent false green status indicators
+  - Added `sessionsInWindow` field to TrainingStatusResult for accurate session counting (replaces approximate `weeksOfData * 2` formula)
+  - Filter warmup-only sessions from session count queries to prevent inflation of real training volume
+  - Fixed analysisInsights fallthrough logic: flat e1RM + flat RPE now correctly returns plateau plateau instead of false "steady gains"
+  - Session count in insight calculations now uses 28-day window instead of full history
+  - Date filtering in analysis queries now uses workout date instead of set creation date to avoid midnight boundary mismatches
+  - RPE distribution filtering now excludes sub-6 RPE values to prevent data pollution in Light (6-7) bucket
+  - Replaced unsafe type override `(theme as any).secondary` with properly typed `theme.warn` in RPE histogram
+
+---
+
+## v1.5.0 — 2026-02-24
+
+### Features
+- **Visual overhaul**: Complete UI refresh with enhanced glassmorphism effects and improved visual hierarchy.
+- **Onboarding redesign**: 10-step guided introduction with modern layout and skip option.
+
+### Improvements
+- **UX polish**:
+  - Enhanced focus states and card interactions
+  - Better visual feedback for user actions
+  - Improved accessibility across all screens
+- **Bug audit fixes**: Multiple minor fixes from comprehensive UX review
+
+---
+
+## v1.4.0 — 2026-02-22
+
+### Features
+- **Multi-gym support**: Equipment awareness with gym-specific configuration.
+- **Gym-specific plates**: Customize plate loading per gym location.
+- **Backup/restore enhancements**: Full gym location data persistence.
+
+### Improvements
+- **Equipment management**: Better integration of equipment awareness across the app.
+
+---
+
 ## v1.3.0 — 2026-02-17
 
 ### Bug Fixes

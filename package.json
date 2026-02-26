@@ -1,7 +1,7 @@
 {
   "name": "gymdash",
   "main": "expo-router/entry",
-  "version": "0.9.0-beta",
+  "version": "0.9.5-beta",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
