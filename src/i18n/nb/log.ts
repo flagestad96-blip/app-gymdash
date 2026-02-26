@@ -158,6 +158,11 @@ const log: TranslationMap = {
   "templates.saveFailed": "Kunne ikke lagre mal.",
   "log.type": "Type",
   "log.endAndSwitch": "Avslutt og bytt",
+  "log.goalTitle": "Øvelsesmål",
+  "log.activeGoals": "Aktive mål",
+  "log.noActiveGoals": "Ingen mål satt",
+  "log.goalProgress": "{current} / {target}",
+  "log.addNewGoal": "Legg til nytt mål",
 };
 
 export default log;

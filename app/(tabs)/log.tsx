@@ -109,7 +109,6 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   let timer: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<null>((resolve) => {
     timer = setTimeout(() => {
-      console.warn(`[loadSession] ${label} timed out after ${ms}ms`);
       resolve(null);
     }, ms);
   });
@@ -117,7 +116,6 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
     const result = await Promise.race([promise, timeout]);
     return result as T | null;
   } catch (err) {
-    console.warn(`[loadSession] ${label} failed`, err);
     return null;
   } finally {
     if (timer) clearTimeout(timer);
@@ -173,6 +171,11 @@ export default function Logg() {
   const [undoSet, setUndoSet] = useState<{ row: SetRow; exerciseId: string; prSetId?: string } | null>(null);
   const [undoVisible, setUndoVisible] = useState(false);
   const [plateCalcExId, setPlateCalcExId] = useState<string | null>(null);
+  const [goalExId, setGoalExId] = useState<string | null>(null);
+  const [goalType, setGoalType] = useState<"weight" | "volume" | "reps">("weight");
+  const [goalTarget, setGoalTarget] = useState("");
+  const [goalExGoals, setGoalExGoals] = useState<{ id: string; goalType: string; targetValue: number; currentValue: number; achievedAt: string | null }[]>([]);
+  const [goalLabels, setGoalLabels] = useState<Record<string, string>>({});
 
   const [editSetOpen, setEditSetOpen] = useState(false);
   const [editSet, setEditSet] = useState<SetRow | null>(null);
@@ -363,7 +366,6 @@ export default function Logg() {
         setPeriodization(null);
       }
     } catch (err) {
-      console.warn("[loadSession] failed, using fallback program", err);
       setProgramMode("normal");
       setProgram(ProgramStore.DEFAULT_STANDARD_PROGRAM);
       setAlternatives({});
@@ -383,7 +385,7 @@ export default function Logg() {
       return;
     }
     loadSession()
-      .catch((err) => console.warn("[loadSession] unhandled", err))
+      .catch(() => {})
       .finally(() => {
         setReady(true);
         _logTabInitialized = true;
@@ -464,6 +466,29 @@ export default function Logg() {
   // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
 
   useEffect(() => { setSupersetNext({}); }, [activeDayIndex, program?.id, programMode]);
+
+  // Load goal labels for exercises in current day
+  useEffect(() => {
+    const pid = program?.id;
+    if (!pid || exerciseIds.length === 0) { setGoalLabels({}); return; }
+    let cancelled = false;
+    import("../../src/goals").then(async ({ getGoalsForExercise }) => {
+      const labels: Record<string, string> = {};
+      for (const exId of exerciseIds) {
+        try {
+          const goals = await getGoalsForExercise(exId, pid);
+          const active = goals.filter(g => !g.achievedAt);
+          if (active.length > 0) {
+            const g = active[0];
+            labels[exId] = `${g.goalType}: ${g.targetValue}`;
+          }
+        } catch {}
+      }
+      if (!cancelled) setGoalLabels(labels);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [program?.id, exerciseIds]);
+
   // Only clear alternatives when NOT in an active workout - during a session, alternatives should persist
   const prevDayRef = useRef<{ day: number; prog: string | null }>({ day: activeDayIndex, prog: program?.id ?? null });
   useEffect(() => {
@@ -1230,9 +1255,35 @@ export default function Logg() {
       else deleteNote(exId).catch(() => {});
     },
     onOpenPlateCalc: (exId: string) => setPlateCalcExId(exId),
+    onSetGoal: (exId: string) => {
+      setGoalExId(exId);
+      setGoalType("weight");
+      setGoalTarget("");
+      setGoalExGoals([]); // Clear stale data before loading
+      // Lazy-load existing goals for this exercise
+      const pid = program?.id;
+      if (pid) {
+        import("../../src/goals").then(async ({ getGoalsForExercise, getCurrentValueForGoal }) => {
+          try {
+            const goals = await getGoalsForExercise(exId, pid);
+            const active = goals.filter(g => !g.achievedAt);
+            const withProgress = await Promise.all(
+              active.map(async (g) => ({
+                id: g.id,
+                goalType: g.goalType,
+                targetValue: g.targetValue,
+                currentValue: await getCurrentValueForGoal(g),
+                achievedAt: g.achievedAt,
+              }))
+            );
+            setGoalExGoals(withProgress);
+          } catch { setGoalExGoals([]); }
+        });
+      } else { setGoalExGoals([]); }
+    },
   }), [setInput, applyWeightStep, applyLastSet, addSetForExercise, addSetMultiple,
        openEditSet, deleteSet, focusExercise, restTimer, openAltPicker,
-       handleSetAlternativeAsDefault, exerciseNotes]);
+       handleSetAlternativeAsDefault, exerciseNotes, program?.id]);
 
   const activeGymEquipment = useMemo(() => {
     if (!activeGymId) return null;
@@ -1440,6 +1491,7 @@ export default function Logg() {
                     exerciseIndex={blockIdx}
                     gymId={activeGymId}
                     gymEquipment={activeGymEquipment}
+                    activeGoalLabel={goalLabels[exId]}
                     onLayout={(e) => {
                       anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                       anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
@@ -1483,6 +1535,8 @@ export default function Logg() {
                   exerciseIndex={blockIdx}
                   gymId={activeGymId}
                   gymEquipment={activeGymEquipment}
+                  activeGoalLabelA={goalLabels[block.a]}
+                  activeGoalLabelB={goalLabels[block.b]}
                   nextLabel={nextLabel}
                   onLayout={(e) => {
                     anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
@@ -1596,6 +1650,165 @@ export default function Logg() {
         exerciseId={plateCalcExId}
         gymId={activeGymId}
       />
+
+      {/* Goal Modal */}
+      <Modal visible={goalExId !== null} animationType="fade" transparent onRequestClose={() => { setGoalExId(null); setGoalExGoals([]); }}>
+        <Pressable
+          onPress={() => { setGoalExId(null); setGoalTarget(""); setGoalExGoals([]); }}
+          style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "center" }}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{
+              backgroundColor: theme.modalGlass,
+              borderColor: theme.glassBorder,
+              borderWidth: 1,
+              borderRadius: theme.radius.xl,
+              padding: 20,
+              gap: 16,
+              shadowColor: theme.shadow.lg.color,
+              shadowOpacity: theme.shadow.lg.opacity,
+              shadowRadius: theme.shadow.lg.radius,
+              shadowOffset: theme.shadow.lg.offset,
+            }}
+          >
+            <Text style={{ color: theme.text, fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.bold }}>
+              {t("log.goalTitle")}
+            </Text>
+            <Text style={{ color: theme.text, fontSize: theme.fontSize.md }}>{goalExId ? displayNameFor(goalExId) : ""}</Text>
+
+            {/* Existing goals */}
+            {(() => {
+              const activeGoals = goalExGoals.filter(g => !g.achievedAt);
+              if (activeGoals.length === 0) return (
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.noActiveGoals")}</Text>
+              );
+              return (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.activeGoals")}</Text>
+                  {activeGoals.map((goal) => {
+                    const progress = goal.targetValue > 0 ? Math.min(100, (goal.currentValue / goal.targetValue) * 100) : 0;
+                    const isReps = goal.goalType === "reps";
+                    return (
+                      <View key={goal.id} style={{ gap: 4 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13 }}>
+                            {t(`analysis.goalType.${goal.goalType}`)}
+                          </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                              {isReps ? `${goal.currentValue}` : formatWeight(wu.toDisplay(goal.currentValue))} / {isReps ? `${goal.targetValue}` : formatWeight(wu.toDisplay(goal.targetValue))}
+                            </Text>
+                            <Pressable onPress={async () => {
+                              try {
+                                const { deleteGoal } = await import("../../src/goals");
+                                await deleteGoal(goal.id);
+                                setGoalExGoals((prev) => prev.filter((g) => g.id !== goal.id));
+                                if (goalExId) setGoalLabels((prev) => { const next = { ...prev }; delete next[goalExId]; return next; });
+                              } catch {
+                                Alert.alert(t("common.error"), t("log.couldNotDelete"));
+                              }
+                            }}>
+                              <MaterialIcons name="close" size={16} color={theme.muted} />
+                            </Pressable>
+                          </View>
+                        </View>
+                        <View style={{ height: 4, borderRadius: 2, backgroundColor: theme.glass, overflow: "hidden" }}>
+                          <View style={{ height: 4, borderRadius: 2, width: `${Math.round(progress)}%` as any, backgroundColor: progress >= 100 ? theme.success : theme.accent }} />
+                        </View>
+                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                          {progress >= 100 ? t("analysis.goalAchieved") : `${Math.round(progress)}%`}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })()}
+
+            {/* Add new goal */}
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.addNewGoal")}</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["weight", "volume", "reps"] as const).map((gt) => (
+                  <Pressable
+                    key={gt}
+                    onPress={() => setGoalType(gt)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      alignItems: "center",
+                      borderRadius: theme.radius.lg,
+                      borderWidth: 1,
+                      borderColor: goalType === gt ? theme.accent : theme.glassBorder,
+                      backgroundColor: goalType === gt
+                        ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                        : theme.glass,
+                    }}
+                  >
+                    <Text style={{ color: goalType === gt ? theme.accent : theme.text, fontFamily: theme.fontFamily.medium, fontSize: 13 }}>
+                      {t(`analysis.goalType.${gt}`)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("analysis.targetValue")}</Text>
+              <TextField
+                value={goalTarget}
+                onChangeText={setGoalTarget}
+                keyboardType="numeric"
+                placeholder={goalType === "reps" ? "12" : "100"}
+                placeholderTextColor={theme.muted}
+                style={{
+                  color: theme.text,
+                  backgroundColor: theme.glass,
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: theme.radius.lg,
+                  padding: 16,
+                  fontSize: 28,
+                  fontFamily: theme.mono,
+                  textAlign: "center",
+                }}
+              />
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <Pressable
+                onPress={() => { setGoalExId(null); setGoalTarget(""); setGoalExGoals([]); }}
+                style={{ flex: 1, paddingVertical: 14, alignItems: "center", borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.glassBorder, backgroundColor: theme.glass }}
+              >
+                <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium }}>{t("common.cancel")}</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  const target = parseFloat(goalTarget);
+                  if (!target || target <= 0) { Alert.alert(t("common.error"), t("analysis.invalidGoalValue")); return; }
+                  const programId = program?.id;
+                  if (!programId || !goalExId) return;
+                  try {
+                    const { createGoal } = await import("../../src/goals");
+                    const targetStore = goalType !== "reps" ? wu.toKg(target) : target;
+                    await createGoal(goalExId, goalType, targetStore, programId);
+                    setGoalLabels((prev) => ({ ...prev, [goalExId]: `${goalType}: ${targetStore}` }));
+                    setGoalExId(null);
+                    setGoalTarget("");
+                    setGoalExGoals([]);
+                  } catch {
+                    Alert.alert(t("common.error"), t("analysis.invalidGoalValue"));
+                  }
+                }}
+                style={{ flex: 1, paddingVertical: 14, alignItems: "center", borderRadius: theme.radius.lg, backgroundColor: theme.accent }}
+              >
+                <Text style={{ color: "#fff", fontFamily: theme.fontFamily.bold }}>{t("common.save")}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Undo Toast */}
       <UndoToast

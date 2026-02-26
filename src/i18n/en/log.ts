@@ -158,6 +158,11 @@ const log: TranslationMap = {
   "templates.saveFailed": "Could not save template.",
   "log.type": "Type",
   "log.endAndSwitch": "End & Switch",
+  "log.goalTitle": "Exercise Goal",
+  "log.activeGoals": "Active goals",
+  "log.noActiveGoals": "No goals set",
+  "log.goalProgress": "{current} / {target}",
+  "log.addNewGoal": "Add new goal",
 };
 
 export default log;

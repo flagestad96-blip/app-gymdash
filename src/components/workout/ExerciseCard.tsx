@@ -176,11 +176,13 @@ type ExerciseHalfProps = {
   onSetAsDefault?: (baseExId: string, newDefaultExId: string) => void;
   onExerciseNoteChange: (exId: string, note: string) => void;
   onExerciseNoteBlur: (exId: string) => void;
+  onSetGoal: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
   gymEquipment?: Set<Equipment> | null;
+  activeGoalLabel?: string;
 };
 
 function ExerciseHalf({
@@ -211,11 +213,13 @@ function ExerciseHalf({
   onSetAsDefault,
   onExerciseNoteChange,
   onExerciseNoteBlur,
+  onSetGoal,
   onOpenPlateCalc,
   workoutId,
   exerciseIndex,
   gymId,
   gymEquipment,
+  activeGoalLabel,
 }: ExerciseHalfProps) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -260,6 +264,17 @@ function ExerciseHalf({
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
             ) : null; })()}
             <BackImpactDot exerciseId={exId} />
+            <Pressable
+              onPress={() => onSetGoal(exId)}
+              hitSlop={8}
+            >
+              <MaterialIcons
+                name="flag"
+                size={16}
+                color={activeGoalLabel ? theme.accent : theme.muted}
+                style={{ opacity: activeGoalLabel ? 1 : 0.4 }}
+              />
+            </Pressable>
             <Pressable
               onPress={() => setNoteExpanded((p) => !p)}
               onLongPress={() => setNoteExpanded(true)}
@@ -330,6 +345,11 @@ function ExerciseHalf({
         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
           {t("log.target", { sets: target.targetSets, repMin: target.repMin, repMax: target.repMax, inc: formatWeight(wu.toDisplay(target.incrementKg)) })}
         </Text>
+        {activeGoalLabel ? (
+          <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+            {activeGoalLabel}
+          </Text>
+        ) : null}
         {lastSet ? (
           <>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -659,6 +679,7 @@ export type ExerciseCardCallbacks = {
   onExerciseNoteChange: (exId: string, note: string) => void;
   onExerciseNoteBlur: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
+  onSetGoal: (exId: string) => void;
 };
 
 // ── Single exercise card ──
@@ -683,6 +704,7 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   exerciseIndex: number;
   gymId?: string | null;
   gymEquipment?: Set<Equipment> | null;
+  activeGoalLabel?: string;
 };
 
 function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boolean }) {
@@ -749,11 +771,13 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onSetAsDefault={props.onSetAsDefault}
         onExerciseNoteChange={props.onExerciseNoteChange}
         onExerciseNoteBlur={props.onExerciseNoteBlur}
+        onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
         workoutId={props.workoutId}
         exerciseIndex={props.exerciseIndex}
         gymId={props.gymId}
         gymEquipment={props.gymEquipment}
+        activeGoalLabel={props.activeGoalLabel}
       />
     </Pressable>
     </View>
@@ -794,6 +818,8 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   exerciseIndex: number;
   gymId?: string | null;
   gymEquipment?: Set<Equipment> | null;
+  activeGoalLabelA?: string;
+  activeGoalLabelB?: string;
 };
 
 export function SupersetCard(props: SupersetCardProps) {
@@ -855,11 +881,13 @@ export function SupersetCard(props: SupersetCardProps) {
           onSetAsDefault={props.onSetAsDefault}
           onExerciseNoteChange={props.onExerciseNoteChange}
           onExerciseNoteBlur={props.onExerciseNoteBlur}
+          onSetGoal={props.onSetGoal}
           onOpenPlateCalc={props.onOpenPlateCalc}
           workoutId={props.workoutId}
           exerciseIndex={props.exerciseIndex}
           gymId={props.gymId}
           gymEquipment={props.gymEquipment}
+          activeGoalLabel={props.activeGoalLabelA}
         />
 
         <ExerciseHalf
@@ -890,11 +918,13 @@ export function SupersetCard(props: SupersetCardProps) {
           onSetAsDefault={props.onSetAsDefault}
           onExerciseNoteChange={props.onExerciseNoteChange}
           onExerciseNoteBlur={props.onExerciseNoteBlur}
+          onSetGoal={props.onSetGoal}
           onOpenPlateCalc={props.onOpenPlateCalc}
           workoutId={props.workoutId}
           exerciseIndex={props.exerciseIndex}
           gymId={props.gymId}
           gymEquipment={props.gymEquipment}
+          activeGoalLabel={props.activeGoalLabelB}
         />
       </View>
 

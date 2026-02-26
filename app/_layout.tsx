@@ -82,7 +82,6 @@ function CustomDrawerContent(props: any) {
     { label: t("nav.calendar"), path: "/calendar" },
     { label: t("nav.history"), path: "/history" },
     { label: t("nav.settings"), path: "/settings" },
-    { label: t("nav.backup"), path: "/settings" },
   ];
 
   function isActive(path: string) {
