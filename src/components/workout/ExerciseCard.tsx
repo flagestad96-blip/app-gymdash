@@ -183,6 +183,7 @@ type ExerciseHalfProps = {
   gymId?: string | null;
   gymEquipment?: Set<Equipment> | null;
   activeGoalLabel?: string;
+  isAdHoc?: boolean;
 };
 
 function ExerciseHalf({
@@ -220,6 +221,7 @@ function ExerciseHalf({
   gymId,
   gymEquipment,
   activeGoalLabel,
+  isAdHoc,
 }: ExerciseHalfProps) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -264,6 +266,20 @@ function ExerciseHalf({
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
             ) : null; })()}
             <BackImpactDot exerciseId={exId} />
+            {isAdHoc ? (
+              <View style={{
+                backgroundColor: theme.isDark ? "rgba(249, 115, 22, 0.18)" : "rgba(249, 115, 22, 0.12)",
+                borderColor: theme.warn,
+                borderWidth: 1,
+                borderRadius: 8,
+                paddingHorizontal: 6,
+                paddingVertical: 1,
+              }}>
+                <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 9 }}>
+                  {t("log.extraExercise")}
+                </Text>
+              </View>
+            ) : null}
             <Pressable
               onPress={() => onSetGoal(exId)}
               hitSlop={8}
@@ -345,6 +361,28 @@ function ExerciseHalf({
         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
           {t("log.target", { sets: target.targetSets, repMin: target.repMin, repMax: target.repMax, inc: formatWeight(wu.toDisplay(target.incrementKg)) })}
         </Text>
+        {(() => {
+          const workingSets = sets.filter(s => !s.is_warmup).length;
+          const planned = target.targetSets;
+          if (planned <= 0) {
+            return workingSets > 0 ? (
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                {workingSets} {t("common.sets").toLowerCase()}
+              </Text>
+            ) : null;
+          }
+          const isComplete = workingSets >= planned;
+          const bonusCount = Math.max(0, workingSets - planned);
+          return (
+            <Text style={{ color: isComplete ? theme.success : theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+              {isComplete
+                ? bonusCount > 0
+                  ? `\u2713 ${t("log.setsComplete")} + ${bonusCount} ${t("log.bonusSet")}`
+                  : `\u2713 ${t("log.setsComplete")}`
+                : t("log.setsProgress", { done: String(workingSets), total: String(planned) })}
+            </Text>
+          );
+        })()}
         {activeGoalLabel ? (
           <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
             {activeGoalLabel}
@@ -705,6 +743,7 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   gymId?: string | null;
   gymEquipment?: Set<Equipment> | null;
   activeGoalLabel?: string;
+  isAdHoc?: boolean;
 };
 
 function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boolean }) {
@@ -778,6 +817,7 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         gymId={props.gymId}
         gymEquipment={props.gymEquipment}
         activeGoalLabel={props.activeGoalLabel}
+        isAdHoc={props.isAdHoc}
       />
     </Pressable>
     </View>

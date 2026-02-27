@@ -163,6 +163,19 @@ const log: TranslationMap = {
   "log.noActiveGoals": "Ingen mål satt",
   "log.goalProgress": "{current} / {target}",
   "log.addNewGoal": "Legg til nytt mål",
+
+  // Set tracking
+  "log.setsProgress": "Sett: {done}/{total}",
+  "log.setsComplete": "Sett fullf\u00f8rt",
+  "log.bonusSet": "bonus",
+  "log.setsPlannedDone": "Planlagte sett",
+
+  // Ad-hoc exercises
+  "log.addExercise": "Legg til \u00f8velse",
+  "log.searchExercise": "S\u00f8k \u00f8velser...",
+  "log.extraExercise": "Ekstra",
+  "log.extraExercises": "Ekstra \u00f8velser",
+  "log.alreadyInWorkout": "Allerede i \u00f8kten",
 };
 
 export default log;

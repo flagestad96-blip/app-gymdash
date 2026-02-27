@@ -50,7 +50,7 @@ const settings: TranslationMap = {
   "settings.weightUnit.desc": "Choose display unit for weight.",
   "settings.weightUnit.kg": "Kilograms (kg)",
   "settings.weightUnit.lbs": "Pounds (lbs)",
-  "settings.lockedDuringWorkout": "Workout in progress{day} \u2013 changes locked.",
+  "settings.lockedDuringWorkout": "Program mode and day selection are locked during active workout{day}.",
   "settings.lockedAlert": "Locked during active workout",
   "settings.lockedAlertMsg": "End workout before changing {setting}.",
   "settings.modal.backupExport": "Backup export",

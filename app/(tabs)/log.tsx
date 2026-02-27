@@ -66,6 +66,7 @@ import ExerciseSwapModal from "../../src/components/modals/ExerciseSwapModal";
 import { advanceWeek, getPeriodization, isDeloadWeek, deloadWeight, type Periodization } from "../../src/periodization";
 import { saveWorkoutAsTemplate } from "../../src/templates";
 import TemplatePickerModal from "../../src/components/modals/TemplatePickerModal";
+import ExerciseAddModal from "../../src/components/modals/ExerciseAddModal";
 import { shareWorkoutSummary } from "../../src/sharing";
 import { uid, isoDateOnly, isoNow } from "../../src/storage";
 import { epley1RM, round1 } from "../../src/metrics";
@@ -166,6 +167,10 @@ export default function Logg() {
     topE1rm: { name: string; value: number } | null;
     prs: string[];
     volumePrs: string[];
+    plannedSets: number;
+    doneSets: number;
+    bonusSets: number;
+    adHocExerciseNames: string[];
   } | null>(null);
 
   const [undoSet, setUndoSet] = useState<{ row: SetRow; exerciseId: string; prSetId?: string } | null>(null);
@@ -176,6 +181,9 @@ export default function Logg() {
   const [goalTarget, setGoalTarget] = useState("");
   const [goalExGoals, setGoalExGoals] = useState<{ id: string; goalType: string; targetValue: number; currentValue: number; achievedAt: string | null }[]>([]);
   const [goalLabels, setGoalLabels] = useState<Record<string, string>>({});
+
+  const [adHocExercises, setAdHocExercises] = useState<string[]>([]);
+  const [addExerciseModalOpen, setAddExerciseModalOpen] = useState(false);
 
   const [editSetOpen, setEditSetOpen] = useState(false);
   const [editSet, setEditSet] = useState<SetRow | null>(null);
@@ -280,8 +288,10 @@ export default function Logg() {
           setWorkoutNotes(row.notes ?? "");
         } else {
           await setSettingAsync("activeWorkoutId", "");
+          await setSettingAsync("adHocExercises", "").catch(() => {});
           setActiveWorkoutId(null);
           setWorkoutStartedAt(null);
+          setAdHocExercises([]);
         }
       } else {
         setActiveWorkoutId(null);
@@ -351,12 +361,25 @@ export default function Logg() {
         } catch {}
       }
 
+      // Load ad-hoc exercises
+      let restoredAdHoc: string[] = [];
+      if (activeRow) {
+        try {
+          const savedAdHoc = await getSettingAsync("adHocExercises");
+          if (savedAdHoc) {
+            const parsed = JSON.parse(savedAdHoc);
+            if (Array.isArray(parsed)) restoredAdHoc = parsed;
+          }
+        } catch {}
+      }
+
       // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
       setProgram(prog);
       setAlternatives(mergedAlts);
       setSuggestedDayIndex(suggested);
       setActiveDayIndex(day);
       setSelectedAlternatives(restoredAlts);
+      setAdHocExercises(restoredAdHoc);
 
       // Load periodization
       try {
@@ -410,18 +433,27 @@ export default function Logg() {
   }, [program, activeDayIndex]);
 
   const renderBlocks = useMemo<RenderBlock[]>(() => {
-    if (!dayPlan) return [];
-    return dayPlan.blocks.map((b: ProgramBlock, idx: number) => {
-      const anchorKey = b.type === "single" ? `ex_${b.exId}_${idx}` : `ss_${b.a}_${b.b}_${idx}`;
-      if (b.type === "single") {
-        const selected = resolveSelectedExId(b.exId);
-        return { type: "single", exId: selected, baseExId: b.exId, anchorKey } as RenderBlock;
+    const blocks: RenderBlock[] = [];
+    if (dayPlan) {
+      for (let idx = 0; idx < dayPlan.blocks.length; idx++) {
+        const b = dayPlan.blocks[idx];
+        const anchorKey = b.type === "single" ? `ex_${b.exId}_${idx}` : `ss_${b.a}_${b.b}_${idx}`;
+        if (b.type === "single") {
+          const selected = resolveSelectedExId(b.exId);
+          blocks.push({ type: "single", exId: selected, baseExId: b.exId, anchorKey });
+        } else {
+          const selectedA = resolveSelectedExId(b.a);
+          const selectedB = resolveSelectedExId(b.b);
+          blocks.push({ type: "superset", a: selectedA, b: selectedB, baseA: b.a, baseB: b.b, anchorKey });
+        }
       }
-      const selectedA = resolveSelectedExId(b.a);
-      const selectedB = resolveSelectedExId(b.b);
-      return { type: "superset", a: selectedA, b: selectedB, baseA: b.a, baseB: b.b, anchorKey } as RenderBlock;
-    });
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex]);
+    }
+    // Append ad-hoc exercises
+    for (const exId of adHocExercises) {
+      blocks.push({ type: "single", exId, baseExId: exId, anchorKey: `adhoc_${exId}` });
+    }
+    return blocks;
+  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -431,6 +463,16 @@ export default function Logg() {
     }
     return Array.from(new Set(list));
   }, [renderBlocks]);
+
+  const adHocSet = useMemo(() => new Set(adHocExercises), [adHocExercises]);
+
+  function addAdHocExercise(exId: string) {
+    if (adHocExercises.includes(exId) || exerciseIds.includes(exId)) return;
+    const next = [...adHocExercises, exId];
+    setAdHocExercises(next);
+    setSettingAsync("adHocExercises", JSON.stringify(next)).catch(() => {});
+    setAddExerciseModalOpen(false);
+  }
 
   const anchorItems = useMemo(() => {
     return renderBlocks.map((b) => {
@@ -908,6 +950,26 @@ export default function Logg() {
       if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
     }
 
+    // Compute set tracking stats (exclude ad-hoc exercises from planned ratio)
+    let totalPlannedSets = 0;
+    let totalDoneSets = 0;
+    let totalBonusSets = 0;
+    for (const block of renderBlocks) {
+      const exIdsInBlock = block.type === "single" ? [block.exId] : [block.a, block.b];
+      for (const eid of exIdsInBlock) {
+        if (adHocSet.has(eid)) continue;
+        const tgt = getTargetFor(eid);
+        const workingSets = (setsByExercise[eid] ?? []).filter(s => !s.is_warmup).length;
+        if (tgt.targetSets > 0) {
+          totalPlannedSets += tgt.targetSets;
+          totalDoneSets += Math.min(workingSets, tgt.targetSets);
+          totalBonusSets += Math.max(0, workingSets - tgt.targetSets);
+        } else {
+          totalDoneSets += workingSets;
+        }
+      }
+    }
+
     setFinishSummary({
       duration: mmss(workoutElapsedSec),
       totalSets: workoutSets.length,
@@ -916,6 +978,10 @@ export default function Logg() {
       topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
       prs,
       volumePrs,
+      plannedSets: totalPlannedSets,
+      doneSets: totalDoneSets,
+      bonusSets: totalBonusSets,
+      adHocExerciseNames: adHocExercises.map((exId) => displayNameFor(exId)),
     });
 
     try {
@@ -941,6 +1007,8 @@ export default function Logg() {
     }
     await setSettingAsync("activeWorkoutId", "");
     await setSettingAsync("selectedAlternatives", "").catch(() => {});
+    await setSettingAsync("adHocExercises", "").catch(() => {});
+    setAdHocExercises([]);
     setActiveWorkoutId(null);
     restTimer.setActiveWorkoutId(null); // Hide floating timer
     setWorkoutStartedAt(null);
@@ -1038,6 +1106,15 @@ export default function Logg() {
     flashSetRow(row.id);
     fireHapticLight();
     Keyboard.dismiss();
+
+    // Haptic feedback when target sets are completed
+    if (!row.is_warmup) {
+      const target = getTargetFor(exId);
+      const currentWorkingSets = (setsByExercise[exId] ?? []).filter(s => !s.is_warmup).length + 1;
+      if (target.targetSets > 0 && currentWorkingSets === target.targetSets) {
+        try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+      }
+    }
 
     const programId = program?.id ?? "";
     const { updatedRecords, messages: rawMsgs } = await checkSetPRs({
@@ -1482,7 +1559,7 @@ export default function Logg() {
                     lastSet={lastSets[exId]}
                     prBanner={prBanners[exId]}
                     coachHint={buildCoachHint(exId)}
-                    altList={alternatives[activeDayIndex]?.[block.baseExId] ?? []}
+                    altList={adHocSet.has(exId) ? [] : (alternatives[activeDayIndex]?.[block.baseExId] ?? [])}
                     exerciseNote={exerciseNotes[exId] ?? ""}
                     isFocused={quickExerciseId === exId}
                     lastAddedSetId={lastAddedSetId}
@@ -1492,6 +1569,7 @@ export default function Logg() {
                     gymId={activeGymId}
                     gymEquipment={activeGymEquipment}
                     activeGoalLabel={goalLabels[exId]}
+                    isAdHoc={adHocSet.has(exId)}
                     onLayout={(e) => {
                       anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                       anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
@@ -1547,6 +1625,28 @@ export default function Logg() {
                 />
               );
             })}
+
+            {activeWorkoutId ? (
+              <Pressable
+                onPress={() => setAddExerciseModalOpen(true)}
+                style={({ pressed }) => ({
+                  borderWidth: 2,
+                  borderColor: theme.glassBorder,
+                  borderStyle: "dashed",
+                  borderRadius: theme.radius.xl,
+                  padding: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <MaterialIcons name="add-circle-outline" size={28} color={theme.muted} />
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 13 }}>
+                  {t("log.addExercise")}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1842,6 +1942,14 @@ export default function Logg() {
         onSelect={handleTemplateSelect}
       />
 
+      {/* Add Exercise Modal (ad-hoc) */}
+      <ExerciseAddModal
+        visible={addExerciseModalOpen}
+        onClose={() => setAddExerciseModalOpen(false)}
+        onSelect={addAdHocExercise}
+        existingExerciseIds={exerciseIds}
+      />
+
       {/* Save as Template Modal */}
       <Modal visible={saveTemplateOpen} transparent animationType="fade" onRequestClose={() => setSaveTemplateOpen(false)}>
         <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setSaveTemplateOpen(false)}>
@@ -1920,6 +2028,23 @@ export default function Logg() {
               </View>
             </View>
 
+            {(finishSummary?.plannedSets ?? 0) > 0 ? (
+              <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+                <View style={{ alignItems: "center", gap: 4 }}>
+                  <Text style={{ color: theme.success, fontFamily: theme.mono, fontSize: 22 }}>
+                    {finishSummary!.doneSets}/{finishSummary!.plannedSets}
+                  </Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("log.setsPlannedDone")}</Text>
+                </View>
+                {(finishSummary?.bonusSets ?? 0) > 0 ? (
+                  <View style={{ alignItems: "center", gap: 4 }}>
+                    <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 22 }}>+{finishSummary!.bonusSets}</Text>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("log.bonusSet")}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
             <View style={{ borderTopWidth: 1, borderTopColor: theme.glassBorder, paddingTop: 12, gap: 8 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("common.volume")}</Text>
@@ -1972,6 +2097,25 @@ export default function Logg() {
                 {finishSummary.volumePrs.map((pr, i) => (
                   <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
                     {pr}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {finishSummary?.adHocExerciseNames.length ? (
+              <View style={{
+                borderWidth: 1,
+                borderColor: theme.glassBorder,
+                borderRadius: theme.radius.lg,
+                padding: 12,
+                gap: 4,
+              }}>
+                <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
+                  {t("log.extraExercises")}
+                </Text>
+                {finishSummary.adHocExerciseNames.map((name, i) => (
+                  <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
+                    {name}
                   </Text>
                 ))}
               </View>

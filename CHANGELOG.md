@@ -1,5 +1,27 @@
 # Gymdash Changelog
 
+## v0.9.6-beta — 2026-02-27
+
+### Features
+- **Ad-hoc exercises in workout**: Add any exercise from the library mid-workout via the new "+" button on the log screen. Ad-hoc exercises persist across app restarts (stored in settings), are excluded from planned-set ratio calculations, and are cleaned up on workout finish or cancel. New `ExerciseAddModal` component handles search and selection.
+- **Set tracking with target sets**: Exercise cards now display a live "X / Y sets" progress indicator when a `target_sets` value is configured for that exercise. Completing the exact target set triggers a success haptic. Bonus sets beyond the target are tracked separately and shown in the workout finish summary. The finish summary also lists any ad-hoc exercises performed.
+
+### Improvements
+- **Notification toggles persisted**: Notification on/off toggles in Settings are now written to SQLite so they survive app restarts. Previously the state was lost on cold start.
+- **Settings lock message updated**: The "locked" explanation text in Settings has been revised for clarity.
+
+### Bug Fixes
+- **Double rest-timer notification**: Fixed a race condition in `restTimerContext.tsx` and `notifications.ts` that caused two rest-done notifications to fire on the same rest period. The previous notification is now cancelled before scheduling a new one.
+- **Abandoned workout cleanup**: When an `activeWorkoutId` points to a workout that no longer exists in the DB, the stale setting is now cleared immediately instead of leaving the app in a broken half-active state.
+- **Stale query after workout end**: Workout sets query is now invalidated correctly after finishing or cancelling a session, preventing stale data on the next open.
+- **Duplicate ad-hoc guard**: `addAdHocExercise` now checks both the ad-hoc list and the scheduled exercise list before adding, preventing the same exercise appearing twice.
+- **Set tracking math**: Warmup sets are excluded from the planned/done/bonus set counters so only working sets are counted against targets.
+- **FlatList overflow in ExerciseAddModal**: Added `keyboardShouldPersistTaps="handled"` and correct flex constraints to prevent the list being clipped by the keyboard on Android.
+- **Redundant cancel call removed**: A duplicate `cancelAllRestNotifications()` call on workout finish was removed.
+- **Error logging**: Replaced silent `catch {}` blocks in `log.tsx` settings-load paths with named `catch (err)` to surface errors during debugging.
+
+---
+
 ## v0.9.5-beta — 2026-02-26
 
 ### Features

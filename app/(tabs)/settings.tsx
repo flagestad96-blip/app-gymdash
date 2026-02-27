@@ -226,15 +226,39 @@ export default function Settings() {
 
     const loadedGyms = listGyms();
     setGyms(loadedGyms);
+
+    // Load persisted notification toggles
+    const permGranted = await hasNotificationPermissions();
+    setNotifPermission(permGranted);
+    const savedReminderEnabled = await getSettingAsync("reminderEnabled");
+    const savedRestDayEnabled = await getSettingAsync("restDayEnabled");
+    const savedReminderNotifId = await getSettingAsync("reminderNotifId");
+    const savedRestDayNotifId = await getSettingAsync("restDayNotifId");
+    if (permGranted) {
+      setReminderEnabled(savedReminderEnabled === "1");
+      setRestDayEnabled(savedRestDayEnabled === "1");
+      setReminderNotifId(savedReminderNotifId || null);
+      setRestDayNotifId(savedRestDayNotifId || null);
+    } else {
+      // Permission revoked — clean up
+      setReminderEnabled(false);
+      setRestDayEnabled(false);
+      setReminderNotifId(null);
+      setRestDayNotifId(null);
+      if (savedReminderEnabled === "1" || savedRestDayEnabled === "1") {
+        setSettingAsync("reminderEnabled", "0").catch(() => {});
+        setSettingAsync("restDayEnabled", "0").catch(() => {});
+        setSettingAsync("reminderNotifId", "").catch(() => {});
+        setSettingAsync("restDayNotifId", "").catch(() => {});
+      }
+    }
   }
 
   useEffect(() => {
     loadSettings().then(() => setReady(true));
   }, []);
 
-  useEffect(() => {
-    hasNotificationPermissions().then((granted) => setNotifPermission(granted));
-  }, []);
+  // Notification permission is now loaded inside loadSettings()
 
   async function handleExportToFile() {
     setBackupBusy(true);
@@ -299,11 +323,15 @@ export default function Settings() {
       // Schedule Mon-Fri at 17:00 (weekday 2=Mon through 6=Fri)
       const id = await scheduleWorkoutReminder(2, 17, 0);
       setReminderNotifId(id);
+      setSettingAsync("reminderEnabled", "1").catch(() => {});
+      setSettingAsync("reminderNotifId", id ?? "").catch(() => {});
     } else {
       if (reminderNotifId) {
         await cancelWorkoutReminder(reminderNotifId);
-        setReminderNotifId(null);
       }
+      setReminderNotifId(null);
+      setSettingAsync("reminderEnabled", "0").catch(() => {});
+      setSettingAsync("reminderNotifId", "").catch(() => {});
     }
   }
 
@@ -320,11 +348,15 @@ export default function Settings() {
     if (enabled) {
       const id = await scheduleRestDayCheck();
       setRestDayNotifId(id);
+      setSettingAsync("restDayEnabled", "1").catch(() => {});
+      setSettingAsync("restDayNotifId", id ?? "").catch(() => {});
     } else {
       if (restDayNotifId) {
         await cancelRestDayCheck(restDayNotifId);
-        setRestDayNotifId(null);
       }
+      setRestDayNotifId(null);
+      setSettingAsync("restDayEnabled", "0").catch(() => {});
+      setSettingAsync("restDayNotifId", "").catch(() => {});
     }
   }
 

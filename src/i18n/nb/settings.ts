@@ -50,7 +50,7 @@ const settings: TranslationMap = {
   "settings.weightUnit.desc": "Velg visningsenhet for vekt.",
   "settings.weightUnit.kg": "Kilogram (kg)",
   "settings.weightUnit.lbs": "Pund (lbs)",
-  "settings.lockedDuringWorkout": "\u00D8kt p\u00e5g\u00e5r{day} \u2013 endringer l\u00e5st.",
+  "settings.lockedDuringWorkout": "Programmodus og dagvalg er l\u00e5st under aktiv \u00f8kt{day}.",
   "settings.lockedAlert": "L\u00e5st under aktiv \u00f8kt",
   "settings.lockedAlertMsg": "Avslutt \u00f8kten f\u00f8r du bytter {setting}.",
   "settings.modal.backupExport": "Backup eksport",

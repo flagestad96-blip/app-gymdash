@@ -6,7 +6,7 @@ import { getSettingAsync, setSettingAsync } from "./db";
 import { tagsFor, isPerSideExercise, type ExerciseTag } from "./exerciseLibrary";
 import {
   scheduleRestNotification,
-  cancelRestNotification,
+  cancelAllRestTimerNotifications,
 } from "./notifications";
 import { mmss, clampInt } from "./format";
 
@@ -183,6 +183,7 @@ export function RestTimerProvider({ children }: Props) {
         setRestEndsAt(null);
         setRestNotificationId(null);
         setSettingAsync("restEndsAt", "").catch(() => {});
+        cancelAllRestTimerNotifications().catch(() => {});
         if (restVibrate && Platform.OS !== "web") Vibration.vibrate(300);
         fireHapticDone();
       }
@@ -208,6 +209,7 @@ export function RestTimerProvider({ children }: Props) {
             setRestEndsAt(null);
             setRestNotificationId(null);
             setSettingAsync("restEndsAt", "").catch(() => {});
+            cancelAllRestTimerNotifications().catch(() => {});
           }
         }
       }
@@ -308,11 +310,9 @@ export function RestTimerProvider({ children }: Props) {
     restDoneRef.current = false;
     setRestRemaining(restSeconds);
     setSettingAsync("restEndsAt", "").catch(() => {});
-    if (restNotificationId) {
-      cancelRestNotification(restNotificationId);
-      setRestNotificationId(null);
-    }
-  }, [restSeconds, restNotificationId]);
+    cancelAllRestTimerNotifications().catch(() => {});
+    setRestNotificationId(null);
+  }, [restSeconds]);
 
   const startRestTimer = useCallback(async (seconds?: number) => {
     if (!restEnabled) return;
@@ -323,12 +323,11 @@ export function RestTimerProvider({ children }: Props) {
     restDoneRef.current = false;
     setRestRemaining(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
     setSettingAsync("restEndsAt", String(end)).catch(() => {});
-    if (restNotificationId) {
-      await cancelRestNotification(restNotificationId);
-    }
+    // Cancel ALL rest-timer notifications before scheduling new one
+    await cancelAllRestTimerNotifications();
     const notificationId = await scheduleRestNotification(duration);
     setRestNotificationId(notificationId);
-  }, [restEnabled, restSeconds, restNotificationId]);
+  }, [restEnabled, restSeconds]);
 
   // Computed values
   const restLabel = restEnabled ? mmss(restRemaining) : "OFF";

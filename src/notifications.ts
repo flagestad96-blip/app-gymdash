@@ -153,6 +153,26 @@ export async function cancelAllRestNotifications(): Promise<void> {
   }
 }
 
+/**
+ * Cancel only rest-timer notifications (not workout reminders or rest day checks).
+ * Uses getAllScheduledNotificationsAsync to filter by data.type === "rest_timer".
+ */
+export async function cancelAllRestTimerNotifications(): Promise<void> {
+  if (Platform.OS === "web" || IS_EXPO_GO) return;
+  try {
+    const Notifications = await getNotifications();
+    if (!Notifications) return;
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const notif of scheduled) {
+      if ((notif.content?.data as Record<string, unknown>)?.type === "rest_timer") {
+        await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+      }
+    }
+  } catch (e) {
+    console.error("[notifications] cancelAllRestTimerNotifications error:", e);
+  }
+}
+
 // ── Workout Reminders (Tier 5) ────────────────────────────────────
 
 /**
