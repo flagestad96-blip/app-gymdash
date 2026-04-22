@@ -11,10 +11,12 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
+import { GlassCard } from "./modern";
 
-const WATERMARK = "UI v2";
+const WATERMARK = "Aurora";
 
 export function Screen({
   children,
@@ -38,11 +40,14 @@ export function TopBar({
   subtitle,
   left,
   right,
+  serif = true,
 }: {
   title: string;
   subtitle?: string;
   left?: React.ReactNode;
   right?: React.ReactNode;
+  /** Render the title in Instrument Serif (design default). Set false for all-caps labels. */
+  serif?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -57,13 +62,14 @@ export function TopBar({
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.sm, flex: 1 }}>
         {left}
-        <View style={{ gap: 4, flex: 1 }}>
+        <View style={{ gap: 2, flex: 1 }}>
           <Text
             style={{
               color: theme.text,
               fontSize: theme.fontSize.xxl,
-              fontFamily: theme.fontFamily.semibold,
-              lineHeight: theme.fontSize.xxl * 1.3,
+              fontFamily: serif ? theme.fontFamily.serif : theme.fontFamily.semibold,
+              lineHeight: theme.fontSize.xxl * 1.1,
+              letterSpacing: serif ? -0.3 : 0,
             }}
           >
             {title}
@@ -95,7 +101,7 @@ export function TopBar({
               paddingVertical: 4,
             }}
           >
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+            <Text style={{ color: theme.muted2, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
               {WATERMARK}
             </Text>
           </View>
@@ -111,10 +117,10 @@ export function SectionHeader({ title, action }: { title: string; action?: React
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
       <Text
         style={{
-          color: theme.muted,
+          color: theme.muted2,
           fontFamily: theme.mono,
           fontSize: theme.fontSize.xs,
-          letterSpacing: 1,
+          letterSpacing: 1.4,
           textTransform: "uppercase",
         }}
       >
@@ -129,33 +135,24 @@ export function Card({
   children,
   style,
   title,
+  strong,
 }: {
   children: React.ReactNode;
   style?: ViewStyle | ViewStyle[];
   title?: string;
+  /** Use stronger glass for hero cards (matches the aurora redesign). */
+  strong?: boolean;
 }) {
   const theme = useTheme();
+  // Delegate to the prototype-accurate GlassCard so every card in the app
+  // renders the same 155° fill + radial specular + inset highlight stack.
   return (
-    <View
-      style={[
-        {
-          backgroundColor: theme.glass,
-          borderColor: theme.glassBorder,
-          borderWidth: 1,
-          borderRadius: theme.radius.xl,
-          padding: theme.space.lg,
-          gap: theme.space.sm,
-          shadowColor: theme.shadow.sm.color,
-          shadowOpacity: theme.shadow.sm.opacity,
-          shadowRadius: theme.shadow.sm.radius,
-          shadowOffset: theme.shadow.sm.offset,
-        },
-        style,
-      ]}
-    >
-      {title ? <SectionHeader title={title} /> : null}
-      {children}
-    </View>
+    <GlassCard strong={strong} radius={theme.radius.xl} padding={theme.space.lg} style={style as ViewStyle}>
+      <View style={{ gap: theme.space.sm }}>
+        {title ? <SectionHeader title={title} /> : null}
+        {children}
+      </View>
+    </GlassCard>
   );
 }
 
@@ -178,9 +175,58 @@ export function Button({
   const isGhost = tone === "ghost";
   const isPrimary = tone === "accent";
   const isDanger = tone === "danger";
-  const bg = isPrimary ? theme.accent : isDanger ? theme.danger : isGhost ? "transparent" : theme.glass;
-  const borderColor = isGhost ? "transparent" : isPrimary ? theme.accent : isDanger ? theme.danger : theme.glassBorder;
+
   const textColor = isPrimary || isDanger ? "#FFFFFF" : isGhost ? theme.accent : theme.text;
+  const height = small ? 34 : 46;
+  const paddingH = small ? 12 : 18;
+
+  const inner = (
+    <Text style={{ color: textColor, fontSize: theme.fontSize.sm, fontFamily: theme.fontFamily.semibold }}>
+      {label}
+    </Text>
+  );
+
+  // Primary (accent) — aurora gradient fill for the signature CTA look
+  if (isPrimary) {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        hitSlop={small ? theme.hitSlop.sm : undefined}
+        style={({ pressed }) => ({
+          opacity: disabled ? 0.5 : pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+          borderRadius: theme.radius.lg,
+          shadowColor: theme.shadow.glow.color,
+          shadowOpacity: theme.shadow.glow.opacity,
+          shadowRadius: theme.shadow.glow.radius,
+          shadowOffset: theme.shadow.glow.offset,
+          elevation: 6,
+        })}
+      >
+        <LinearGradient
+          colors={theme.auroraGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            height,
+            paddingHorizontal: paddingH,
+            borderRadius: theme.radius.lg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {inner}
+        </LinearGradient>
+      </Pressable>
+    );
+  }
+
+  const bg = isDanger ? theme.danger : isGhost ? "transparent" : theme.glass;
+  const borderColor = isGhost ? "transparent" : isDanger ? theme.danger : theme.glassBorder;
+
   return (
     <Pressable
       onPress={onPress}
@@ -189,8 +235,8 @@ export function Button({
       accessibilityLabel={accessibilityLabel ?? label}
       hitSlop={small ? theme.hitSlop.sm : undefined}
       style={({ pressed }) => ({
-        height: small ? 34 : 46,
-        paddingHorizontal: small ? 12 : 18,
+        height,
+        paddingHorizontal: paddingH,
         borderRadius: theme.radius.lg,
         borderWidth: isGhost ? 0 : 1,
         borderColor,
@@ -199,16 +245,9 @@ export function Button({
         transform: [{ scale: pressed ? 0.98 : 1 }],
         alignItems: "center",
         justifyContent: "center",
-        shadowColor: isPrimary ? theme.shadow.sm.color : "transparent",
-        shadowOpacity: isPrimary ? theme.shadow.sm.opacity : 0,
-        shadowRadius: isPrimary ? theme.shadow.sm.radius : 0,
-        shadowOffset: isPrimary ? theme.shadow.sm.offset : { width: 0, height: 0 },
-        elevation: isPrimary ? theme.shadow.sm.elevation : 0,
       })}
     >
-      <Text style={{ color: textColor, fontSize: theme.fontSize.sm, fontFamily: theme.fontFamily.semibold }}>
-        {label}
-      </Text>
+      {inner}
     </Pressable>
   );
 }
@@ -229,8 +268,9 @@ export function Chip({
   const theme = useTheme();
   const isAccent = tone === "accent" || active;
   const borderColor = tone === "danger" ? theme.danger : isAccent ? theme.accent : theme.glassBorder;
-  const accentBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)";
-  const dangerBg = theme.isDark ? "rgba(251, 113, 133, 0.18)" : "#FEE2E2";
+  // Aurora tints keyed off the palette (pulled from theme.aurora so both themes work)
+  const accentBg = theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.14)";
+  const dangerBg = theme.isDark ? "rgba(251, 113, 133, 0.18)" : "rgba(225, 29, 72, 0.12)";
   const bg = tone === "danger" ? dangerBg : isAccent ? accentBg : theme.glass;
   const textColor = tone === "danger" ? theme.danger : isAccent ? theme.accent : theme.text;
   const body = (
@@ -466,7 +506,7 @@ export function SegButton({
         borderRadius: theme.radius.md,
         borderWidth: 1,
         borderColor: active ? theme.accent : theme.glassBorder,
-        backgroundColor: active ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
+        backgroundColor: active ? (theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.14)") : theme.glass,
         alignItems: "center",
         justifyContent: "center",
         opacity: pressed ? 0.85 : 1,

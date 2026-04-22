@@ -1,17 +1,14 @@
 import type { TranslationMap } from "../types";
 
 const common: TranslationMap = {
-  // ── Navigation / Drawer ──
+  // ── Navigation (aurora bottom tabs) ──
   "nav.home": "Hjem",
+  "nav.stats": "Stats",
   "nav.log": "Logg",
-  "nav.program": "Program",
-  "nav.analysis": "Analyse",
-  "nav.achievements": "Prestasjoner",
-  "nav.body": "Kropp",
-  "nav.calendar": "Kalender",
-  "nav.history": "Historikk",
-  "nav.settings": "Innstillinger",
-  "nav.backup": "Backup / Import",
+  "nav.profile": "Deg",
+  "nav.start": "Start økt",
+  "nav.library": "Bibliotek",
+  "nav.nutrition": "Kosthold",
 
   // ── Common / Shared ──
   "common.save": "Lagre",

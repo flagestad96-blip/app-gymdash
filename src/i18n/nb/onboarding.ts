@@ -19,6 +19,32 @@ const onboarding: TranslationMap = {
   "hint.achievementsIntro": "L\u00e5s opp prestasjoner ved \u00e5 n\u00e5 milep\u00e6ler. Trykk et kort for detaljer.",
   "hint.dismiss": "Forst\u00e5tt",
   "hint.timerLongPress": "Hold inne timeren for start/stopp. Trykk for innstillinger.",
+
+  // Aurora onboarding flow
+  "onboarding.welcome.pill": "Velkommen til Gymdash",
+  "onboarding.welcome.headlineLead": "Hver rep,",
+  "onboarding.welcome.headlineAccent": "vakkert",
+  "onboarding.welcome.headlineTail": "logget.",
+  "onboarding.welcome.tagline": "Et rolig, aurora-lyst rom for treningen din. Logg sett, se progresjon blomstre.",
+  "onboarding.preview.streak": "Dagers streak",
+  "onboarding.preview.today": "I dag · Push-dag",
+  "onboarding.preview.todayBody": "Benk · Skuldre · Triceps",
+  "onboarding.preview.volume": "Ukens volum",
+  "onboarding.goals.title": "Hva jakter du på?",
+  "onboarding.goals.subtitle": "Velg en eller flere. Vi justerer planen din.",
+  "onboarding.goals.strength": "Bygg styrke",
+  "onboarding.goals.endurance": "Forbedre utholdenhet",
+  "onboarding.goals.weight": "Gå ned i vekt",
+  "onboarding.goals.mobility": "Bli bevegeligere",
+  "onboarding.goals.consistency": "Vær konsekvent",
+  "onboarding.days.title": "Hvor ofte?",
+  "onboarding.days.subtitle": "Dager i uken du vil trene.",
+  "onboarding.days.unit": "dager per uke",
+  "onboarding.days.suggestFullBody": "Ut fra målene dine foreslår vi et helkroppsprogram.",
+  "onboarding.days.suggestUpperLower": "Ut fra målene dine foreslår vi en Øvre/Nedre-splitt.",
+  "onboarding.days.suggestPPL": "Ut fra målene dine foreslår vi et Push/Pull/Legs-program.",
+  "onboarding.continue": "Fortsett",
+  "onboarding.enter": "Gå inn i Gymdash",
 };
 
 export default onboarding;

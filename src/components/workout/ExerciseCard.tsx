@@ -108,7 +108,7 @@ function SetTable({ sets, lastAddedSetId, lastAddedAnim, onEditSet, onDeleteSet 
 
   const highlightBg = lastAddedAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.glass, "rgba(182, 104, 245, 0.22)"],
+    outputRange: [theme.glass, "rgba(192, 132, 252, 0.22)"],
   });
 
   return (
@@ -302,7 +302,7 @@ function ExerciseHalf({
                 borderRadius: 999,
                 paddingHorizontal: 12,
                 paddingVertical: 6,
-                backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.15)" : "rgba(124, 58, 237, 0.08)",
+                backgroundColor: theme.isDark ? "rgba(192, 132, 252, 0.15)" : "rgba(139, 92, 246, 0.08)",
               }}
             >
               <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
@@ -579,7 +579,7 @@ function ExerciseHalf({
                   paddingHorizontal: 10,
                   borderRadius: theme.radius.md,
                   backgroundColor: input.rpe === item.value
-                    ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.1)")
+                    ? (theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.1)")
                     : pressed ? theme.glass : "transparent",
                 })}
               >
@@ -686,7 +686,7 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
 };
 
 function FocusGlow({ borderRadius, isDark }: { borderRadius: number; isDark: boolean }) {
-  const base = isDark ? "rgba(182, 104, 245," : "rgba(124, 58, 237,";
+  const base = isDark ? "rgba(192, 132, 252," : "rgba(139, 92, 246,";
   return (
     <>
       <View style={{ position: "absolute", top: -10, left: -10, right: -10, bottom: -10, borderRadius: borderRadius + 10, backgroundColor: base + " 0.06)" }} />

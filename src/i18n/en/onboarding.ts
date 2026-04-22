@@ -19,6 +19,32 @@ const onboarding: TranslationMap = {
   "hint.achievementsIntro": "Unlock achievements by hitting milestones. Tap any card for details.",
   "hint.dismiss": "Got it",
   "hint.timerLongPress": "Long-press the timer to start/stop. Tap to open settings.",
+
+  // Aurora onboarding flow
+  "onboarding.welcome.pill": "Welcome to Gymdash",
+  "onboarding.welcome.headlineLead": "Every rep,",
+  "onboarding.welcome.headlineAccent": "beautifully",
+  "onboarding.welcome.headlineTail": "tracked.",
+  "onboarding.welcome.tagline": "A calm, aurora-lit space for your training. Log sets, watch progress bloom.",
+  "onboarding.preview.streak": "Day streak",
+  "onboarding.preview.today": "Today · Push day",
+  "onboarding.preview.todayBody": "Bench · Shoulders · Triceps",
+  "onboarding.preview.volume": "Weekly volume",
+  "onboarding.goals.title": "What are you chasing?",
+  "onboarding.goals.subtitle": "Pick one or more. We'll tune your plan.",
+  "onboarding.goals.strength": "Build strength",
+  "onboarding.goals.endurance": "Improve endurance",
+  "onboarding.goals.weight": "Lose weight",
+  "onboarding.goals.mobility": "Move better",
+  "onboarding.goals.consistency": "Be consistent",
+  "onboarding.days.title": "How often?",
+  "onboarding.days.subtitle": "Days per week you'll train.",
+  "onboarding.days.unit": "days per week",
+  "onboarding.days.suggestFullBody": "Based on your goals, we'll suggest a Full-body program.",
+  "onboarding.days.suggestUpperLower": "Based on your goals, we'll suggest an Upper/Lower split.",
+  "onboarding.days.suggestPPL": "Based on your goals, we'll suggest a Push/Pull/Legs program.",
+  "onboarding.continue": "Continue",
+  "onboarding.enter": "Enter Gymdash",
 };
 
 export default onboarding;

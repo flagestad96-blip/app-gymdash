@@ -1,1773 +1,406 @@
-// app/(tabs)/index.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
-  Modal,
-  Switch,
-  Alert,
-  Animated,
-} from "react-native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { useRouter } from "expo-router";
-import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
+// app/(tabs)/log.tsx — Log (month calendar)
+//
+// Port of Gymdash.html's <LogScreen> component. The prototype's structure:
+//
+//   ScreenHeader "Log"
+//   GlassCard strong radius=22:
+//     • Month nav row: ← [Month Year] →   (month name in Instrument Serif)
+//     • Day-of-week header: M T W T F S S (ink-3, 9px uppercase)
+//     • 7-col grid of aspect-ratio:1 day cells, gap 4:
+//         – Cells with a session: gradient-tinted by type (push / pull / legs)
+//         – No session: transparent fill, faint border
+//         – Today: 1.5px white border
+//         – Inside each cell: Mono day number + small dot if session
+//   Legend row: Push · Pull · Legs with colored chips
+//   Two stat glass cards:
+//     • "This month" — session count
+//     • "Consistency" — planned-days-hit percentage
+//
+// Session type classification reads the workout's program day name
+// ("Push day", "Pull", "Legs", …) and case-insensitive substring-matches.
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { ensureDb, getDb } from "../../src/db";
 import { useTheme } from "../../src/theme";
-import { ensureDb, getDb, getSettingAsync, setSettingAsync, computeBodyweightLoad } from "../../src/db";
-import {
-  displayNameFor,
-  defaultIncrementFor,
-  tagsFor,
-  alternativesFor,
-  getExercise,
-  createCustomExercise,
-  type ExerciseTag,
-  type Equipment,
-  isBodyweight,
-  bodyweightFactorFor,
-  isPerSideExercise,
-} from "../../src/exerciseLibrary";
-import ProgramStore from "../../src/programStore";
-import type { Program, ProgramBlock, AlternativesMap } from "../../src/programStore";
-import ProgressionStore, {
-  defaultTargetForExercise,
-  type ExerciseTarget,
-} from "../../src/progressionStore";
-import { SkeletonExerciseCard } from "../../src/components/Skeleton";
-import OnboardingModal from "../../components/OnboardingModal";
-import HintBanner from "../../src/components/HintBanner";
-import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
-import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
-import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
-import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
-import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, type PrMap } from "../../src/prEngine";
-import { getAllNotes, setNote, deleteNote } from "../../src/exerciseNotes";
-import { AchievementToast, UndoToast } from "../../src/ui/modern";
-import { listGyms, getActiveGymId, setActiveGymId as setActiveGymIdStore, getActiveGym, getGymEquipmentSet, isEquipmentAvailable } from "../../src/gymStore";
-import type { GymLocation } from "../../src/gymStore";
-import GymPickerModal from "../../src/components/modals/GymPickerModal";
 import { useI18n } from "../../src/i18n";
-import { useWeightUnit } from "../../src/units";
-import { calculatePlates } from "../../src/plateCalculator";
+import { useUserPreferences } from "../../src/userPreferences";
+import { GlassCard, Mono } from "../../src/ui/modern";
 
-// Extracted components
-import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
-import type { InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
-import type { SetRow } from "../../src/components/workout/SetEntryRow";
-import PlateCalcModal from "../../src/components/modals/PlateCalcModal";
-import ExerciseSwapModal from "../../src/components/modals/ExerciseSwapModal";
-import { advanceWeek, getPeriodization, isDeloadWeek, deloadWeight, type Periodization } from "../../src/periodization";
-import { saveWorkoutAsTemplate } from "../../src/templates";
-import TemplatePickerModal from "../../src/components/modals/TemplatePickerModal";
-import { shareWorkoutSummary } from "../../src/sharing";
-import { uid, isoDateOnly, isoNow } from "../../src/storage";
-import { epley1RM, round1 } from "../../src/metrics";
-import { formatWeight, shortLabel, parseTimeMs, clampInt } from "../../src/format";
+// ── Session type classification ──────────────────────────────────────────────
 
-type WorkoutRow = {
-  id: string;
-  date: string;
-  program_mode: string;
-  program_id?: string | null;
-  day_key: string;
-  back_status: string;
-  notes?: string | null;
-  day_index?: number | null;
-  started_at?: string | null;
+type SessionType = "push" | "pull" | "legs" | "other";
+
+function classify(dayName: string | null | undefined): SessionType | null {
+  if (!dayName) return null;
+  const n = dayName.toLowerCase();
+  if (n.includes("push")) return "push";
+  if (n.includes("pull")) return "pull";
+  if (n.includes("leg") || n.includes("ben")) return "legs";
+  return "other";
+}
+
+// Gradient tints matching the prototype exactly.
+const TINTS: Record<SessionType, [string, string]> = {
+  push: ["#60a5fa", "#c084fc"],   // blue → violet
+  pull: ["#c084fc", "#f472b6"],   // violet → pink
+  legs: ["#67e8f9", "#60a5fa"],   // cyan → blue
+  other: ["#94a3b8", "#cbd5e1"],  // slate, used when classification fails
 };
 
-type ProgramMode = "normal" | "back";
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-type RenderBlock =
-  | {
-      type: "single";
-      exId: string;
-      baseExId: string;
-      anchorKey: string;
-    }
-  | {
-      type: "superset";
-      a: string;
-      b: string;
-      baseA: string;
-      baseB: string;
-      anchorKey: string;
-    };
-
-function roundWeight(n: number) {
-  return Math.round(n * 10) / 10;
+function isoFromYMD(y: number, m: number, d: number) {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => {
-      console.warn(`[loadSession] ${label} timed out after ${ms}ms`);
-      resolve(null);
-    }, ms);
-  });
-  try {
-    const result = await Promise.race([promise, timeout]);
-    return result as T | null;
-  } catch (err) {
-    console.warn(`[loadSession] ${label} failed`, err);
-    return null;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+function todayLocal(): { y: number; m: number; d: number; iso: string } {
+  const d = new Date();
+  return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate(), iso: isoFromYMD(d.getFullYear(), d.getMonth(), d.getDate()) };
 }
 
-// Module-level flag - persists across component remounts (tab switches)
-let _logTabInitialized = false;
+// ── Screen ───────────────────────────────────────────────────────────────────
 
-export default function Logg() {
+type CalSession = { date: string; type: SessionType };
+
+export default function LogScreen() {
   const theme = useTheme();
-  const { t } = useI18n();
-  const wu = useWeightUnit();
-  const [ready, setReady] = useState(_logTabInitialized);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const { t, locale } = useI18n();
+  const prefs = useUserPreferences();
 
-  const [programMode, setProgramMode] = useState<ProgramMode>("normal");
-  const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
-  const [suggestedDayIndex, setSuggestedDayIndex] = useState<number>(0);
-  const [dayPickerOpen, setDayPickerOpen] = useState<boolean>(false);
-  const [activeGymId, setActiveGymId] = useState<string | null>(null);
-  const [gyms, setGyms] = useState<GymLocation[]>([]);
-  const [gymPickerOpen, setGymPickerOpen] = useState(false);
-  const [program, setProgram] = useState<Program | null>(null);
-  const [alternatives, setAlternatives] = useState<AlternativesMap>({});
-  const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({});
+  const TODAY = useMemo(todayLocal, []);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [sessions, setSessions] = useState<Map<string, SessionType>>(new Map());
 
-  const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null);
-  const [workoutStartedAt, setWorkoutStartedAt] = useState<string | null>(null);
-  const [workoutElapsedSec, setWorkoutElapsedSec] = useState<number>(0);
-  const [workoutSets, setWorkoutSets] = useState<SetRow[]>([]);
-  const [workoutNotes, setWorkoutNotes] = useState<string>("");
+  // Current month anchor (relative to today's month + offset)
+  const monthAnchor = useMemo(() => {
+    const d = new Date(TODAY.y, TODAY.m + monthOffset, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  }, [TODAY, monthOffset]);
 
-  const [inputs, setInputs] = useState<Record<string, InputState>>({});
-  const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
-  const [lastSets, setLastSets] = useState<Record<string, LastSetInfo>>({});
-  const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
-  const [prRecords, setPrRecords] = useState<PrMap>({});
-  const [prBanners, setPrBanners] = useState<Record<string, string>>({});
-  const [lastAddedSetId, setLastAddedSetId] = useState<string | null>(null);
-  const lastAddedAnim = useRef(new Animated.Value(0)).current;
-
-  const [finishSummary, setFinishSummary] = useState<{
-    duration: string;
-    totalSets: number;
-    totalVolume: number;
-    exercises: number;
-    topE1rm: { name: string; value: number } | null;
-    prs: string[];
-    volumePrs: string[];
-  } | null>(null);
-
-  const [undoSet, setUndoSet] = useState<{ row: SetRow; exerciseId: string; prSetId?: string } | null>(null);
-  const [undoVisible, setUndoVisible] = useState(false);
-  const [plateCalcExId, setPlateCalcExId] = useState<string | null>(null);
-
-  const [editSetOpen, setEditSetOpen] = useState(false);
-  const [editSet, setEditSet] = useState<SetRow | null>(null);
-  const [editWeight, setEditWeight] = useState("");
-  const [editReps, setEditReps] = useState("");
-  const [editRpe, setEditRpe] = useState("");
-
-  // Rest timer state comes from useRestTimer context
-  const restTimer = useRestTimer();
-
-  const [supersetAlternate, setSupersetAlternate] = useState(true);
-  const [supersetNext, setSupersetNext] = useState<Record<string, "a" | "b">>({});
-
-  const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
-  const [altPickerOpen, setAltPickerOpen] = useState(false);
-  const [altPickerBase, setAltPickerBase] = useState<string | null>(null);
-
-  const [achievementToast, setAchievementToast] = useState<{
-    visible: boolean;
-    achievement: Achievement | null;
-  }>({ visible: false, achievement: null });
-
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
-  const [templateName, setTemplateName] = useState("");
-  const [periodization, setPeriodization] = useState<Periodization | null>(null);
-
-  const navigation = useNavigation();
-  const router = useRouter();
-  const scrollRef = useRef<ScrollView | null>(null);
-  const anchorPositionsRef = useRef<Record<string, number>>({});
-  const anchorLayoutRef = useRef<Record<string, { y: number; height: number }>>({});
-  const scrollYRef = useRef(0);
-  const scrollViewHeightRef = useRef(0);
-  const contentHeightRef = useRef(0);
-  const pendingAutoScrollRef = useRef<{ cardBottom: number } | null>(null);
-
-  const openDrawer = useCallback(() => {
-    const parent = (navigation as any)?.getParent?.();
-    if (parent?.openDrawer) parent.openDrawer();
-    else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
-  }, [navigation]);
-
-  async function fetchSuggestedDayIndex(programId: string, mode: ProgramMode, dayCount: number) {
-    if (dayCount <= 0) return 0;
+  const monthName = useMemo(() => {
+    const d = new Date(monthAnchor.y, monthAnchor.m, 1);
     try {
-      const row = getDb().getFirstSync<{ day_index?: number | null }>(
-        `SELECT day_index FROM workouts
-         WHERE day_index IS NOT NULL
-         AND (
-           program_id = ?
-           OR ((program_id IS NULL OR program_id = '') AND program_mode = ?)
-         )
-         ORDER BY started_at DESC, date DESC
-         LIMIT 1`,
-        [programId, mode]
-      );
-      const last = Number.isFinite(row?.day_index ?? NaN) ? Number(row?.day_index) : NaN;
-      if (!Number.isFinite(last)) return 0;
-      return (Math.trunc(last) + 1) % dayCount;
+      const s = d.toLocaleDateString(locale === "nb" ? "nb-NO" : "en-US", { month: "long", year: "numeric" });
+      return s.charAt(0).toUpperCase() + s.slice(1);
     } catch {
-      return 0;
+      return `${d.getMonth() + 1}/${d.getFullYear()}`;
     }
-  }
+  }, [monthAnchor, locale]);
 
-  const loadSession = useCallback(async () => {
+  // Load workouts for the displayed month + classify them.
+  const load = useCallback(async () => {
+    await ensureDb();
+    const db = getDb();
+    const monthStart = isoFromYMD(monthAnchor.y, monthAnchor.m, 1);
+    const nextMonth = new Date(monthAnchor.y, monthAnchor.m + 1, 1);
+    const monthEnd = isoFromYMD(nextMonth.getFullYear(), nextMonth.getMonth(), nextMonth.getDate());
+
+    type WorkoutRow = { id: string; date: string; program_id: string | null; day_index: number | null };
+    let rows: WorkoutRow[] = [];
     try {
-      const dbOk = await withTimeout(ensureDb(), 4000, "ensureDb");
-      if (dbOk === null) throw new Error("ensureDb timeout");
-      const programsOk = await withTimeout(ProgramStore.ensurePrograms(), 4000, "ensurePrograms");
-      if (programsOk === null) throw new Error("ensurePrograms timeout");
+      rows = db.getAllSync<WorkoutRow>(
+        `SELECT id, date, program_id, day_index FROM workouts
+         WHERE date >= ? AND date < ?`,
+        [monthStart, monthEnd],
+      ) ?? [];
+    } catch {}
 
-      const pmRaw = await getSettingAsync("programMode");
-      const pm: ProgramMode = pmRaw === "back" ? "back" : "normal";
-
-      const ssRaw = await getSettingAsync("supersetAlternate");
-      const onboardingRaw = await getSettingAsync("hasSeenOnboarding");
-
-      setProgramMode(pm);
-      setSupersetAlternate(ssRaw === null ? true : ssRaw === "1");
-      setShowOnboarding(onboardingRaw !== "1");
-
-      // Load gym data
-      const gymList = listGyms();
-      const savedGymId = getActiveGymId();
-      setGyms(gymList);
-      setActiveGymId(savedGymId);
-
-      // Rest timer settings are now loaded by RestTimerContext
-
-      const activeId = await getSettingAsync("activeWorkoutId");
-      let activeRow: WorkoutRow | null = null;
-      if (activeId) {
-        const row = getDb().getFirstSync<WorkoutRow>(
-          `SELECT id, started_at, day_index, day_key, program_id, notes FROM workouts WHERE id = ? LIMIT 1`,
-          [activeId]
-        );
-        if (row?.id) {
-          activeRow = row;
-          setActiveWorkoutId(row.id);
-          setWorkoutStartedAt(row.started_at ?? null);
-          setWorkoutNotes(row.notes ?? "");
-        } else {
-          await setSettingAsync("activeWorkoutId", "");
-          setActiveWorkoutId(null);
-          setWorkoutStartedAt(null);
-        }
-      } else {
-        setActiveWorkoutId(null);
-        setWorkoutStartedAt(null);
-      }
-      // Note: restTimer.setActiveWorkoutId is handled by the context loading from settings
-
-      const prog = activeRow?.program_id
-        ? (await ProgramStore.getProgram(activeRow.program_id)) ?? (await ProgramStore.getActiveProgram(pm))
-        : await ProgramStore.getActiveProgram(pm);
-      const dayCount = Math.max(1, prog.days.length);
-      const suggested = await fetchSuggestedDayIndex(prog.id, pm, dayCount);
-      let day = clampInt(suggested, 0, dayCount - 1);
-      if (activeRow) {
-        const fromIndex = Number.isFinite(activeRow.day_index ?? NaN) ? Number(activeRow.day_index) : NaN;
-        let fromKey = NaN;
-        if (!Number.isFinite(fromIndex) && activeRow.day_key) {
-          const match = String(activeRow.day_key).match(/day_(\d+)/i);
-          if (match) fromKey = Number(match[1]) - 1;
-        }
-        const lockedDay = Number.isFinite(fromIndex) ? fromIndex : Number.isFinite(fromKey) ? fromKey : day;
-        day = clampInt(lockedDay, 0, dayCount - 1);
-      }
-      const programAlts = await ProgramStore.getAlternativesForProgram(prog.id);
-
-      // Merge program alternatives with library alternatives
-      const mergedAlts: AlternativesMap = {};
-      prog.days.forEach((dayData, dayIndex) => {
-        mergedAlts[dayIndex] = {};
-        dayData.blocks.forEach((block) => {
-          if (block.type === "single") {
-            const exId = block.exId;
-            const libraryAlts = alternativesFor(exId);
-            const programAltsForEx = programAlts[dayIndex]?.[exId] ?? [];
-            const combined = Array.from(new Set([...libraryAlts, ...programAltsForEx]));
-            if (combined.length > 0) {
-              mergedAlts[dayIndex][exId] = combined;
-            }
-          } else if (block.type === "superset") {
-            const exIdA = block.a;
-            const libraryAltsA = alternativesFor(exIdA);
-            const programAltsForA = programAlts[dayIndex]?.[exIdA] ?? [];
-            const combinedA = Array.from(new Set([...libraryAltsA, ...programAltsForA]));
-            if (combinedA.length > 0) {
-              mergedAlts[dayIndex][exIdA] = combinedA;
-            }
-            const exIdB = block.b;
-            const libraryAltsB = alternativesFor(exIdB);
-            const programAltsForB = programAlts[dayIndex]?.[exIdB] ?? [];
-            const combinedB = Array.from(new Set([...libraryAltsB, ...programAltsForB]));
-            if (combinedB.length > 0) {
-              mergedAlts[dayIndex][exIdB] = combinedB;
-            }
-          }
-        });
-      });
-
-      // Read persisted exercise swaps BEFORE setting state so all updates batch together
-      let restoredAlts: Record<string, string> = {};
-      if (activeRow) {
-        try {
-          const savedAlts = await getSettingAsync("selectedAlternatives");
-          if (savedAlts) {
-            const parsed = JSON.parse(savedAlts);
-            if (parsed && typeof parsed === "object") restoredAlts = parsed;
-          }
-        } catch {}
-      }
-
-      // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
-      setProgram(prog);
-      setAlternatives(mergedAlts);
-      setSuggestedDayIndex(suggested);
-      setActiveDayIndex(day);
-      setSelectedAlternatives(restoredAlts);
-
-      // Load periodization
+    // Batch-fetch program day names for all (programId, dayIndex) pairs we need.
+    type ProgDayRow = { program_id: string; day_index: number; name: string };
+    const programIds = Array.from(new Set(rows.map((r) => r.program_id).filter((x): x is string => !!x)));
+    let dayNames: Record<string, string> = {};
+    if (programIds.length > 0) {
+      const placeholders = programIds.map(() => "?").join(",");
       try {
-        const periodCfg = await getPeriodization(prog.id);
-        setPeriodization(periodCfg);
-      } catch {
-        setPeriodization(null);
-      }
-    } catch (err) {
-      console.warn("[loadSession] failed, using fallback program", err);
-      setProgramMode("normal");
-      setProgram(ProgramStore.DEFAULT_STANDARD_PROGRAM);
-      setAlternatives({});
-      setSelectedAlternatives({});
-      setSuggestedDayIndex(0);
-      setActiveDayIndex(0);
-      setPeriodization(null);
+        const dayRows = db.getAllSync<ProgDayRow>(
+          `SELECT program_id, day_index, name FROM program_days WHERE program_id IN (${placeholders})`,
+          programIds,
+        ) ?? [];
+        for (const r of dayRows) {
+          dayNames[`${r.program_id}:${r.day_index}`] = r.name;
+        }
+      } catch {}
     }
-  }, []);
+
+    const next = new Map<string, SessionType>();
+    for (const r of rows) {
+      const name = r.program_id != null && r.day_index != null
+        ? dayNames[`${r.program_id}:${r.day_index}`]
+        : null;
+      const cls = classify(name) ?? "other";
+      next.set(r.date, cls);
+    }
+    setSessions(next);
+  }, [monthAnchor]);
 
   useEffect(() => {
-    setupNotificationHandler();
-    // Skip loading screen if already initialized (tab re-focus)
-    if (_logTabInitialized) {
-      setReady(true);
-      loadSession().catch(() => {}); // Silent refresh
-      return;
-    }
-    loadSession()
-      .catch((err) => console.warn("[loadSession] unhandled", err))
-      .finally(() => {
-        setReady(true);
-        _logTabInitialized = true;
-      });
-  }, [loadSession]);
+    void load();
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
-      // Skip if not ready yet (initial load handles it)
-      if (!ready) return () => {};
-      // Silently refresh data on tab re-focus without resetting ready state
-      let alive = true;
-      loadSession().catch(() => {});
-      return () => {
-        alive = false;
-      };
-    }, [ready, loadSession])
+      void load();
+    }, [load]),
   );
 
-  const dayPlan = useMemo(() => {
-    return program?.days[activeDayIndex] ?? null;
-  }, [program, activeDayIndex]);
-
-  const renderBlocks = useMemo<RenderBlock[]>(() => {
-    if (!dayPlan) return [];
-    return dayPlan.blocks.map((b: ProgramBlock, idx: number) => {
-      const anchorKey = b.type === "single" ? `ex_${b.exId}_${idx}` : `ss_${b.a}_${b.b}_${idx}`;
-      if (b.type === "single") {
-        const selected = resolveSelectedExId(b.exId);
-        return { type: "single", exId: selected, baseExId: b.exId, anchorKey } as RenderBlock;
-      }
-      const selectedA = resolveSelectedExId(b.a);
-      const selectedB = resolveSelectedExId(b.b);
-      return { type: "superset", a: selectedA, b: selectedB, baseA: b.a, baseB: b.b, anchorKey } as RenderBlock;
-    });
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex]);
-
-  const exerciseIds = useMemo(() => {
-    const list: string[] = [];
-    for (const b of renderBlocks) {
-      if (b.type === "single") list.push(b.exId);
-      else { list.push(b.a, b.b); }
-    }
-    return Array.from(new Set(list));
-  }, [renderBlocks]);
-
-  const anchorItems = useMemo(() => {
-    return renderBlocks.map((b) => {
-      if (b.type === "single") return { key: b.anchorKey, label: displayNameFor(b.exId) };
-      return { key: b.anchorKey, label: `${displayNameFor(b.a)} / ${displayNameFor(b.b)}` };
-    });
-  }, [renderBlocks]);
-
-  const anchorKeyByExerciseId = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const b of renderBlocks) {
-      if (b.type === "single") { map[b.exId] = b.anchorKey; }
-      else { map[b.a] = b.anchorKey; map[b.b] = b.anchorKey; }
-    }
-    return map;
-  }, [renderBlocks]);
-
-  const blockAnchorKeys = useMemo(() => renderBlocks.map((b) => b.anchorKey), [renderBlocks]);
-
-  const setsByExercise = useMemo(() => {
-    const map: Record<string, SetRow[]> = {};
-    for (const s of workoutSets) {
-      const key = (s.exercise_id && String(s.exercise_id)) || s.exercise_name;
-      if (!map[key]) map[key] = [];
-      map[key].push(s);
-    }
-    for (const k of Object.keys(map)) {
-      map[k].sort((a, b) => a.set_index - b.set_index);
-    }
-    return map;
-  }, [workoutSets]);
-
-  // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
-
-  useEffect(() => { setSupersetNext({}); }, [activeDayIndex, program?.id, programMode]);
-  // Only clear alternatives when NOT in an active workout - during a session, alternatives should persist
-  const prevDayRef = useRef<{ day: number; prog: string | null }>({ day: activeDayIndex, prog: program?.id ?? null });
-  useEffect(() => {
-    // Skip during initial load — loadSession handles restoring selectedAlternatives
-    if (!ready) return;
-    const prevDay = prevDayRef.current.day;
-    const prevProg = prevDayRef.current.prog;
-    prevDayRef.current = { day: activeDayIndex, prog: program?.id ?? null };
-    // Skip if same values or if there's an active workout
-    if ((prevDay === activeDayIndex && prevProg === (program?.id ?? null)) || activeWorkoutId) return;
-    setSelectedAlternatives({});
-    setSettingAsync("selectedAlternatives", "").catch(() => {});
-  }, [activeDayIndex, program?.id, activeWorkoutId, ready]);
-
-  const refreshWorkoutSets = useCallback(() => {
-    if (!activeWorkoutId) { setWorkoutSets([]); return; }
-    const rows = getDb().getAllSync<SetRow>(
-      `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup,
-              external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg
-       FROM sets WHERE workout_id = ? ORDER BY set_index ASC, created_at ASC`,
-      [activeWorkoutId]
-    );
-    setWorkoutSets(Array.isArray(rows) ? rows : []);
-  }, [activeWorkoutId]);
-
-  useEffect(() => { if (!ready) return; refreshWorkoutSets(); }, [ready, activeWorkoutId, refreshWorkoutSets]);
-
-  useEffect(() => {
-    if (!workoutStartedAt) { setWorkoutElapsedSec(0); return; }
-    const start = parseTimeMs(workoutStartedAt);
-    if (!Number.isFinite(start)) return;
-    const tick = () => { setWorkoutElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000))); };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [workoutStartedAt]);
-
-  // Rest timer effects (countdown, app state, haptics) are now in restTimerContext
-
-  const fireHapticLight = useCallback(async () => {
-    if (!restTimer.restHaptics || Platform.OS === "web") return;
-    try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
-  }, [restTimer.restHaptics]);
-
-  const exerciseIdsKey = useMemo(() => exerciseIds.join("|"), [exerciseIds]);
-
-  useEffect(() => {
-    if (!program?.id || exerciseIds.length === 0) return;
-    let alive = true;
-    (async () => {
-      await ProgressionStore.ensureTargets(program.id, exerciseIds);
-      const targetMap = await ProgressionStore.getTargets(program.id);
-      if (!alive) return;
-      setTargets(targetMap);
-    })();
-    return () => { alive = false; };
-  }, [program?.id, exerciseIdsKey, exerciseIds]);
-
-  useEffect(() => {
-    if (exerciseIds.length === 0) { setExerciseNotes({}); return; }
-    setExerciseNotes(getAllNotes());
-  }, [exerciseIdsKey, exerciseIds]);
-
-  useEffect(() => {
-    if (!program?.id || exerciseIds.length === 0) { setPrRecords({}); return; }
-    setPrRecords(loadPrRecords(program.id, exerciseIds));
-  }, [program?.id, exerciseIdsKey, exerciseIds]);
-
-  useEffect(() => {
-    if (!ready || exerciseIds.length === 0) { setLastSets({}); return; }
-    try {
-      const placeholders = exerciseIds.map(() => "?").join(",");
-      const last: Record<string, LastSetInfo> = {};
-
-      if (activeGymId) {
-        // Pass 1: gym-scoped
-        const gymRows = getDb().getAllSync<SetRow>(
-          `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at
-           FROM sets s
-           JOIN workouts w ON s.workout_id = w.id
-           WHERE s.exercise_id IN (${placeholders})
-             AND w.gym_id = ?
-           ORDER BY s.created_at DESC
-           LIMIT ?`,
-          [...exerciseIds, activeGymId, exerciseIds.length * 5]
-        );
-        for (const r of gymRows ?? []) {
-          const key = r.exercise_id ? String(r.exercise_id) : "";
-          if (!key || last[key]) continue;
-          last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
-        }
-
-        // Pass 2: global fallback for remaining exercise IDs
-        const remaining = exerciseIds.filter((id) => !last[id]);
-        if (remaining.length > 0) {
-          const remainingPlaceholders = remaining.map(() => "?").join(",");
-          const globalRows = getDb().getAllSync<SetRow>(
-            `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-             FROM sets WHERE exercise_id IN (${remainingPlaceholders}) ORDER BY created_at DESC
-             LIMIT ?`,
-            [...remaining, remaining.length * 5]
-          );
-          for (const r of globalRows ?? []) {
-            const key = r.exercise_id ? String(r.exercise_id) : "";
-            if (!key || last[key]) continue;
-            last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id, fromOtherGym: true };
-          }
-        }
-      } else {
-        // No gym — global query (original behavior)
-        const rows = getDb().getAllSync<SetRow>(
-          `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-           FROM sets WHERE exercise_id IN (${placeholders}) ORDER BY created_at DESC
-           LIMIT ?`,
-          [...exerciseIds, exerciseIds.length * 5]
-        );
-        for (const r of rows ?? []) {
-          const key = r.exercise_id ? String(r.exercise_id) : "";
-          if (!key || last[key]) continue;
-          last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
-        }
-      }
-
-      setLastSets(last);
-    } catch { setLastSets({}); }
-  }, [ready, exerciseIdsKey, exerciseIds, program?.id, activeGymId]);
-
-  function buildCoachHint(exId: string) {
-    const last = lastSets[exId];
-    if (!last) return null;
-    const target = getTargetFor(exId);
-    const rpe = last.rpe ?? null;
-    if (rpe != null && rpe >= 9) return t("log.progression.hold");
-    if (last.reps >= target.repMax) return t("log.progression.nextIncrease");
-    if (last.reps < target.repMin - 1) return t("log.progression.reduceWeight");
-    if (last.reps < target.repMin) return t("log.progression.buildReps");
-    return t("log.progression.keepBuilding");
-  }
-
-  useEffect(() => {
-    if (!Object.keys(lastSets).length) return;
-    setInputs((prev) => {
-      const next = { ...prev };
-      for (const [exId, info] of Object.entries(lastSets)) {
-        const current = next[exId];
-        const empty = !current || (!current.weight && !current.reps && !current.rpe);
-        if (!empty) continue;
-        next[exId] = { weight: formatWeight(info.weight), reps: String(info.reps), rpe: info.rpe != null ? String(info.rpe) : "" };
-      }
-      return next;
-    });
-  }, [lastSets]);
-
-  const isDeload = periodization ? isDeloadWeek(periodization) : false;
-
-  function getTargetFor(exId: string) {
-    const target = targets[exId];
-    const base = target ?? { programId: program?.id ?? "", exerciseId: exId, repMin: defaultTargetForExercise(exId).repMin, repMax: defaultTargetForExercise(exId).repMax, targetSets: defaultTargetForExercise(exId).targetSets, incrementKg: defaultTargetForExercise(exId).incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
-    if (isDeload) {
-      return { ...base, targetSets: Math.max(1, base.targetSets - 1) };
-    }
-    return base;
-  }
-
-  function getIncrementForExercise(exId: string) {
-    const target = targets[exId];
-    if (target && target.incrementKg > 0) return target.incrementKg;
-    const inc = defaultIncrementFor(exId);
-    return inc > 0 ? inc : 2.5;
-  }
-
-  function resolveSelectedExId(baseExId: string) {
-    const altList = alternatives[activeDayIndex]?.[baseExId] ?? [];
-    const selected = selectedAlternatives[baseExId];
-    if (selected && (selected === baseExId || altList.includes(selected))) return selected;
-    return baseExId;
-  }
-
-  function setInput(exId: string, field: keyof InputState, value: string) {
-    setInputs((prev) => {
-      const base = prev[exId] ?? { weight: "", reps: "", rpe: "" };
-      return { ...prev, [exId]: { ...base, [field]: value } };
-    });
-  }
-
-  function applyWeightStep(exId: string, delta: number) {
-    const current = parseFloat(inputs[exId]?.weight ?? "");
-    const next = Number.isFinite(current) ? current + delta : delta;
-    setInput(exId, "weight", formatWeight(Math.max(0, next)));
-  }
-
-  function applyLastSet(exId: string) {
-    const last = lastSets[exId];
-    if (!last) return;
-    setInputs((prev) => ({
-      ...prev,
-      [exId]: { weight: formatWeight(wu.toDisplay(last.weight)), reps: String(last.reps), rpe: last.rpe != null ? String(last.rpe) : "" },
-    }));
-  }
-
-  function openAltPicker(baseExId: string) {
-    const list = alternatives[activeDayIndex]?.[baseExId] ?? [];
-    if (!list.length) return;
-    setAltPickerBase(baseExId);
-    setAltPickerOpen(true);
-  }
-
-  function chooseAlternative(baseExId: string, exId: string) {
-    setSelectedAlternatives((prev) => {
-      const next = { ...prev };
-      if (exId === baseExId) delete next[baseExId];
-      else next[baseExId] = exId;
-      // Persist so swaps survive tab navigation
-      setSettingAsync("selectedAlternatives", JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-    setAltPickerOpen(false);
-    setAltPickerBase(null);
-  }
-
-  async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[], isPerSide: boolean = false) {
-    if (!program?.id) return;
-    const base = getExercise(baseExId);
-    const newId = await createCustomExercise({
-      displayName: name,
-      equipment,
-      tags: tags.length > 0 ? tags : tagsFor(baseExId),
-      defaultIncrementKg: base?.defaultIncrementKg ?? 2.5,
-      isPerSide,
-    });
-
-    // Add as a permanent alternative for this exercise on this day
-    const currentAlts = alternatives[activeDayIndex]?.[baseExId] ?? [];
-    await ProgramStore.setAlternatives({
-      programId: program.id,
-      dayIndex: activeDayIndex,
-      exerciseId: baseExId,
-      alternatives: [...currentAlts, newId],
-    });
-
-    // Reload alternatives
-    const reloaded = await ProgramStore.getAlternativesForProgram(program.id);
-    setAlternatives(reloaded);
-
-    // Auto-select the new exercise
-    chooseAlternative(baseExId, newId);
-  }
-
-  async function handleSetAlternativeAsDefault(baseExId: string, newDefaultExId: string) {
-    if (!program || !program.id) return;
-    const programId = program.id;
-    const dayIdx = activeDayIndex;
-
-    // Close modal immediately for better UX
-    setAltPickerOpen(false);
-    setAltPickerBase(null);
-
-    try {
-      const currentDay = program.days[dayIdx];
-      if (!currentDay) return;
-
-      // Find and update the block with this exercise
-      const updatedBlocks = currentDay.blocks.map((block) => {
-        if (block.type === "single" && block.exId === baseExId) {
-          return { ...block, exId: newDefaultExId };
-        }
-        if (block.type === "superset") {
-          if (block.a === baseExId) return { ...block, a: newDefaultExId };
-          if (block.b === baseExId) return { ...block, b: newDefaultExId };
-        }
-        return block;
-      });
-
-      // Update the program
-      const updatedProgram: Program = {
-        ...program,
-        days: program.days.map((day, i) =>
-          i === dayIdx ? { ...day, blocks: updatedBlocks } : day
-        ),
-      };
-
-      // Update alternatives: add old base, remove new default
-      const currentAlts = alternatives[dayIdx]?.[baseExId] ?? [];
-      const newAlts = [baseExId, ...currentAlts.filter((id) => id !== newDefaultExId)];
-
-      // Save program first
-      await ProgramStore.saveProgram(programMode, updatedProgram);
-
-      // Update alternatives for the new default exercise
-      if (newAlts.length > 0) {
-        await ProgramStore.setAlternatives({
-          programId,
-          dayIndex: dayIdx,
-          exerciseId: newDefaultExId,
-          alternatives: newAlts,
-        });
-      }
-
-      // Clear old alternatives entry (just delete, don't insert)
-      const db = getDb();
-      await db.runAsync(
-        `DELETE FROM program_exercise_alternatives WHERE program_id = ? AND day_index = ? AND exercise_id = ?`,
-        [programId, dayIdx, baseExId]
-      );
-
-      // Reload program and alternatives
-      const reloaded = await ProgramStore.getProgram(programId);
-      if (reloaded) setProgram(reloaded);
-      const reloadedAlts = await ProgramStore.getAlternativesForProgram(programId);
-      setAlternatives(reloadedAlts);
-
-      // Clear selection since base changed
-      setSelectedAlternatives((prev) => {
-        const next = { ...prev };
-        delete next[baseExId];
-        return next;
-      });
-
-      Alert.alert(t("log.setAsDefaultDone"));
-    } catch (err) {
-      console.error("Failed to set alternative as default:", err);
-      Alert.alert(t("common.error"), String(err));
-    }
-  }
-
-  function dayKeyForIndex(idx: number) { return `day_${idx + 1}`; }
-  function getDayKey() { return dayKeyForIndex(activeDayIndex); }
-
-  function selectDayIndex(i: number) {
-    if (activeWorkoutId) {
-      Alert.alert(t("log.lockedAlert"), t("log.lockedSwitchDay"), [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("log.endAndSwitch"),
-          style: "destructive",
-          onPress: async () => {
-            await endWorkout();
-            setActiveDayIndex(i);
-          },
-        },
-      ]);
-      return;
-    }
-    setActiveDayIndex(i);
-  }
-
-  function scrollToAnchorKey(key: string) {
-    const y = anchorPositionsRef.current[key];
-    if (!Number.isFinite(y)) return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
-  }
-
-  function focusExercise(exId: string, opts?: { scroll?: boolean }) {
-    setFocusedExerciseId(exId);
-    if (!opts?.scroll) return;
-    const key = anchorKeyByExerciseId[exId];
-    if (key) scrollToAnchorKey(key);
-  }
-
-  async function startWorkout() {
-    if (activeWorkoutId) return;
-    const id = uid("workout");
-    const startedAt = isoNow();
-    const programId = program?.id ?? null;
-    await getDb().runAsync(
-      `INSERT INTO workouts(id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, gym_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, isoDateOnly(), programMode, programId, getDayKey(), "green", "", activeDayIndex, startedAt, activeGymId ?? null]
-    );
-    await setSettingAsync("activeWorkoutId", id);
-    setActiveWorkoutId(id);
-    restTimer.setActiveWorkoutId(id); // Show floating timer
-    setWorkoutStartedAt(startedAt);
-    setWorkoutSets([]);
-    setWorkoutNotes("");
-  }
-
-  async function endWorkout() {
-    if (!activeWorkoutId) return;
-    const programId = program?.id ?? "";
-    const dayCount = Math.max(1, program?.days.length ?? 1);
-    const nextIdx = (activeDayIndex + 1) % dayCount;
-
-    // Build summary before clearing state
-    const totalVolume = workoutSets.reduce((sum, s) => {
-      const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
-      return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
-    }, 0);
-    const exerciseIds = new Set(workoutSets.map((s) => s.exercise_id ?? s.exercise_name));
-    let topE1rm: { name: string; value: number } | null = null;
-    for (const s of workoutSets) {
-      if (s.weight > 0 && s.reps > 0) {
-        const e = round1(epley1RM(s.weight, s.reps));
-        if (!topE1rm || e > topE1rm.value) {
-          topE1rm = { name: displayNameFor(s.exercise_id ?? s.exercise_name), value: e };
-        }
-      }
-    }
-    // ── Volume PRs (session-total per exercise) ──
-    const { dbPrMap, volumePrs: rawVolumePrs } = await checkSessionVolumePRs({
-      workoutId: activeWorkoutId ?? "",
-      programId,
-      sets: workoutSets,
-    });
-    const volumePrs = rawVolumePrs.map((msg) => {
-      const [, exId, vol] = msg.split(":");
-      return `${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(Number(vol)))} ${wu.unitLabel()}`;
-    });
-    // Merge DB records into React state
-    setPrRecords((prev) => {
-      const merged = { ...prev };
-      for (const [eid, rec] of Object.entries(dbPrMap)) merged[eid] = { ...merged[eid], ...rec };
-      return merged;
-    });
-
-    const prs: string[] = [];
-    for (const [exId, rec] of Object.entries(dbPrMap)) {
-      if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
-    }
-
-    setFinishSummary({
-      duration: mmss(workoutElapsedSec),
-      totalSets: workoutSets.length,
-      totalVolume: round1(wu.toDisplay(totalVolume)),
-      exercises: exerciseIds.size,
-      topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
-      prs,
-      volumePrs,
-    });
-
-    try {
-      await getDb().runAsync(
-        `UPDATE workouts SET day_key = ?, day_index = ?, program_id = ?, ended_at = ? WHERE id = ?`,
-        [dayKeyForIndex(activeDayIndex), activeDayIndex, programId || null, isoNow(), activeWorkoutId]
-      );
-    } catch {}
-    if (programId) {
-      await setSettingAsync(`lastCompletedDayIndex_${programId}`, String(activeDayIndex));
-      await setSettingAsync(`nextSuggestedDayIndex_${programId}`, String(nextIdx));
-    }
-    try {
-      const { analyzeWorkoutForProgression } = await import("../../src/progressionStore");
-      if (programId) await analyzeWorkoutForProgression(activeWorkoutId, programId);
-    } catch {}
-    // Advance periodization week
-    if (programId) {
-      try {
-        const updated = await advanceWeek(programId);
-        setPeriodization(updated);
-      } catch {}
-    }
-    await setSettingAsync("activeWorkoutId", "");
-    await setSettingAsync("selectedAlternatives", "").catch(() => {});
-    setActiveWorkoutId(null);
-    restTimer.setActiveWorkoutId(null); // Hide floating timer
-    setWorkoutStartedAt(null);
-    setWorkoutElapsedSec(0);
-    setWorkoutSets([]);
-    setSuggestedDayIndex(nextIdx);
-    setActiveDayIndex(nextIdx);
-  }
-
-  async function handleSaveTemplate() {
-    if (!activeWorkoutId) return;
-    const name = templateName.trim();
-    if (!name) return;
-    try {
-      await saveWorkoutAsTemplate(activeWorkoutId, name);
-      setSaveTemplateOpen(false);
-      setTemplateName("");
-      Alert.alert(t("templates.saved"), t("templates.savedMsg"));
-    } catch {
-      Alert.alert(t("common.error"), t("templates.saveFailed"));
-    }
-  }
-
-  async function handleShareWorkout() {
-    if (!activeWorkoutId) return;
-    try {
-      await shareWorkoutSummary(activeWorkoutId);
-    } catch {}
-  }
-
-  function handleTemplateSelect(template: import("../../src/templates").WorkoutTemplate) {
-    setTemplatePickerOpen(false);
-    // Template exercises are used to inform the user which exercises to do
-    // For now we just close the picker - the template data is available via template.exercises
-    // The exercises in the template match the program blocks already loaded
-    Alert.alert(
-      t("templates.loaded"),
-      `${template.name}: ${template.exercises.length} ${t("templates.exercises", { count: template.exercises.length })}`
-    );
-  }
-
-  function flashSetRow(id: string) {
-    setLastAddedSetId(id);
-    lastAddedAnim.stopAnimation();
-    lastAddedAnim.setValue(1);
-    Animated.timing(lastAddedAnim, { toValue: 0, duration: 650, useNativeDriver: false }).start(() => {
-      setLastAddedSetId((prev) => (prev === id ? null : prev));
-    });
-  }
-
-  async function addSetForExercise(exId: string, forcedIndex?: number) {
-    if (!activeWorkoutId) { Alert.alert(t("log.startWorkoutAlert"), t("log.startWorkoutMsg")); return; }
-
-    const input = inputs[exId] ?? { weight: "", reps: "", rpe: "" };
-    const isBw = isBodyweight(exId);
-    const parsedWeight = parseFloat(input.weight);
-    const weight = Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
-    const reps = parseInt(input.reps, 10);
-
-    if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
-
-    const rpe = parseFloat(input.rpe);
-    const setIndex = Number.isFinite(forcedIndex) ? Number(forcedIndex) : (setsByExercise[exId]?.length ?? 0);
-    const bwData = await computeBodyweightLoad(exId, isoDateOnly(), weight);
-
-    // Compute rest_seconds: actual time since last set of this exercise in this session
-    const exerciseSetsForRest = setsByExercise[exId];
-    let restSeconds: number | null = null;
-    if (exerciseSetsForRest && exerciseSetsForRest.length > 0) {
-      const lastSet = exerciseSetsForRest[exerciseSetsForRest.length - 1];
-      const elapsed = Math.round((Date.now() - Date.parse(lastSet.created_at)) / 1000);
-      if (Number.isFinite(elapsed) && elapsed > 0) restSeconds = elapsed;
-    }
-
-    const row: SetRow = {
-      id: uid("set"), workout_id: activeWorkoutId, exercise_name: displayNameFor(exId),
-      set_index: setIndex, weight, reps, rpe: Number.isFinite(rpe) ? rpe : null,
-      created_at: isoNow(), exercise_id: exId, set_type: "normal", is_warmup: 0,
-      external_load_kg: bwData.external_load_kg, bodyweight_kg_used: bwData.bodyweight_kg_used,
-      bodyweight_factor: bwData.bodyweight_factor, est_total_load_kg: bwData.est_total_load_kg,
-      rest_seconds: restSeconds,
-    };
-
-    await getDb().runAsync(
-      `INSERT INTO sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, rest_seconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.workout_id, row.exercise_name, row.set_index, row.weight, row.reps, row.rpe ?? null, row.created_at, row.exercise_id ?? null, row.set_type ?? null, row.is_warmup ?? 0, row.external_load_kg ?? 0, row.bodyweight_kg_used ?? null, row.bodyweight_factor ?? null, row.est_total_load_kg ?? null, row.rest_seconds ?? null]
-    );
-
-    const key = anchorKeyByExerciseId[exId];
-    if (key) {
-      const card = anchorLayoutRef.current[key];
-      if (card) pendingAutoScrollRef.current = { cardBottom: card.y + card.height };
-    }
-    setWorkoutSets((prev) => [...prev, row]);
-    flashSetRow(row.id);
-    fireHapticLight();
-    Keyboard.dismiss();
-
-    const programId = program?.id ?? "";
-    const { updatedRecords, messages: rawMsgs } = await checkSetPRs({
-      exerciseId: exId,
-      weight,
-      reps,
-      setId: row.id,
-      workoutId: activeWorkoutId ?? "",
-      programId,
-      currentVolumeRecord: prRecords[exId]?.volume,
-      isBw,
-      estTotalLoadKg: row.est_total_load_kg,
-    });
-
-    setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
-
-    // Convert coded messages to display strings
-    const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
-    const messages: string[] = rawMsgs.map((msg) => {
-      const [type, val] = msg.split(":");
-      const num = Number(val);
-      if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
-      return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
-    });
-
-    if (messages.length) {
-      const bannerText = messages.join(" \u00B7 ");
-      setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
-      setTimeout(() => {
-        setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
-      }, 3500);
-    }
-
-    setLastSets((prev) => ({
-      ...prev,
-      [exId]: { weight: row.weight, reps: row.reps, rpe: row.rpe ?? null, created_at: row.created_at, workout_id: row.workout_id },
-    }));
-
-    try {
-      const unlockedAchievements = await checkAndUnlockAchievements({ workoutId: activeWorkoutId, setId: row.id, exerciseId: exId, weight, reps });
-      if (unlockedAchievements.length > 0) setAchievementToast({ visible: true, achievement: unlockedAchievements[0] });
-    } catch (error) { console.error("Failed to check achievements:", error); }
-
-    try {
-      const { autoCheckGoals } = await import("../../src/goals");
-      const programId = program?.id;
-      if (programId) await autoCheckGoals(programId);
-    } catch {}
-
-    setUndoSet({ row, exerciseId: exId, prSetId: row.id });
-    setUndoVisible(true);
-
-    if (restTimer.restEnabled) restTimer.startRestTimer(restTimer.getRestForExercise(exId));
-  }
-
-  async function addSetForSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
-    const key = block.anchorKey;
-    const next = supersetAlternate ? (supersetNext[key] ?? "a") : "a";
-    const exId = next === "a" ? block.a : block.b;
-    await addSetForExercise(exId);
-    if (supersetAlternate) {
-      setSupersetNext((prev) => ({ ...prev, [key]: next === "a" ? "b" : "a" }));
-      const nextExId = next === "a" ? block.b : block.a;
-      setTimeout(() => { focusExercise(nextExId, { scroll: true }); }, 50);
-    }
-  }
-
-  async function addSetMultiple(exId: string, count: number) {
-    const base = setsByExercise[exId]?.length ?? 0;
-    for (let i = 0; i < count; i += 1) await addSetForExercise(exId, base + i);
-  }
-
-  async function handleUndo() {
-    if (!undoSet) return;
-    const { row, exerciseId, prSetId } = undoSet;
-    try {
-      const db = getDb();
-      await db.runAsync(`DELETE FROM sets WHERE id = ?`, [row.id]);
-      if (prSetId) await db.runAsync(`DELETE FROM pr_records WHERE set_id = ?`, [prSetId]);
-      setWorkoutSets((prev) => prev.filter((s) => s.id !== row.id));
-      // Reload PR records from DB for this exercise instead of wiping state
-      const programId = program?.id ?? "";
-      if (programId) {
-        const reloaded = loadPrRecords(programId, [exerciseId]);
-        setPrRecords((prev) => ({ ...prev, [exerciseId]: reloaded[exerciseId] ?? {} }));
-      } else {
-        setPrRecords((prev) => { const next = { ...prev }; delete next[exerciseId]; return next; });
-      }
-      setPrBanners((prev) => { const next = { ...prev }; delete next[exerciseId]; return next; });
-    } catch {}
-    setUndoSet(null);
-    setUndoVisible(false);
-  }
-
-  function openEditSet(row: SetRow) {
-    setEditSet(row);
-    setEditWeight(row.weight != null ? String(wu.toDisplay(row.weight)) : "");
-    setEditReps(String(row.reps ?? ""));
-    setEditRpe(row.rpe != null ? String(row.rpe) : "");
-    setEditSetOpen(true);
-  }
-
-  async function saveEditSet() {
-    if (!editSet) return;
-    const isBw = editSet.exercise_id ? isBodyweight(editSet.exercise_id) : false;
-    const parsedWeight = parseFloat(editWeight);
-    const weight = Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
-    const reps = parseInt(editReps, 10);
-    const rpe = parseFloat(editRpe);
-    if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
-    let estTotalLoadKgForCheck: number | null = null;
-    try {
-      if (isBw && editSet.exercise_id) {
-        const dateOnly = editSet.created_at ? editSet.created_at.slice(0, 10) : isoDateOnly();
-        const bwData = await computeBodyweightLoad(editSet.exercise_id, dateOnly, weight);
-        estTotalLoadKgForCheck = bwData.est_total_load_kg ?? null;
-        await getDb().runAsync(
-          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
-          [weight, reps, Number.isFinite(rpe) ? rpe : null, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
-        );
-      } else {
-        await getDb().runAsync(`UPDATE sets SET weight = ?, reps = ?, rpe = ? WHERE id = ?`, [weight, reps, Number.isFinite(rpe) ? rpe : null, editSet.id]);
-      }
-      refreshWorkoutSets();
-
-      // PR recalculation after edit
-      const exId = editSet.exercise_id ?? editSet.exercise_name;
-      const pid = program?.id ?? "";
-      if (exId && pid) {
-        // 1) Forward check — fires banner if edited values beat the current record
-        const { messages: rawMsgs } = await checkSetPRs({
-          exerciseId: exId, weight, reps, setId: editSet.id,
-          workoutId: activeWorkoutId ?? "", programId: pid,
-          currentVolumeRecord: prRecords[exId]?.volume,
-          isBw, estTotalLoadKg: estTotalLoadKgForCheck,
-        });
-        // 2) Full historical recompute — fixes ghost PRs if edited down
-        const recomputed = recomputePRForExercise(exId, pid);
-        setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
-
-        // Show banner if forward check found a new PR
-        const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
-        const messages: string[] = rawMsgs.map((msg) => {
-          const [type, val] = msg.split(":");
-          const num = Number(val);
-          if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
-          return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
-        });
-        if (messages.length) {
-          const bannerText = messages.join(" \u00B7 ");
-          setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
-          setTimeout(() => {
-            setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
-          }, 3500);
-        }
-      }
-    } catch { Alert.alert(t("common.error"), t("log.couldNotUpdate")); }
-    finally { setEditSetOpen(false); setEditSet(null); }
-  }
-
-  async function deleteSet(row: SetRow) {
-    Alert.alert(t("log.deleteSetTitle"), t("log.deleteSetMsg"), [
-      { text: t("common.cancel"), style: "cancel" },
-      { text: t("common.delete"), style: "destructive", onPress: async () => {
-        try {
-          await getDb().runAsync(`DELETE FROM sets WHERE id = ?`, [row.id]);
-          refreshWorkoutSets();
-          // Recompute PRs for the affected exercise
-          const exId = row.exercise_id ?? row.exercise_name;
-          const pid = program?.id ?? "";
-          if (exId && pid) {
-            const recomputed = recomputePRForExercise(exId, pid);
-            setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
-            // Clear any lingering banner for this exercise
-            setPrBanners((prev) => { const next = { ...prev }; delete next[exId]; return next; });
-          }
-        }
-        catch { Alert.alert(t("common.error"), t("log.couldNotDelete")); }
-      }},
-    ]);
-  }
-
-  const quickExerciseId = focusedExerciseId ?? exerciseIds[0];
-
-  function completeOnboarding() {
-    setSettingAsync("hasSeenOnboarding", "1").catch(() => {});
-    setShowOnboarding(false);
-  }
-
-  // ── Shared callbacks for exercise cards ──
-  const cardCallbacks = useMemo(() => ({
-    onSetInput: setInput,
-    onApplyWeightStep: applyWeightStep,
-    onApplyLastSet: applyLastSet,
-    onAddSet: addSetForExercise,
-    onAddSetMultiple: addSetMultiple,
-    onEditSet: openEditSet,
-    onDeleteSet: deleteSet,
-    onFocusExercise: (exId: string) => {
-      focusExercise(exId);
-      restTimer.setFocusedExerciseId(exId);
-    },
-    onOpenAltPicker: openAltPicker,
-    onSetAsDefault: handleSetAlternativeAsDefault,
-    onActivateExercise: (exId: string) => {
-      focusExercise(exId);
-      restTimer.setFocusedExerciseId(exId);
-    },
-    onExerciseNoteChange: (exId: string, note: string) => {
-      setExerciseNotes((prev) => ({ ...prev, [exId]: note }));
-    },
-    onExerciseNoteBlur: (exId: string) => {
-      const val = (exerciseNotes[exId] ?? "").trim();
-      if (val) setNote(exId, val).catch(() => {});
-      else deleteNote(exId).catch(() => {});
-    },
-    onOpenPlateCalc: (exId: string) => setPlateCalcExId(exId),
-  }), [setInput, applyWeightStep, applyLastSet, addSetForExercise, addSetMultiple,
-       openEditSet, deleteSet, focusExercise, restTimer, openAltPicker,
-       handleSetAlternativeAsDefault, exerciseNotes]);
-
-  const activeGymEquipment = useMemo(() => {
-    if (!activeGymId) return null;
-    const gym = gyms.find((g) => g.id === activeGymId);
-    return gym ? getGymEquipmentSet(gym) : null;
-  }, [activeGymId, gyms]);
-
-  if (!ready || !program || !dayPlan) {
-    return (
-      <Screen>
-        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
-          <TopBar
-            title={t("log.title")}
-            subtitle={t("log.readyForWorkout")}
-            left={<IconButton icon="menu" onPress={openDrawer} />}
-          />
-          <SkeletonExerciseCard />
-          <SkeletonExerciseCard />
-          <SkeletonExerciseCard />
-        </ScrollView>
-      </Screen>
-    );
-  }
+  // Grid generation — Monday-first week like the prototype.
+  // JS getDay() returns 0..6 with 0=Sunday. Convert to Monday-first (0=Mon).
+  const firstOfMonth = useMemo(() => new Date(monthAnchor.y, monthAnchor.m, 1), [monthAnchor]);
+  const daysInMonth = useMemo(() => new Date(monthAnchor.y, monthAnchor.m + 1, 0).getDate(), [monthAnchor]);
+  const firstDow = useMemo(() => {
+    const js = firstOfMonth.getDay(); // 0=Sun..6=Sat
+    return (js + 6) % 7;              // 0=Mon..6=Sun
+  }, [firstOfMonth]);
+
+  const grid = useMemo<(number | null)[]>(() => {
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    return cells;
+  }, [firstDow, daysInMonth]);
+
+  const sessionsThisMonth = sessions.size;
+  const consistencyPct = useMemo(() => {
+    // Naive estimate: expected = trainingDays × weeks in the month.
+    const weeks = Math.max(1, Math.ceil(daysInMonth / 7));
+    const expected = Math.max(1, (prefs.trainingDays ?? 4) * weeks);
+    return Math.max(0, Math.min(100, Math.round((sessionsThisMonth / expected) * 100)));
+  }, [sessionsThisMonth, daysInMonth, prefs.trainingDays]);
+
+  const todayDay = monthAnchor.y === TODAY.y && monthAnchor.m === TODAY.m ? TODAY.d : -1;
 
   return (
-    <Screen>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+    <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "left", "right"]}>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          ref={scrollRef}
-          onLayout={(e) => { scrollViewHeightRef.current = e.nativeEvent.layout.height; }}
-          onContentSizeChange={(_w, h) => {
-            const prev = contentHeightRef.current;
-            contentHeightRef.current = h;
-            const pending = pendingAutoScrollRef.current;
-            if (!pending || h <= prev) return;
-            const viewport = scrollViewHeightRef.current || 0;
-            const visibleBottom = scrollYRef.current + viewport - 16;
-            if (pending.cardBottom <= visibleBottom + 8) {
-              const delta = h - prev;
-              scrollRef.current?.scrollTo({ y: scrollYRef.current + delta, animated: true });
-            }
-            pendingAutoScrollRef.current = null;
-          }}
-          onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y; }}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: theme.space.xl }}
-        >
-          <TopBar
-            title={t("log.title")}
-            subtitle={t("log.readyForWorkout")}
-            left={<IconButton icon="menu" onPress={openDrawer} />}
-            right={
-              <View style={{ flexDirection: "row", gap: 4 }}>
-                {activeWorkoutId ? (
-                  <IconButton icon="share" onPress={handleShareWorkout} />
-                ) : null}
-                <IconButton icon="settings" onPress={() => restTimer.setRestSettingsOpen(true)} />
-              </View>
-            }
-          />
+        {/* Header */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4, marginBottom: 14 }}>
+          <View style={{ width: 38 }} />
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 22,
+              color: theme.text,
+              fontFamily: theme.fontFamily.serif,
+              letterSpacing: -0.2,
+            }}
+          >
+            {t("nav.log")}
+          </Text>
+          <Pressable
+            onPress={() => {}}
+            style={({ pressed }) => ({
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              backgroundColor: "rgba(255,255,255,0.05)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.12)",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.8 : 1,
+            })}
+          >
+            <MaterialIcons name="more-horiz" size={16} color="#fff" />
+          </Pressable>
+        </View>
 
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {gyms.length > 0 ? (
-              <Chip
-                text={activeGymId ? (gyms.find((g) => g.id === activeGymId)?.name ?? t("gym.noGym")) : t("gym.noGym")}
-                active={!!activeGymId}
-                onPress={() => setGymPickerOpen(true)}
-              />
-            ) : null}
-            <Chip text={programMode === "back" ? t("log.backFriendly") : t("log.standard")} />
-            <Chip
-              text={t("log.dayChip", { n: activeDayIndex + 1 })}
-              active
-              onPress={() => {
-                if (activeWorkoutId) { Alert.alert(t("log.lockedAlert"), t("log.lockedSwitchDay")); return; }
-                setDayPickerOpen(true);
+        {/* Calendar card */}
+        <GlassCard strong radius={22} padding={16}>
+          {/* Month nav row */}
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <NavArrow direction="left" onPress={() => setMonthOffset((x) => x - 1)} />
+            <Text
+              style={{
+                color: theme.text,
+                fontSize: 15,
+                fontFamily: theme.fontFamily.serif,
+                letterSpacing: -0.1,
               }}
+            >
+              {monthName}
+            </Text>
+            <NavArrow
+              direction="right"
+              onPress={() => setMonthOffset((x) => x + 1)}
+              disabled={monthOffset >= 0}
             />
-            <Chip text={activeWorkoutId ? t("log.activeWorkout") : t("log.noWorkout")} />
           </View>
 
-          {periodization && isDeload ? (
-            <View style={{
-              backgroundColor: theme.warn + "22",
-              borderColor: theme.warn,
-              borderWidth: 1,
-              borderRadius: 14,
-              padding: 12,
-              alignItems: "center",
-            }}>
-              <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 14, fontWeight: "600" }}>
-                {t("periodization.deloadBannerSets")}
-              </Text>
-            </View>
-          ) : null}
-
-          <Card title={t("log.sessionCard")} style={{ borderColor: theme.accent, backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.12)" : "rgba(124, 58, 237, 0.06)" }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View>
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.duration")}</Text>
-                <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>{mmss(workoutElapsedSec)}</Text>
-              </View>
-            </View>
-            {activeWorkoutId && activeGymId ? (
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                {gyms.find((g) => g.id === activeGymId)?.name ?? ""}
-              </Text>
-            ) : null}
-            <View style={{ marginTop: 12 }}>
-              {activeWorkoutId ? (
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Btn label={t("log.endWorkout")} onPress={() => {
-                    Alert.alert(t("log.confirmEnd"), t("log.confirmEndMsg"), [
-                      { text: t("common.cancel"), style: "cancel" },
-                      { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
-                    ]);
-                  }} tone="danger" />
-                  <Btn label={t("templates.save")} onPress={() => { setTemplateName(""); setSaveTemplateOpen(true); }} />
-                </View>
-              ) : (
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Btn label={t("log.startWorkout")} onPress={startWorkout} tone="accent" />
-                  <Btn label={t("templates.title")} onPress={() => setTemplatePickerOpen(true)} />
-                </View>
-              )}
-            </View>
-            <Text style={{ color: theme.muted }}>{t("log.sessionHint")}</Text>
-            {activeWorkoutId ? (
-              <TextInput
-                value={workoutNotes}
-                onChangeText={(v) => {
-                  setWorkoutNotes(v);
-                  getDb().runAsync(`UPDATE workouts SET notes = ? WHERE id = ?`, [v, activeWorkoutId]).catch(() => {});
-                }}
-                placeholder={t("log.sessionNotePlaceholder")}
-                placeholderTextColor={theme.muted}
-                multiline
-                style={{
-                  color: theme.text, backgroundColor: theme.glass, borderColor: theme.glassBorder,
-                  borderWidth: 1, borderRadius: theme.radius.md, padding: 10,
-                  fontFamily: theme.mono, fontSize: theme.fontSize.sm, minHeight: 40, maxHeight: 100,
-                }}
-              />
-            ) : null}
-          </Card>
-
-          <Card title={t("log.dayCard")}>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-              {t("log.nextSuggestion", { n: suggestedDayIndex + 1 })}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              {(program?.days ?? []).map((_, i) => (
-                <Chip key={`day_${i}`} text={t("log.dayLabel", { n: i + 1 })} active={activeDayIndex === i} onPress={() => selectDayIndex(i)} />
-              ))}
-            </View>
-          </Card>
-
-          <Card title={t("log.jumpTo")}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {anchorItems.map((item) => (
-                <Chip key={item.key} text={shortLabel(item.label)} onPress={() => scrollToAnchorKey(item.key)} />
-              ))}
-            </ScrollView>
-          </Card>
-
-          {!activeWorkoutId && (
-            <HintBanner hintKey="log_first_set" icon="play-circle-outline">
-              {t("hint.logFirstSet")}
-            </HintBanner>
-          )}
-          {activeWorkoutId && (
-            <HintBanner hintKey="rest_timer" icon="timer">
-              {t("hint.restTimer")}
-            </HintBanner>
-          )}
-
-          <View style={{ gap: 12 }}>
-            {renderBlocks.map((block, blockIdx) => {
-              if (block.type === "single") {
-                const exId = block.exId;
-                return (
-                  <SingleExerciseCard
-                    key={block.anchorKey}
-                    exId={exId}
-                    baseExId={block.baseExId}
-                    anchorKey={block.anchorKey}
-                    input={inputs[exId] ?? { weight: "", reps: "", rpe: "" }}
-                    sets={setsByExercise[exId] ?? []}
-                    target={getTargetFor(exId)}
-                    lastSet={lastSets[exId]}
-                    prBanner={prBanners[exId]}
-                    coachHint={buildCoachHint(exId)}
-                    altList={alternatives[activeDayIndex]?.[block.baseExId] ?? []}
-                    exerciseNote={exerciseNotes[exId] ?? ""}
-                    isFocused={quickExerciseId === exId}
-                    lastAddedSetId={lastAddedSetId}
-                    lastAddedAnim={lastAddedAnim}
-                    workoutId={activeWorkoutId}
-                    exerciseIndex={blockIdx}
-                    gymId={activeGymId}
-                    gymEquipment={activeGymEquipment}
-                    onLayout={(e) => {
-                      anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
-                      anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
-                    }}
-                    {...cardCallbacks}
-                  />
-                );
-              }
-
-              const nextSide = supersetAlternate ? (supersetNext[block.anchorKey] ?? "a") : "a";
-              const nextLabel = nextSide === "a" ? "A" : "B";
-
-              return (
-                <SupersetCard
-                  key={block.anchorKey}
-                  anchorKey={block.anchorKey}
-                  exIdA={block.a}
-                  exIdB={block.b}
-                  baseA={block.baseA}
-                  baseB={block.baseB}
-                  inputA={inputs[block.a] ?? { weight: "", reps: "", rpe: "" }}
-                  inputB={inputs[block.b] ?? { weight: "", reps: "", rpe: "" }}
-                  setsA={setsByExercise[block.a] ?? []}
-                  setsB={setsByExercise[block.b] ?? []}
-                  targetA={getTargetFor(block.a)}
-                  targetB={getTargetFor(block.b)}
-                  lastSetA={lastSets[block.a]}
-                  lastSetB={lastSets[block.b]}
-                  prBannerA={prBanners[block.a]}
-                  prBannerB={prBanners[block.b]}
-                  coachHintA={buildCoachHint(block.a)}
-                  coachHintB={buildCoachHint(block.b)}
-                  altListA={alternatives[activeDayIndex]?.[block.baseA] ?? []}
-                  altListB={alternatives[activeDayIndex]?.[block.baseB] ?? []}
-                  exerciseNoteA={exerciseNotes[block.a] ?? ""}
-                  exerciseNoteB={exerciseNotes[block.b] ?? ""}
-                  focusedExerciseId={quickExerciseId}
-                  lastAddedSetId={lastAddedSetId}
-                  lastAddedAnim={lastAddedAnim}
-                  workoutId={activeWorkoutId}
-                  exerciseIndex={blockIdx}
-                  gymId={activeGymId}
-                  gymEquipment={activeGymEquipment}
-                  nextLabel={nextLabel}
-                  onLayout={(e) => {
-                    anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
-                    anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
+          {/* Day-of-week header */}
+          <View style={{ flexDirection: "row", marginBottom: 6 }}>
+            {(["M", "T", "W", "T", "F", "S", "S"]).map((d, i) => (
+              <View key={i} style={{ flex: 1, alignItems: "center" }}>
+                <Text
+                  style={{
+                    color: theme.ink3,
+                    fontSize: 9,
+                    letterSpacing: 1,
+                    textTransform: "uppercase",
+                    fontFamily: theme.fontFamily.medium,
                   }}
-                  onAddSuperset={() => addSetForSuperset(block)}
-                  {...cardCallbacks}
-                />
+                >
+                  {d}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Calendar grid */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+            {grid.map((d, i) => {
+              if (d == null) {
+                return <View key={`empty-${i}`} style={calendarCellStyle} />;
+              }
+              const iso = isoFromYMD(monthAnchor.y, monthAnchor.m, d);
+              const type = sessions.get(iso) ?? null;
+              const isToday = d === todayDay;
+              return (
+                <DayCell key={`d-${d}`} day={d} type={type} isToday={isToday} theme={theme} />
               );
             })}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </GlassCard>
 
-      <OnboardingModal visible={showOnboarding} onDone={completeOnboarding} onClose={completeOnboarding} />
+        {/* Legend */}
+        <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
+          {(["push", "pull", "legs"] as const).map((k) => (
+            <View key={k} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <View style={{ width: 14, height: 14, borderRadius: 5, overflow: "hidden" }}>
+                <LinearGradient
+                  colors={TINTS[k]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ flex: 1 }}
+                />
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>{t(`log.legend.${k}`)}</Text>
+            </View>
+          ))}
+        </View>
 
-      {/* Exercise Swap Modal */}
-      <ExerciseSwapModal
-        visible={altPickerOpen}
-        onClose={() => { setAltPickerOpen(false); setAltPickerBase(null); }}
-        baseExId={altPickerBase}
-        alternativeIds={(() => {
-          if (!altPickerBase) return [];
-          const fullList = [altPickerBase, ...(alternatives[activeDayIndex]?.[altPickerBase] ?? [])];
-          const activeGym = getActiveGym();
-          const gymEquipment = activeGym ? getGymEquipmentSet(activeGym) : null;
-          if (!gymEquipment) return fullList;
-          return fullList.filter((exId) => {
-            const eq = getExercise(exId)?.equipment;
-            if (!eq) return true;
-            return isEquipmentAvailable(eq, activeGym);
-          });
-        })()}
-        resolvedExId={altPickerBase ? resolveSelectedExId(altPickerBase) : null}
-        onChoose={chooseAlternative}
-        onSetDefault={handleSetAlternativeAsDefault}
-        onCreateCustom={handleCreateCustomFromAlt}
-        lastSets={lastSets}
-        exerciseNotes={exerciseNotes}
+        {/* Month summary */}
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+          <GlassCard radius={18} padding={14} style={{ flex: 1 }}>
+            <Text style={{ color: theme.muted2, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+              {t("log.thisMonth")}
+            </Text>
+            <Mono style={{ fontSize: 26, color: theme.text, marginTop: 4 }}>{sessionsThisMonth}</Mono>
+            <Text style={{ color: theme.muted2, fontSize: 11, marginTop: 1 }}>{t("log.sessions")}</Text>
+          </GlassCard>
+          <GlassCard radius={18} padding={14} style={{ flex: 1 }}>
+            <Text style={{ color: theme.muted2, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+              {t("log.consistency")}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 4 }}>
+              <Mono style={{ fontSize: 26, color: theme.text }}>{consistencyPct}</Mono>
+              <Text style={{ color: theme.muted2, fontSize: 14, marginLeft: 2 }}>%</Text>
+            </View>
+            <Text style={{ color: theme.aurora.cyan, fontSize: 11, marginTop: 1 }}>
+              {consistencyPct >= 80 ? t("log.onTrack") : t("log.keepGoing")}
+            </Text>
+          </GlassCard>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ── Subcomponents ────────────────────────────────────────────────────────────
+
+function NavArrow({ direction, onPress, disabled }: { direction: "left" | "right"; onPress: () => void; disabled?: boolean }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        backgroundColor: "rgba(255,255,255,0.05)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.10)",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.35 : pressed ? 0.7 : 1,
+      })}
+    >
+      <MaterialIcons
+        name={direction === "left" ? "chevron-left" : "chevron-right"}
+        size={18}
+        color="#fff"
       />
+    </Pressable>
+  );
+}
 
-      {/* Day Picker Modal */}
-      <Modal visible={dayPickerOpen} transparent animationType="fade" onRequestClose={() => setDayPickerOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setDayPickerOpen(false)}>
-          <View onStartShouldSetResponder={() => true} style={{
-            backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
-            borderRadius: theme.radius.xl, padding: 18, gap: 14,
-            shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
-            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
-          }}>
-            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.chooseDay")}</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              {(program?.days ?? []).map((_, i) => (
-                <Chip key={`day_pick_${i}`} text={t("log.dayLabel", { n: i + 1 })} active={activeDayIndex === i}
-                  onPress={() => { selectDayIndex(i); setDayPickerOpen(false); }} />
-              ))}
-            </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Btn label={t("common.close")} onPress={() => setDayPickerOpen(false)} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
+// Fixed width — 1/7 of the grid minus the small gap between cells.
+// Using percentage via (100/7)% keeps cells equal regardless of card width.
+const CELL_WIDTH_PCT = `${100 / 7}%` as const;
+const CELL_PADDING = 2; // half of the 4px gap on each side
 
-      <GymPickerModal
-        visible={gymPickerOpen}
-        onClose={() => setGymPickerOpen(false)}
-        gyms={gyms}
-        activeGymId={activeGymId}
-        onSelect={(gymId) => {
-          setActiveGymIdStore(gymId);
-          setActiveGymId(gymId);
-          setGymPickerOpen(false);
+const calendarCellStyle = {
+  width: CELL_WIDTH_PCT,
+  aspectRatio: 1,
+  padding: CELL_PADDING,
+} as const;
+
+function DayCell({ day, type, isToday, theme }: { day: number; type: SessionType | null; isToday: boolean; theme: any }) {
+  return (
+    <View style={calendarCellStyle}>
+      <View
+        style={{
+          flex: 1,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          borderWidth: isToday ? 1.5 : 1,
+          borderColor: isToday ? "#ffffff" : "rgba(255,255,255,0.05)",
+          backgroundColor: type ? "transparent" : "rgba(255,255,255,0.03)",
+          shadowColor: type ? "#c084fc" : "transparent",
+          shadowOpacity: type ? 0.35 : 0,
+          shadowRadius: type ? 8 : 0,
+          shadowOffset: { width: 0, height: 4 },
         }}
-        disabled={!!activeWorkoutId}
-      />
-
-      {/* Edit Set Modal */}
-      <Modal visible={editSetOpen} transparent animationType="fade" onRequestClose={() => setEditSetOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setEditSetOpen(false)}>
-          <View onStartShouldSetResponder={() => true} style={{
-            backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
-            borderRadius: theme.radius.xl, padding: 18, gap: 14,
-            shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
-            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
-          }}>
-            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.editSet")}</Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TextField value={editWeight} onChangeText={setEditWeight} placeholder={wu.unitLabel().toLowerCase()} placeholderTextColor={theme.muted} keyboardType="numeric"
-                style={{ flex: 1, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
-              <TextField value={editReps} onChangeText={setEditReps} placeholder="reps" placeholderTextColor={theme.muted} keyboardType="numeric"
-                style={{ flex: 1, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
-              <TextField value={editRpe} onChangeText={setEditRpe} placeholder="rpe" placeholderTextColor={theme.muted} keyboardType="numeric"
-                style={{ width: 80, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
-            </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Btn label={t("common.save")} onPress={saveEditSet} tone="accent" />
-              <Btn label={t("common.cancel")} onPress={() => setEditSetOpen(false)} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Rest Settings Modal is now rendered by FloatingRestTimer in _layout.tsx */}
-
-      {/* Plate Calculator Modal */}
-      <PlateCalcModal
-        visible={plateCalcExId !== null}
-        onClose={() => setPlateCalcExId(null)}
-        weightStr={plateCalcExId ? (inputs[plateCalcExId]?.weight ?? "") : ""}
-        exerciseId={plateCalcExId}
-        gymId={activeGymId}
-      />
-
-      {/* Undo Toast */}
-      <UndoToast
-        visible={undoVisible}
-        message={t("log.setAdded")}
-        undoLabel={t("log.undo")}
-        onUndo={handleUndo}
-        onDismiss={() => { setUndoVisible(false); setUndoSet(null); }}
-      />
-
-      {/* Achievement Toast */}
-      {achievementToast.achievement && (
-        <AchievementToast
-          visible={achievementToast.visible}
-          achievementName={achievementToast.achievement.name}
-          achievementIcon={achievementToast.achievement.icon}
-          points={achievementToast.achievement.points}
-          tier={achievementToast.achievement.tier}
-          onDismiss={() => setAchievementToast({ visible: false, achievement: null })}
-          onTap={() => {
-            const achId = achievementToast.achievement?.id;
-            router.push({ pathname: "/achievements", params: achId ? { scrollTo: achId } : {} });
+      >
+        {type ? (
+          <LinearGradient
+            colors={TINTS[type]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
+        <Mono
+          style={{
+            fontSize: 11,
+            color: type ? "#fff" : theme.muted,
+            fontFamily: isToday ? theme.mono : theme.mono,
           }}
-        />
-      )}
-
-      {/* Template Picker Modal */}
-      <TemplatePickerModal
-        visible={templatePickerOpen}
-        onClose={() => setTemplatePickerOpen(false)}
-        onSelect={handleTemplateSelect}
-      />
-
-      {/* Save as Template Modal */}
-      <Modal visible={saveTemplateOpen} transparent animationType="fade" onRequestClose={() => setSaveTemplateOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setSaveTemplateOpen(false)}>
-          <View onStartShouldSetResponder={() => true} style={{
-            backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
-            borderRadius: theme.radius.xl, padding: 18, gap: 14,
-            shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
-            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
-          }}>
-            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
-              {t("templates.save")}
-            </Text>
-            <TextField
-              value={templateName}
-              onChangeText={setTemplateName}
-              placeholder={t("templates.namePlaceholder")}
-              placeholderTextColor={theme.muted}
-              style={{
-                color: theme.text,
-                backgroundColor: theme.glass,
-                borderColor: theme.glassBorder,
-                borderWidth: 1,
-                borderRadius: theme.radius.md,
-                padding: 12,
-                fontFamily: theme.mono,
-              }}
-            />
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Btn label={t("common.save")} onPress={handleSaveTemplate} tone="accent" />
-              <Btn label={t("common.cancel")} onPress={() => setSaveTemplateOpen(false)} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Finish Workout Summary Modal */}
-      <Modal visible={!!finishSummary} transparent animationType="fade" onRequestClose={() => setFinishSummary(null)}>
-        <Pressable
-          onPress={() => setFinishSummary(null)}
-          style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", alignItems: "center", padding: 16 }}
         >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
+          {day}
+        </Mono>
+        {type ? (
+          <View
             style={{
-              width: "100%",
-              maxWidth: 340,
-              backgroundColor: theme.modalGlass,
-              borderColor: theme.glassBorder,
-              borderWidth: 1,
-              borderRadius: theme.radius.xl,
-              padding: 24,
-              gap: 16,
-              shadowColor: theme.shadow.lg.color,
-              shadowOpacity: theme.shadow.lg.opacity,
-              shadowRadius: theme.shadow.lg.radius,
-              shadowOffset: theme.shadow.lg.offset,
-              elevation: theme.shadow.lg.elevation,
+              width: 4,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: "#fff",
+              marginTop: 2,
+              opacity: 0.8,
             }}
-          >
-            <Text style={{ color: theme.text, fontFamily: theme.fontFamily.bold, fontSize: 20, textAlign: "center" }}>
-              {t("log.workoutComplete")}
-            </Text>
-
-            <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-              <View style={{ alignItems: "center", gap: 4 }}>
-                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.duration}</Text>
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("common.duration")}</Text>
-              </View>
-              <View style={{ alignItems: "center", gap: 4 }}>
-                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.totalSets}</Text>
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("common.sets")}</Text>
-              </View>
-              <View style={{ alignItems: "center", gap: 4 }}>
-                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.exercises}</Text>
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("common.exercises")}</Text>
-              </View>
-            </View>
-
-            <View style={{ borderTopWidth: 1, borderTopColor: theme.glassBorder, paddingTop: 12, gap: 8 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("common.volume")}</Text>
-                <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
-                  {formatWeight(finishSummary?.totalVolume ?? 0)} {wu.unitLabel()}
-                </Text>
-              </View>
-              {finishSummary?.topE1rm ? (
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.topE1rm")}</Text>
-                  <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14 }}>
-                    {finishSummary.topE1rm.name}: {formatWeight(finishSummary.topE1rm.value)} {wu.unitLabel()}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {finishSummary?.prs.length ? (
-              <View style={{
-                borderWidth: 1,
-                borderColor: theme.accent,
-                borderRadius: theme.radius.lg,
-                backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.1)" : "rgba(124, 58, 237, 0.06)",
-                padding: 12,
-                gap: 4,
-              }}>
-                <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
-                  {t("log.prsThisSession")}
-                </Text>
-                {finishSummary.prs.map((pr, i) => (
-                  <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
-                    {pr}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-
-            {finishSummary?.volumePrs.length ? (
-              <View style={{
-                borderWidth: 1,
-                borderColor: theme.warn ?? "#F97316",
-                borderRadius: theme.radius.lg,
-                backgroundColor: theme.isDark ? "rgba(249, 115, 22, 0.1)" : "rgba(249, 115, 22, 0.06)",
-                padding: 12,
-                gap: 4,
-              }}>
-                <Text style={{ color: theme.warn ?? "#F97316", fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
-                  {t("log.volumePrsThisSession")}
-                </Text>
-                {finishSummary.volumePrs.map((pr, i) => (
-                  <Text key={i} style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
-                    {pr}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-
-            <Btn label={t("common.done")} onPress={() => setFinishSummary(null)} tone="accent" />
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </Screen>
+          />
+        ) : null}
+      </View>
+    </View>
   );
 }

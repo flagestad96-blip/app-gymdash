@@ -46,6 +46,15 @@ const home: TranslationMap = {
   "home.status.collectingHint": "Logg {n} \u00f8kter til for treningsinnsikt",
   // ── Deload feedback (Task 10) ──
   "home.deloadStarted": "Deload-uke aktivert",
+
+  // ── Aurora home ──
+  "home.noWorkoutTitle": "Hviledag",
+  "home.tapToStart": "Trykk for å starte en økt",
+  "home.exercisesCount": "{n} øvelser",
+  "home.restingHr": "HVILEPULS",
+  "home.weeklyRhythm": "Ukens rytme",
+  "home.volumeThisWeek": "Volum denne uken",
+  "home.seeAll": "Se alle",
 };
 
 export default home;

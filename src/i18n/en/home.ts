@@ -46,6 +46,15 @@ const home: TranslationMap = {
   "home.status.collectingHint": "Log {n} more sessions for training insights",
   // ── Deload feedback (Task 10) ──
   "home.deloadStarted": "Deload week activated",
+
+  // ── Aurora home ──
+  "home.noWorkoutTitle": "Rest day",
+  "home.tapToStart": "Tap to start a session",
+  "home.exercisesCount": "{n} exercises",
+  "home.restingHr": "RESTING HR",
+  "home.weeklyRhythm": "Weekly rhythm",
+  "home.volumeThisWeek": "Volume this week",
+  "home.seeAll": "See all",
 };
 
 export default home;

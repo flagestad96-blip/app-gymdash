@@ -145,7 +145,7 @@ export default function ExerciseSwapModal({
                     borderRadius: theme.radius.lg,
                     borderWidth: 1,
                     borderColor: selected ? theme.accent : theme.glassBorder,
-                    backgroundColor: selected ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
+                    backgroundColor: selected ? (theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.12)") : theme.glass,
                     gap: 6,
                   }}
                 >
@@ -244,7 +244,7 @@ export default function ExerciseSwapModal({
                           borderWidth: 1,
                           borderColor: newEquipment === eq ? theme.accent : theme.glassBorder,
                           backgroundColor: newEquipment === eq
-                            ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)")
+                            ? (theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.12)")
                             : theme.glass,
                         }}
                       >
@@ -275,7 +275,7 @@ export default function ExerciseSwapModal({
                             borderWidth: 1,
                             borderColor: active ? theme.accent : theme.glassBorder,
                             backgroundColor: active
-                              ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)")
+                              ? (theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.12)")
                               : theme.glass,
                           }}
                         >

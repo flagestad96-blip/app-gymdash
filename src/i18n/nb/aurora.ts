@@ -1,0 +1,117 @@
+import type { TranslationMap } from "../types";
+
+const aurora: TranslationMap = {
+  // Summary
+  "summary.complete": "Økt fullført",
+  "summary.niceWork": "Godt jobba,",
+  "summary.niceWorkAccent": "du",
+  "summary.subtitle": "Enda en i boks.",
+  "summary.exercises": "Øvelser",
+  "summary.newPrs": "{n} nye personlige rekorder",
+  "summary.feelTitle": "HVORDAN KJENTES DET?",
+  "summary.feel.easy": "Lett",
+  "summary.feel.good": "Bra",
+  "summary.feel.hard": "Hardt",
+  "summary.feel.brutal": "Brutalt",
+  "summary.share": "Del",
+  "summary.done": "Ferdig",
+  // Legacy-nøkler
+  "summary.header": "Økt fullført",
+  "summary.title": "Godt jobba.",
+  "summary.rpe": "HVOR HARDT VAR DET?",
+  "summary.rpeDesc": "RPE hjelper Gymdash planlegge neste økt.",
+
+  // Library
+  "library.subtitle": "Alle øvelser i Gymdash.",
+  "library.searchPlaceholder": "Søk øvelser",
+  "library.empty": "Ingen øvelser matcher søket.",
+  "library.tab.programs": "Programmer",
+  "library.tab.exercises": "Øvelser",
+  "library.active": "Aktiv",
+  "library.daysPerWeek": "{n}/uke",
+  "library.noPrograms": "Ingen programmer ennå. Lag et fra Profil.",
+
+  // Exercise detail
+  "exerciseDetail.notFound": "Øvelse ikke funnet",
+  "exerciseDetail.prs": "PERSONLIGE REKORDER",
+  "exerciseDetail.noPrs": "Ingen PR-er ennå — logg noen sett for å sette en baseline.",
+  "exerciseDetail.history": "Historikk",
+  "exerciseDetail.noHistory": "Du har ikke logget denne øvelsen ennå.",
+  "exerciseDetail.backImpact.high": "Høy ryggbelastning",
+  "exerciseDetail.backImpact.medium": "Moderat ryggbelastning",
+  "exerciseDetail.backImpact.low": "Ryggvennlig",
+  "exerciseDetail.general": "Flere muskelgrupper",
+  "exerciseDetail.demoPlaceholder": "øvelsesdemonstrasjon",
+  "exerciseDetail.oneRmEst": "1RM est.",
+  "exerciseDetail.bestSet": "Beste sett",
+  "exerciseDetail.cues": "Tips",
+  "exerciseDetail.newPr": "Ny PR",
+
+  // Workout
+  "workout.freeSession": "Fri økt",
+  "workout.exerciseCounter": "Øvelse {i} av {n}",
+  "workout.target": "Mål",
+  "workout.weight": "Vekt",
+  "workout.setLabel": "Sett",
+  "workout.logSet": "Logg sett · start hvile",
+  "workout.upNext": "Neste opp",
+  "workout.rest": "Hvile",
+  "workout.restHint": "pust · drikk · klar",
+  "workout.skipRest": "Hopp over hvile",
+  "workout.pause": "Pause",
+  "workout.resume": "Fortsett",
+  "workout.finish": "Avslutt økt",
+  "workout.empty.pill": "Ingen program ennå",
+  "workout.empty.title": "Velg et program for å starte loggingen",
+  "workout.empty.body": "Gymdash trenger å vite hva du trener før den kan spore sett og hvile. Velg en mal under Profil → Program.",
+  "workout.empty.goToProfile": "Åpne profil",
+
+  // Stats (aurora hero)
+  "stats.title": "Din progresjon",
+  "stats.trainingVolume": "Treningsvolum",
+  "stats.workouts": "Økter",
+  "stats.thisMonthCount": "+{n} denne måneden",
+  "stats.avgDuration": "Snitt varighet",
+  "stats.min": "min",
+  "stats.steady": "stabilt",
+  "stats.personalRecords": "Personlige rekorder",
+  "stats.oneRmEst": "1RM-estimat",
+  "stats.body": "Kropp",
+  "stats.weight": "Vekt",
+
+  // Profile hero
+  "profile.initial": "D",
+  "profile.greeting": "Deg",
+  "profile.memberSince": "Medlem siden {date}",
+  "profile.trainingsPerWeek": "{n}× / uke",
+  "profile.level.beginner": "Nybegynner",
+  "profile.level.intermediate": "Mellomnivå",
+  "profile.level.advanced": "Avansert",
+  "profile.stat.workouts": "Økter",
+  "profile.stat.prs": "PR-er",
+  "profile.more": "Mer",
+
+  // Log (calendar)
+  "log.legend.push": "Push",
+  "log.legend.pull": "Pull",
+  "log.legend.legs": "Ben",
+  "log.thisMonth": "Denne måneden",
+  "log.sessions": "økter",
+  "log.consistency": "Konsistens",
+  "log.onTrack": "På skinner",
+  "log.keepGoing": "Fortsett",
+
+  // Nutrition
+  "nutrition.subtitle": "Dagens inntak.",
+  "nutrition.today": "I dag",
+  "nutrition.kcalOfGoal": "Kalorier av mål",
+  "nutrition.empty": "Ingen oppføringer ennå. Full logging kommer i neste versjon.",
+  "nutrition.ofTarget": "av {target} kcal",
+  "nutrition.macro.protein": "Protein",
+  "nutrition.macro.carbs": "Karb.",
+  "nutrition.macro.fat": "Fett",
+  "nutrition.todayMeals": "Dagens måltider",
+  "nutrition.logMeal": "Logg et måltid",
+};
+
+export default aurora;

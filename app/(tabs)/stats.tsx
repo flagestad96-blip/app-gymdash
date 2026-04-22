@@ -1,7 +1,6 @@
-﻿// app/(tabs)/analysis.tsx
+﻿// app/(tabs)/stats.tsx — Progress, PRs and body measurements (formerly analysis.tsx).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, ScrollView, Modal, FlatList, Alert } from "react-native";
-import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,6 +15,9 @@ import { displayNameFor, EXERCISES, searchExercises, resolveExerciseId, isBodywe
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
+import { GlassCard, Pill, Mono } from "../../src/ui/modern";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop as SvgStop, Path, Circle } from "react-native-svg";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useWeightUnit, unitLabel } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
 import { epley1RM } from "../../src/metrics";
@@ -123,12 +125,6 @@ export default function Analysis() {
   const wu = useWeightUnit();
   const [ready, setReady] = useState(_analysisTabInitialized);
 
-  const navigation = useNavigation();
-  const openDrawer = useCallback(() => {
-    const parent = (navigation as any)?.getParent?.();
-    if (parent?.openDrawer) parent.openDrawer();
-    else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
-  }, [navigation]);
   const [range, setRange] = useState<RangeKey>("month");
   const [chartMetric, setChartMetric] = useState<ChartMetric>("e1rm");
 
@@ -997,8 +993,8 @@ export default function Analysis() {
   if (!ready) {
     return (
       <Screen>
-        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
-          <TopBar title={t("analysis.title")} subtitle={t("analysis.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 120 }}>
+          <StatsHeader />
           <SkeletonCard lines={2} />
           <SkeletonCard lines={4} />
           <SkeletonCard lines={3} />
@@ -1009,8 +1005,9 @@ export default function Analysis() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
-        <TopBar title={t("analysis.title")} subtitle={t("analysis.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+      <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 120 }}>
+        <StatsHeader />
+        <StatsHero />
 
         <HintBanner hintKey="analysis_intro" icon="insights">
           {t("hint.analysisIntro")}
@@ -1167,7 +1164,7 @@ export default function Analysis() {
                 borderRadius: theme.radius.lg,
                 padding: 14,
                 backgroundColor: comparisonMode
-                  ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                  ? (theme.isDark ? "rgba(192, 132, 252,0.15)" : "rgba(139, 92, 246,0.10)")
                   : theme.glass,
                 width: 52,
                 alignItems: "center",
@@ -1686,7 +1683,7 @@ export default function Analysis() {
                           borderRadius: theme.radius.lg,
                           borderWidth: 1,
                           borderColor: active ? theme.accent : theme.glassBorder,
-                          backgroundColor: active ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
+                          backgroundColor: active ? (theme.isDark ? "rgba(192, 132, 252, 0.18)" : "rgba(139, 92, 246, 0.12)") : theme.glass,
                           marginBottom: 8,
                         }}
                       >
@@ -1730,7 +1727,7 @@ export default function Analysis() {
                       borderWidth: 1,
                       borderColor: goalType === gt ? theme.accent : theme.glassBorder,
                       backgroundColor: goalType === gt
-                        ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                        ? (theme.isDark ? "rgba(192, 132, 252,0.15)" : "rgba(139, 92, 246,0.10)")
                         : theme.glass,
                     }}
                   >
@@ -1895,9 +1892,385 @@ export default function Analysis() {
   );
 }
 
+// ── Aurora "Your progress" header + hero ────────────────────────────────────
 
+function StatsHeader() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 }}>
+      <View style={{ width: 38 }} />
+      <Text
+        style={{
+          flex: 1,
+          color: theme.text,
+          fontSize: 22,
+          fontFamily: theme.fontFamily.serif,
+          letterSpacing: -0.2,
+        }}
+      >
+        {t("stats.title")}
+      </Text>
+      <View style={{ width: 38 }} />
+    </View>
+  );
+}
 
+const RANGE_KEYS = ["1W", "1M", "3M", "1Y", "All"] as const;
+type RangeKeyAurora = typeof RANGE_KEYS[number];
 
+function rangeToDays(r: RangeKeyAurora): number {
+  return r === "1W" ? 7 : r === "1M" ? 30 : r === "3M" ? 90 : r === "1Y" ? 365 : 3650;
+}
+
+function StatsHero() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  const wu = useWeightUnit();
+  const [range, setRange] = useState<RangeKeyAurora>("3M");
+  const [data, setData] = useState<{
+    totalVolume: number;
+    trendPct: number | null;
+    points: number[];
+    workoutCount: number;
+    workoutsThisMonth: number;
+    avgDurationMin: number | null;
+    prs: { name: string; value: number; delta: number; exerciseId: string }[];
+    body: { weight: number | null; bf: number | null };
+  }>({
+    totalVolume: 0,
+    trendPct: null,
+    points: [],
+    workoutCount: 0,
+    workoutsThisMonth: 0,
+    avgDurationMin: null,
+    prs: [],
+    body: { weight: null, bf: null },
+  });
+
+  useEffect(() => {
+    (async () => {
+      await ensureDb();
+      const db = getDb();
+      const now = new Date();
+      const days = rangeToDays(range);
+      const start = new Date(now.getTime() - days * 86400000);
+      const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const startIso = iso(start);
+
+      // Volume in range + 16-point bucketed curve
+      try {
+        const vRows = db.getAllSync<{ date: string; vol: number }>(
+          `SELECT w.date as date, COALESCE(SUM(s.weight * s.reps), 0) as vol
+           FROM workouts w JOIN sets s ON s.workout_id = w.id
+           WHERE w.date >= ? AND s.is_warmup IS NOT 1
+           GROUP BY w.date
+           ORDER BY w.date ASC`,
+          [startIso],
+        ) ?? [];
+
+        const totalVolume = vRows.reduce((a, r) => a + r.vol, 0);
+
+        // Buckets — split the range into 16 equal windows and sum each
+        const BUCKETS = 16;
+        const bucketMs = (now.getTime() - start.getTime()) / BUCKETS;
+        const points = new Array(BUCKETS).fill(0);
+        for (const r of vRows) {
+          const rowDate = new Date(r.date).getTime();
+          const idx = Math.min(BUCKETS - 1, Math.max(0, Math.floor((rowDate - start.getTime()) / bucketMs)));
+          points[idx] += r.vol;
+        }
+
+        // Trend — last third vs first third
+        const third = Math.floor(BUCKETS / 3);
+        const first = points.slice(0, third).reduce((a, b) => a + b, 0);
+        const last = points.slice(-third).reduce((a, b) => a + b, 0);
+        const trendPct = first > 0 ? Math.round(((last - first) / first) * 100) : null;
+
+        // Counts + durations
+        const wc = db.getFirstSync<{ c: number }>(
+          `SELECT COUNT(1) as c FROM workouts WHERE date >= ?`,
+          [startIso],
+        );
+        const monthStart = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+        const wm = db.getFirstSync<{ c: number }>(
+          `SELECT COUNT(1) as c FROM workouts WHERE date >= ?`,
+          [monthStart],
+        );
+        const durations = db.getAllSync<{ started_at: string; ended_at: string }>(
+          `SELECT started_at, ended_at FROM workouts
+           WHERE date >= ? AND ended_at IS NOT NULL AND started_at IS NOT NULL
+           ORDER BY date DESC LIMIT 20`,
+          [startIso],
+        ) ?? [];
+        let avgDurationMin: number | null = null;
+        if (durations.length > 0) {
+          const total = durations.reduce((a, d) => {
+            const s = new Date(d.started_at).getTime();
+            const e = new Date(d.ended_at).getTime();
+            return a + (Number.isFinite(e - s) && e > s ? (e - s) / 60000 : 0);
+          }, 0);
+          avgDurationMin = Math.round(total / durations.length);
+        }
+
+        // Recent PRs — 4 highest-value records
+        type PrRow = { exercise_id: string; value: number; reps: number | null; date: string };
+        const prs = db.getAllSync<PrRow>(
+          `SELECT exercise_id, value, reps, date FROM pr_records ORDER BY date DESC LIMIT 8`,
+        ) ?? [];
+        const seenEx = new Set<string>();
+        const topPrs: { name: string; value: number; delta: number; exerciseId: string }[] = [];
+        for (const r of prs) {
+          if (seenEx.has(r.exercise_id)) continue;
+          seenEx.add(r.exercise_id);
+          // delta = compared to previous PR in same exercise
+          const prev = db.getFirstSync<{ value: number }>(
+            `SELECT value FROM pr_records WHERE exercise_id = ? AND date < ? ORDER BY date DESC LIMIT 1`,
+            [r.exercise_id, r.date],
+          );
+          const delta = prev?.value ? r.value - prev.value : 0;
+          topPrs.push({ name: displayNameFor(r.exercise_id), value: r.value, delta, exerciseId: r.exercise_id });
+          if (topPrs.length >= 4) break;
+        }
+
+        // Body — most recent measurement (if any)
+        let body = { weight: null as number | null, bf: null as number | null };
+        try {
+          const bm = db.getFirstSync<{ weight_kg: number | null }>(
+            `SELECT weight_kg FROM body_metrics ORDER BY date DESC LIMIT 1`,
+          );
+          if (bm?.weight_kg != null) body.weight = bm.weight_kg;
+        } catch {}
+
+        setData({
+          totalVolume: Math.round(totalVolume),
+          trendPct,
+          points,
+          workoutCount: wc?.c ?? 0,
+          workoutsThisMonth: wm?.c ?? 0,
+          avgDurationMin,
+          prs: topPrs,
+          body,
+        });
+      } catch {}
+    })();
+  }, [range]);
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Range switcher */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 6,
+          backgroundColor: "rgba(255,255,255,0.05)",
+          padding: 4,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.08)",
+        }}
+      >
+        {RANGE_KEYS.map((r) => {
+          const active = range === r;
+          return (
+            <Pressable
+              key={r}
+              onPress={() => setRange(r)}
+              style={({ pressed }) => ({
+                flex: 1,
+                height: 34,
+                borderRadius: 9,
+                backgroundColor: active ? "rgba(255,255,255,0.12)" : "transparent",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Text style={{ color: active ? "#fff" : theme.muted2, fontSize: 12, fontFamily: theme.fontFamily.medium }}>
+                {r}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Volume chart */}
+      <GlassCard strong radius={22} padding={16}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.muted2, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+              {t("stats.trainingVolume")}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 4 }}>
+              <Mono style={{ color: theme.text, fontSize: 26 }}>
+                {data.totalVolume > 0 ? wu.toDisplay(data.totalVolume).toLocaleString() : "--"}
+              </Mono>
+              <Text style={{ color: theme.muted2, fontSize: 12 }}>
+                {wu.unitLabel().toLowerCase()} · {range}
+              </Text>
+            </View>
+          </View>
+          {data.trendPct != null ? (
+            <Pill tone={data.trendPct >= 0 ? "accent" : "pink"} icon={data.trendPct >= 0 ? "trending-up" : "trending-down"}>
+              {`${data.trendPct >= 0 ? "+" : ""}${data.trendPct}%`}
+            </Pill>
+          ) : null}
+        </View>
+
+        <VolumeChart points={data.points} />
+      </GlassCard>
+
+      {/* Mini stat tiles */}
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <GlassCard radius={18} padding={14} style={{ flex: 1 }}>
+          <Text style={{ color: theme.muted2, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+            {t("stats.workouts")}
+          </Text>
+          <Mono style={{ color: theme.text, fontSize: 26, marginTop: 6 }}>{data.workoutCount}</Mono>
+          <Text style={{ color: theme.aurora.cyan, fontSize: 11, marginTop: 2 }}>
+            {t("stats.thisMonthCount", { n: data.workoutsThisMonth })}
+          </Text>
+        </GlassCard>
+        <GlassCard radius={18} padding={14} style={{ flex: 1 }}>
+          <Text style={{ color: theme.muted2, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+            {t("stats.avgDuration")}
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 2, marginTop: 6 }}>
+            <Mono style={{ color: theme.text, fontSize: 26 }}>{data.avgDurationMin ?? "--"}</Mono>
+            {data.avgDurationMin != null ? (
+              <Text style={{ color: theme.muted2, fontSize: 13 }}>{t("stats.min")}</Text>
+            ) : null}
+          </View>
+          <Text style={{ color: theme.muted2, fontSize: 11, marginTop: 2 }}>{t("stats.steady")}</Text>
+        </GlassCard>
+      </View>
+
+      {/* PR list */}
+      {data.prs.length > 0 ? (
+        <>
+          <Text
+            style={{
+              color: theme.muted,
+              fontSize: 13,
+              fontFamily: theme.fontFamily.medium,
+              letterSpacing: 0.3,
+              marginTop: 6,
+              marginBottom: 4,
+            }}
+          >
+            {t("stats.personalRecords")}
+          </Text>
+          <View style={{ gap: 8 }}>
+            {data.prs.map((p) => (
+              <GlassCard key={p.exerciseId} radius={16} padding={12}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 38, height: 38, borderRadius: 11,
+                      backgroundColor: "rgba(255,255,255,0.05)",
+                      borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <MaterialIcons name="fitness-center" size={18} color="rgba(255,255,255,0.7)" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: theme.text, fontSize: 13, fontFamily: theme.fontFamily.medium }} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    <Text style={{ color: theme.muted2, fontSize: 10, marginTop: 1 }}>
+                      {t("stats.oneRmEst")}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 2 }}>
+                      <Mono style={{ color: theme.text, fontSize: 16 }}>{wu.toDisplay(p.value)}</Mono>
+                      <Text style={{ color: theme.muted2, fontSize: 10 }}>{wu.unitLabel().toLowerCase()}</Text>
+                    </View>
+                    {p.delta > 0 ? (
+                      <Text style={{ color: theme.aurora.cyan, fontSize: 10 }}>
+                        +{wu.toDisplay(p.delta).toFixed(1)} {wu.unitLabel().toLowerCase()}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              </GlassCard>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {/* Body measurements */}
+      {data.body.weight != null ? (
+        <>
+          <Text
+            style={{
+              color: theme.muted,
+              fontSize: 13,
+              fontFamily: theme.fontFamily.medium,
+              letterSpacing: 0.3,
+              marginTop: 6,
+              marginBottom: 4,
+            }}
+          >
+            {t("stats.body")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <GlassCard radius={14} padding={10} style={{ flex: 1 }}>
+              <Text style={{ color: theme.muted2, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+                {t("stats.weight")}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 2, marginTop: 4 }}>
+                <Mono style={{ color: theme.text, fontSize: 16 }}>
+                  {wu.toDisplay(data.body.weight).toFixed(1)}
+                </Mono>
+                <Text style={{ color: theme.muted2, fontSize: 9 }}>{wu.unitLabel().toLowerCase()}</Text>
+              </View>
+            </GlassCard>
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+// ── Volume chart (SVG line + area under) ────────────────────────────────────
+
+function VolumeChart({ points }: { points: number[] }) {
+  if (points.length === 0) return <View style={{ height: 130 }} />;
+  const W = 320;
+  const H = 120;
+  const max = Math.max(...points, 1);
+  const minPoints = points.length > 1 ? points : [0, 0];
+  const line = minPoints
+    .map((v, i) => {
+      const x = (i / Math.max(1, minPoints.length - 1)) * W;
+      const y = H - (v / max) * H;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const area = line + ` L${W} ${H} L0 ${H} Z`;
+  const lastX = ((minPoints.length - 1) / Math.max(1, minPoints.length - 1)) * W;
+  const lastY = H - (minPoints[minPoints.length - 1] / max) * H;
+
+  return (
+    <Svg width="100%" height={130} viewBox={`0 0 ${W} ${H + 10}`} style={{ marginTop: 8 }}>
+      <Defs>
+        <SvgLinearGradient id="stats-area" x1="0" x2="0" y1="0" y2="1">
+          <SvgStop offset="0%" stopColor="#c084fc" stopOpacity="0.45" />
+          <SvgStop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="stats-line" x1="0" x2="1" y1="0" y2="0">
+          <SvgStop offset="0%" stopColor="#60a5fa" />
+          <SvgStop offset="100%" stopColor="#f472b6" />
+        </SvgLinearGradient>
+      </Defs>
+      <Path d={area} fill="url(#stats-area)" />
+      <Path d={line} fill="none" stroke="url(#stats-line)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx={lastX} cy={lastY} r="5" fill="#f472b6" stroke="#fff" strokeWidth="1.5" />
+    </Svg>
+  );
+}
 
 
 

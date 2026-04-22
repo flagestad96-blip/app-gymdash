@@ -1,16 +1,28 @@
-﻿// app/(tabs)/settings.tsx
+﻿// app/(tabs)/profile.tsx — Aurora Profile ("You" tab).
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   Pressable,
   ScrollView,
+  StyleSheet,
   Switch,
   Alert,
   Modal,
+  PanResponder,
+  type LayoutChangeEvent,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { useTheme, setThemeMode, getThemeMode, type ThemeMode as ThemeModeSetting } from "../../src/theme";
+import {
+  useTheme,
+  type Palette,
+  setPalette,
+  getPalette,
+  setGlassIntensity,
+  getGlassIntensity,
+  PALETTE_LIST,
+  getPaletteColors,
+} from "../../src/theme";
+import { useUserPreferences, USER_GOAL_LIST, type UserGoal } from "../../src/userPreferences";
 import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import ProgramStore from "../../src/programStore";
@@ -26,9 +38,11 @@ import {
   cancelRestDayCheck,
 } from "../../src/notifications";
 import * as Clipboard from "expo-clipboard";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { SkeletonCard } from "../../src/components/Skeleton";
-import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
+import { GlassCard, Pill, Mono } from "../../src/ui/modern";
 import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNotes";
 import { useWeightUnit, type WeightUnit } from "../../src/units";
 import { uid, isoDateOnly } from "../../src/storage";
@@ -117,21 +131,17 @@ export default function Settings() {
   const theme = useTheme();
   const { t, locale } = useI18n();
   const [ready, setReady] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [showPatchNotes, setShowPatchNotes] = useState(false);
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
   const [defaultDayIndex, setDefaultDayIndex] = useState<number>(0);
-  const [themeMode, setThemeModeState] = useState<ThemeModeSetting>("system");
+  const [palette, setPaletteState] = useState<Palette>(getPalette());
+  const [glassIntensity, setGlassIntensityState] = useState<number>(getGlassIntensity());
+  const userPrefs = useUserPreferences();
   const [workoutLocked, setWorkoutLocked] = useState(false);
   const [lockedDayLabel, setLockedDayLabel] = useState<string | null>(null);
 
-  const navigation = useNavigation();
-  const openDrawer = useCallback(() => {
-    const parent = (navigation as any)?.getParent?.();
-    if (parent?.openDrawer) parent.openDrawer();
-    else if ((navigation as any)?.openDrawer) (navigation as any).openDrawer();
-  }, [navigation]);
+  const router = useRouter();
 
   const [restEnabled, setRestEnabled] = useState<boolean>(true);
   const [restSeconds, setRestSeconds] = useState<number>(120);
@@ -158,7 +168,7 @@ export default function Settings() {
   const [gyms, setGyms] = useState<GymLocation[]>([]);
   const [gymEditTarget, setGymEditTarget] = useState<GymLocation | null>(null);
   const [gymFormName, setGymFormName] = useState("");
-  const [gymFormColor, setGymFormColor] = useState<string>("#B668F5");
+  const [gymFormColor, setGymFormColor] = useState<string>("#c084fc");
   const [gymFormError, setGymFormError] = useState<string | null>(null);
   const [gymFormOpen, setGymFormOpen] = useState(false);
 
@@ -179,10 +189,6 @@ export default function Settings() {
     const pmRaw = await getSettingAsync("programMode");
     const pm: ProgramMode = pmRaw === "back" ? "back" : "normal";
 
-    const tmRaw = await getSettingAsync("themeMode");
-    const tm: ThemeModeSetting =
-      tmRaw === "light" || tmRaw === "dark" || tmRaw === "system" ? tmRaw : getThemeMode();
-
     const ddiRaw = await getSettingAsync("defaultDayIndex");
     const day = clampInt(parseInt(ddiRaw ?? "0", 10), 0, 4);
 
@@ -199,8 +205,6 @@ export default function Settings() {
     setRestVibrate(rvRaw === "1");
 
     setSupersetAlternate(ssRaw === null ? true : ssRaw === "1");
-    setThemeModeState(tm);
-    setThemeMode(tm);
 
     const activeWorkoutId = await getSettingAsync("activeWorkoutId");
     if (activeWorkoutId) {
@@ -839,7 +843,7 @@ export default function Settings() {
   function openGymAdd() {
     setGymEditTarget(null);
     setGymFormName("");
-    setGymFormColor("#B668F5");
+    setGymFormColor("#c084fc");
     setGymFormError(null);
     setGymFormOpen(true);
   }
@@ -847,7 +851,7 @@ export default function Settings() {
   function openGymEdit(gym: GymLocation) {
     setGymEditTarget(gym);
     setGymFormName(gym.name);
-    setGymFormColor(gym.color ?? "#B668F5");
+    setGymFormColor(gym.color ?? "#c084fc");
     setGymFormError(null);
     setGymFormOpen(true);
   }
@@ -934,8 +938,8 @@ export default function Settings() {
   if (!ready) {
     return (
       <Screen>
-        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md }}>
-          <TopBar title={t("settings.title")} subtitle={t("settings.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
+        <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 120 }}>
+          <ProfileHeader />
           <SkeletonCard lines={2} />
           <SkeletonCard lines={3} />
           <SkeletonCard lines={2} />
@@ -946,11 +950,15 @@ export default function Settings() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 80 }}>
-        <TopBar title={t("settings.title")} subtitle={t("settings.subtitle")} left={<IconButton icon="menu" onPress={openDrawer} />} />
-        <Text style={{ color: theme.muted }}>
-          {t("settings.description")}
-        </Text>
+      <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 120 }}>
+        {/* Aurora "You" header + avatar hero — replaces the old settings TopBar. */}
+        <ProfileHeader />
+        <ProfileHero />
+
+        {/* "More" group — entry points to Library and Nutrition (matches the
+            prototype's Profile, where these are reached from here rather than
+            a bottom-nav tab). */}
+        <MoreLinks router={router} />
 
         {workoutLocked ? (
           <Card style={{ borderColor: theme.warn }}>
@@ -993,24 +1001,137 @@ export default function Settings() {
           </Text>
         </Card>
 
-        <Card title={t("settings.theme")}>
+        {/* Aurora palette + glass intensity — the "Tweaks" panel from the design */}
+        <Card title={t("settings.appearance")}>
+          <Text style={{ color: theme.muted2, fontFamily: theme.mono, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+            {t("settings.appearance.palette")}
+          </Text>
           <Text style={{ color: theme.muted, marginBottom: 8 }}>
-            {t("settings.theme.desc")}
+            {t("settings.appearance.palette.desc")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-            {(["system", "light", "dark"] as ThemeModeSetting[]).map((mode) => (
+            {PALETTE_LIST.map((p) => {
+              const active = palette === p;
+              const colors = getPaletteColors(p);
+              return (
+                <Pressable
+                  key={`palette_${p}`}
+                  onPress={() => {
+                    setPaletteState(p);
+                    setPalette(p);
+                    setSettingAsync("theme_palette", p).catch(() => {});
+                  }}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingVertical: 7,
+                    paddingHorizontal: 12,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    borderColor: active ? theme.accent : theme.glassBorder,
+                    backgroundColor: active
+                      ? (theme.isDark ? "rgba(192,132,252,0.18)" : "rgba(139,92,246,0.14)")
+                      : theme.glass,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(`settings.appearance.palette.${p}`)}
+                >
+                  <View
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 7,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <LinearGradient
+                      colors={[colors.blue, colors.violet]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                  <Text style={{ color: active ? theme.accent : theme.text, fontSize: 12, fontFamily: theme.fontFamily.medium }}>
+                    {t(`settings.appearance.palette.${p}`)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={{ height: 12 }} />
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
+            <Text style={{ color: theme.muted2, fontFamily: theme.mono, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+              {t("settings.appearance.intensity")}
+            </Text>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
+              {glassIntensity}
+            </Text>
+          </View>
+          <Text style={{ color: theme.muted, marginBottom: 8 }}>
+            {t("settings.appearance.intensity.desc")}
+          </Text>
+          <IntensitySlider
+            value={glassIntensity}
+            onChange={(v) => {
+              setGlassIntensityState(v);
+              setGlassIntensity(v);
+              setSettingAsync("theme_glass_intensity", String(v)).catch(() => {});
+            }}
+          />
+        </Card>
+
+        {/* Your focus — lets user edit goals + training days post-onboarding */}
+        <Card title={t("settings.focus")}>
+          <Text style={{ color: theme.muted, marginBottom: 10 }}>
+            {t("settings.focus.desc")}
+          </Text>
+
+          <Text style={{ color: theme.muted2, fontFamily: theme.mono, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+            {t("settings.focus.trainingDays")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 8, marginBottom: 14 }}>
+            {[1, 2, 3, 4, 5, 6, 7].map((n) => (
               <Chip
-                key={`theme_${mode}`}
-                text={t(`settings.theme.${mode}`)}
-                active={themeMode === mode}
-                onPress={() => {
-                  setThemeModeState(mode);
-                  setThemeMode(mode);
-                  setSettingAsync("themeMode", mode).catch(() => {});
-                }}
+                key={`days_${n}`}
+                text={String(n)}
+                active={userPrefs.trainingDays === n}
+                onPress={() => userPrefs.setTrainingDays(n)}
               />
             ))}
           </View>
+
+          <Text style={{ color: theme.muted2, fontFamily: theme.mono, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+            {t("settings.focus.goals")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 8, marginBottom: 14 }}>
+            {(USER_GOAL_LIST as UserGoal[]).map((g) => {
+              const on = userPrefs.goals.includes(g);
+              return (
+                <Chip
+                  key={`goal_${g}`}
+                  text={t(`onboarding.goals.${g}`)}
+                  active={on}
+                  onPress={() => {
+                    const next = on
+                      ? userPrefs.goals.filter((x) => x !== g)
+                      : [...userPrefs.goals, g];
+                    userPrefs.setGoals(next);
+                  }}
+                />
+              );
+            })}
+          </View>
+
+          <Btn
+            label={t("settings.focus.replayOnboarding")}
+            onPress={() => {
+              userPrefs.setOnboardingCompleted(false);
+              router.replace("/onboarding");
+            }}
+          />
         </Card>
 
         <Card title={t("settings.language")}>
@@ -1215,7 +1336,10 @@ export default function Settings() {
             />
             <Btn
               label={t("settings.tools.showIntro")}
-              onPress={() => setShowOnboarding(true)}
+              onPress={() => {
+                userPrefs.setOnboardingCompleted(false);
+                router.replace("/onboarding");
+              }}
             />
           </View>
 
@@ -1258,15 +1382,6 @@ export default function Settings() {
           <Btn label={t("patchNotes.whatsNew", { version: CURRENT_VERSION })} onPress={() => setShowPatchNotes(true)} tone="accent" />
         </Card>
       </ScrollView>
-
-      <OnboardingModal
-        visible={showOnboarding}
-        onDone={() => {
-          setSettingAsync("hasSeenOnboarding", "1").catch(() => {});
-          setShowOnboarding(false);
-        }}
-        onClose={() => setShowOnboarding(false)}
-      />
 
       <Modal visible={backupOpen !== null} transparent animationType="fade" onRequestClose={() => setBackupOpen(null)}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
@@ -1666,7 +1781,7 @@ export default function Settings() {
               {t("settings.gym.colorLabel")}
             </Text>
             <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-              {["#B668F5", "#F97316", "#22C55E", "#3B82F6", "#EF4444", "#F59E0B", "#EC4899", "#6366F1"].map((c) => (
+              {["#c084fc", "#F97316", "#22C55E", "#3B82F6", "#EF4444", "#F59E0B", "#EC4899", "#6366F1"].map((c) => (
                 <Pressable
                   key={c}
                   onPress={() => setGymFormColor(c)}
@@ -1697,6 +1812,309 @@ export default function Settings() {
         </View>
       </Modal>
     </Screen>
+  );
+}
+
+// ── Aurora "You" header + avatar hero ───────────────────────────────────────
+
+function ProfileHeader() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 }}>
+      <View style={{ width: 38 }} />
+      <Text
+        style={{
+          flex: 1,
+          color: theme.text,
+          fontSize: 22,
+          fontFamily: theme.fontFamily.serif,
+          letterSpacing: -0.2,
+        }}
+      >
+        {t("nav.profile")}
+      </Text>
+      <View style={{ width: 38 }} />
+    </View>
+  );
+}
+
+function ProfileHero() {
+  const theme = useTheme();
+  const { t } = useI18n();
+  const prefs = useUserPreferences();
+
+  const [stats, setStats] = useState({ streak: 0, workouts: 0, prs: 0, memberSince: "" });
+
+  useEffect(() => {
+    (async () => {
+      await ensureDb();
+      const db = getDb();
+      try {
+        const tw = db.getFirstSync<{ c: number }>(`SELECT COUNT(1) as c FROM workouts`);
+        const prs = db.getFirstSync<{ c: number }>(`SELECT COUNT(1) as c FROM pr_records`);
+        const oldest = db.getFirstSync<{ d: string }>(
+          `SELECT MIN(date) as d FROM workouts`,
+        );
+        // Streak — iterate backwards from today through distinct workout dates
+        const rows = db.getAllSync<{ date: string }>(
+          `SELECT DISTINCT date FROM workouts ORDER BY date DESC LIMIT 60`,
+        );
+        let s = 0;
+        const d = new Date();
+        for (const r of rows ?? []) {
+          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          if (r.date === iso) {
+            s++;
+            d.setDate(d.getDate() - 1);
+          } else if (r.date < iso) break;
+        }
+        setStats({
+          streak: s,
+          workouts: tw?.c ?? 0,
+          prs: prs?.c ?? 0,
+          memberSince: oldest?.d ? formatMonthYear(oldest.d) : "",
+        });
+      } catch {}
+    })();
+  }, []);
+
+  const experience = useMemo(() => {
+    if (stats.workouts >= 200) return t("profile.level.advanced");
+    if (stats.workouts >= 50) return t("profile.level.intermediate");
+    return t("profile.level.beginner");
+  }, [stats.workouts, t]);
+
+  return (
+    <GlassCard strong radius={22} padding={18}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+        {/* Avatar with aurora ring */}
+        <View style={{ width: 64, height: 64, borderRadius: 32, overflow: "hidden", padding: 2 }}>
+          <LinearGradient
+            colors={[theme.aurora.violet, theme.aurora.blue, theme.aurora.pink]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            style={{
+              flex: 1,
+              borderRadius: 30,
+              backgroundColor: "#0b0f1a",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontSize: 22, fontFamily: theme.fontFamily.semibold }}>
+              {t("profile.initial")}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.fontFamily.semibold }}>
+            {t("profile.greeting")}
+          </Text>
+          {stats.memberSince ? (
+            <Text style={{ color: theme.muted2, fontSize: 12, marginTop: 2 }}>
+              {t("profile.memberSince", { date: stats.memberSince })}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            <Pill tone="violet">{experience}</Pill>
+            <Pill tone="accent">{t("profile.trainingsPerWeek", { n: prefs.trainingDays })}</Pill>
+          </View>
+        </View>
+      </View>
+
+      {/* Three stat chips */}
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
+        {[
+          { l: t("home.streak"), v: String(stats.streak) },
+          { l: t("profile.stat.workouts"), v: String(stats.workouts) },
+          { l: t("profile.stat.prs"), v: String(stats.prs) },
+        ].map((s) => (
+          <View
+            key={s.l}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 10,
+              borderRadius: 12,
+              backgroundColor: "rgba(255,255,255,0.03)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.06)",
+            }}
+          >
+            <Mono style={{ color: theme.text, fontSize: 20 }}>{s.v}</Mono>
+            <Text style={{ color: theme.muted2, fontSize: 10, marginTop: 2, letterSpacing: 1, textTransform: "uppercase", fontFamily: theme.fontFamily.medium }}>
+              {s.l}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </GlassCard>
+  );
+}
+
+function formatMonthYear(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+// ── "More" — links to Library + Nutrition ─────────────────────────────────
+
+function MoreLinks({ router }: { router: ReturnType<typeof useRouter> }) {
+  const theme = useTheme();
+  const { t } = useI18n();
+
+  const rows: { id: "library" | "nutrition"; label: string; icon: keyof typeof MaterialIcons.glyphMap }[] = [
+    { id: "library", label: t("nav.library"), icon: "fitness-center" },
+    { id: "nutrition", label: t("nav.nutrition"), icon: "restaurant" },
+  ];
+
+  return (
+    <View>
+      <Text
+        style={{
+          color: theme.muted2,
+          fontSize: 10,
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          fontFamily: theme.fontFamily.medium,
+          marginBottom: 8,
+          paddingLeft: 4,
+        }}
+      >
+        {t("profile.more")}
+      </Text>
+      <GlassCard radius={18} padding={4}>
+        {rows.map((r, i) => (
+          <Pressable
+            key={r.id}
+            onPress={() => router.push(r.id === "library" ? "/library" : "/nutrition")}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingVertical: 12,
+              paddingHorizontal: 12,
+              borderRadius: 14,
+              borderBottomWidth: i < rows.length - 1 ? 1 : 0,
+              borderBottomColor: "rgba(255,255,255,0.04)",
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <View
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 9,
+                backgroundColor: "rgba(255,255,255,0.05)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <MaterialIcons name={r.icon} size={16} color={theme.muted} />
+            </View>
+            <Text style={{ flex: 1, color: theme.text, fontSize: 13 }}>{r.label}</Text>
+            <MaterialIcons name="arrow-forward" size={14} color="rgba(255,255,255,0.35)" />
+          </Pressable>
+        ))}
+      </GlassCard>
+    </View>
+  );
+}
+
+// ── Intensity slider ─────────────────────────────────────────────────────────
+// Tap-anywhere-on-track control. Snaps to 5-point increments to mirror the
+// prototype's Tweaks slider (step=5). No third-party slider dep required.
+
+function IntensitySlider({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const theme = useTheme();
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  const onLayout = (e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width);
+
+  const valueFromX = (x: number) => {
+    if (trackWidth <= 0) return value;
+    const raw = (Math.max(0, Math.min(trackWidth, x)) / trackWidth) * 100;
+    return Math.round(raw / 5) * 5;
+  };
+
+  const responder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (e) => {
+          const next = valueFromX(e.nativeEvent.locationX);
+          if (next !== value) onChange(next);
+        },
+        onPanResponderMove: (e) => {
+          const next = valueFromX(e.nativeEvent.locationX);
+          if (next !== value) onChange(next);
+        },
+      }),
+    // valueFromX depends on trackWidth + value indirectly; fine for our case.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trackWidth, value, onChange],
+  );
+
+  const pct = Math.max(0, Math.min(100, value)) / 100;
+
+  return (
+    <View
+      {...responder.panHandlers}
+      onLayout={onLayout}
+      style={{
+        height: 44,
+        justifyContent: "center",
+        paddingVertical: 8,
+      }}
+    >
+      {/* Track */}
+      <View
+        style={{
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: "rgba(255,255,255,0.08)",
+          borderWidth: 1,
+          borderColor: theme.glassBorder,
+          overflow: "hidden",
+        }}
+      >
+        <LinearGradient
+          colors={theme.accentGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ width: `${pct * 100}%`, height: "100%" }}
+        />
+      </View>
+      {/* Thumb */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: Math.max(0, pct * trackWidth - 10),
+          width: 20,
+          height: 20,
+          borderRadius: 10,
+          backgroundColor: "#fff",
+          borderWidth: 2,
+          borderColor: theme.accent,
+          shadowColor: theme.accent,
+          shadowOpacity: 0.5,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 6,
+        }}
+      />
+    </View>
   );
 }
 

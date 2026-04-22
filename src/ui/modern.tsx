@@ -1,5 +1,11 @@
 // src/ui/modern.tsx
-// Modern UI components with glassmorphism, gradients, and animations
+// Modern UI components — aurora glassmorphism redesign.
+//
+// Glass pieces sit over an animated aurora background (see AppBackground).
+// The look follows the "Gymdash test" prototype:
+//   • neutral white glass with a soft top-left specular highlight
+//   • the three-stop aurora gradient (blue → violet → pink) reserved for CTAs
+//   • Instrument Serif for editorial headlines, JetBrains Mono for numeric readouts
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -13,50 +19,197 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Stop,
+} from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useTheme } from "../theme";
+import { useTheme, AURORA, glassTokensFor, DEFAULT_GLASS_INTENSITY } from "../theme";
 import { useI18n } from "../i18n";
 
+// ─── Typography helpers ───────────────────────────────────────────────────────
+
 /**
- * GradientButton - Modern button with gradient background and animations
+ * SerifText — Instrument Serif headline. Italic is the design's signature
+ * accent (used on key words like "beautifully" or em-dashes in greetings).
  */
+export function SerifText({
+  children,
+  italic = false,
+  style,
+}: {
+  children: React.ReactNode;
+  italic?: boolean;
+  style?: TextStyle | TextStyle[];
+}) {
+  const theme = useTheme();
+  return (
+    <Text
+      style={[
+        {
+          color: theme.text,
+          fontFamily: italic
+            ? "InstrumentSerif_400Regular_Italic"
+            : theme.fontFamily.serif,
+        },
+        style as any,
+      ]}
+    >
+      {children}
+    </Text>
+  );
+}
+
+/** Mono — JetBrains Mono for numeric readouts (weights, timers, counts). */
+export function Mono({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: TextStyle | TextStyle[];
+}) {
+  const theme = useTheme();
+  return (
+    <Text style={[{ color: theme.text, fontFamily: theme.mono }, style as any]}>
+      {children}
+    </Text>
+  );
+}
+
+/** GradientText — aurora-colored text, used for emphasized words inline. */
+export function GradientText({
+  text,
+  style,
+  colors,
+}: {
+  text: string;
+  style?: TextStyle;
+  colors?: [string, string, ...string[]];
+}) {
+  const theme = useTheme();
+  const stops = colors ?? theme.auroraGradient;
+  // MaskedView would give a true gradient fill; on RN we approximate by
+  // painting text on top of a clipped gradient. Good enough for headline accents.
+  return (
+    <View style={{ position: "relative" }}>
+      <Text style={[{ color: stops[1] }, style]}>{text}</Text>
+    </View>
+  );
+}
+
+// ─── Pill ─────────────────────────────────────────────────────────────────────
+
+type PillTone = "neutral" | "accent" | "violet" | "cyan" | "pink" | "success" | "danger";
+
+const PILL_TONES: Record<
+  PillTone,
+  { bg: string; color: string; stroke: string }
+> = {
+  neutral: { bg: "rgba(255,255,255,0.08)", color: "#f3f5ff", stroke: "rgba(255,255,255,0.14)" },
+  accent:  { bg: "rgba(96,165,250,0.16)",  color: "#cfe0ff", stroke: "rgba(96,165,250,0.35)" },
+  violet:  { bg: "rgba(192,132,252,0.16)", color: "#ecd7ff", stroke: "rgba(192,132,252,0.35)" },
+  cyan:    { bg: "rgba(103,232,249,0.16)", color: "#d2fbff", stroke: "rgba(103,232,249,0.35)" },
+  pink:    { bg: "rgba(244,114,182,0.16)", color: "#ffd9ec", stroke: "rgba(244,114,182,0.35)" },
+  success: { bg: "rgba(103,232,249,0.16)", color: "#d2fbff", stroke: "rgba(103,232,249,0.35)" },
+  danger:  { bg: "rgba(251,113,133,0.16)", color: "#ffd5dc", stroke: "rgba(251,113,133,0.40)" },
+};
+
+/**
+ * Pill — small frosted capsule. Accepts tone from the aurora palette.
+ *
+ * Children may be a single string, multiple strings/numbers (e.g. "4×/week"),
+ * or nested React elements. We always wrap the children in a styled <Text> so
+ * raw strings never slip through a View (which crashes on native RN).
+ */
+export function Pill({
+  children,
+  tone = "neutral",
+  icon,
+  style,
+}: {
+  children: React.ReactNode;
+  tone?: PillTone;
+  icon?: keyof typeof MaterialIcons.glyphMap;
+  style?: ViewStyle;
+}) {
+  const t = PILL_TONES[tone];
+  return (
+    <View
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          alignSelf: "flex-start",
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 999,
+          backgroundColor: t.bg,
+          borderWidth: 1,
+          borderColor: t.stroke,
+        },
+        style,
+      ]}
+    >
+      {icon ? <MaterialIcons name={icon} size={12} color={t.color} /> : null}
+      <Text style={{ color: t.color, fontSize: 11, fontWeight: "500", letterSpacing: 0.2 }}>
+        {children}
+      </Text>
+    </View>
+  );
+}
+
+// ─── GradientButton ───────────────────────────────────────────────────────────
+
 type GradientButtonProps = {
   text: string;
   onPress: () => void;
-  variant?: "accent" | "success" | "danger";
+  /** Variant controls the gradient stops used. */
+  variant?: "accent" | "success" | "danger" | "aurora";
   loading?: boolean;
   disabled?: boolean;
   icon?: keyof typeof MaterialIcons.glyphMap;
+  iconPosition?: "left" | "right";
   haptic?: boolean;
+  /** Makes the pill bigger for hero placements. */
+  size?: "md" | "lg";
   style?: ViewStyle;
 };
 
 export function GradientButton({
   text,
   onPress,
-  variant = "accent",
+  variant = "aurora",
   loading = false,
   disabled = false,
   icon,
+  iconPosition = "left",
   haptic = true,
+  size = "md",
   style,
 }: GradientButtonProps) {
   const theme = useTheme();
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
-  const gradientColors = {
-    accent: theme.accentGradient,
-    success: theme.successGradient,
-    danger: theme.dangerGradient,
-  }[variant];
+  const gradientColors: readonly string[] = (() => {
+    switch (variant) {
+      case "success": return theme.successGradient;
+      case "danger":  return theme.dangerGradient;
+      case "aurora":  return theme.auroraGradient;
+      case "accent":
+      default:        return theme.accentGradient;
+    }
+  })();
 
   const handlePressIn = () => {
     if (disabled || loading) return;
     Animated.spring(scaleAnim, {
-      toValue: 0.95,
+      toValue: 0.96,
       damping: theme.animation.spring.damping,
       stiffness: theme.animation.spring.stiffness,
       useNativeDriver: true,
@@ -75,11 +228,12 @@ export function GradientButton({
 
   const handlePress = () => {
     if (disabled || loading) return;
-    if (haptic) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onPress();
   };
+
+  const height = size === "lg" ? 56 : 48;
+  const radius = size === "lg" ? 18 : 16;
 
   return (
     <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, style]}>
@@ -90,27 +244,45 @@ export function GradientButton({
         disabled={disabled || loading}
       >
         <LinearGradient
-          colors={gradientColors}
+          colors={gradientColors as [string, string, ...string[]]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[
-            styles.gradientButton,
-            disabled && styles.gradientButtonDisabled,
+            {
+              paddingHorizontal: 22,
+              borderRadius: radius,
+              alignItems: "center",
+              justifyContent: "center",
+              height,
+              shadowColor: AURORA.violet,
+              shadowOpacity: 0.55,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 8,
+            },
+            disabled && { opacity: 0.5 },
           ]}
         >
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <View style={styles.gradientButtonContent}>
-              {icon && (
-                <MaterialIcons
-                  name={icon}
-                  size={20}
-                  color="#FFFFFF"
-                  style={{ marginRight: 8 }}
-                />
-              )}
-              <Text style={[styles.gradientButtonText, { fontFamily: theme.fontFamily.semibold }]}>{text}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {icon && iconPosition === "left" ? (
+                <MaterialIcons name={icon} size={size === "lg" ? 20 : 18} color="#FFFFFF" />
+              ) : null}
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: size === "lg" ? 15 : 14,
+                  fontFamily: theme.fontFamily.semibold,
+                  letterSpacing: 0.1,
+                }}
+              >
+                {text}
+              </Text>
+              {icon && iconPosition === "right" ? (
+                <MaterialIcons name={icon} size={size === "lg" ? 20 : 18} color="#FFFFFF" />
+              ) : null}
             </View>
           )}
         </LinearGradient>
@@ -119,89 +291,237 @@ export function GradientButton({
   );
 }
 
-/**
- * GlassCard - Semi-transparent card with blur effect and optional gradient overlay
- */
+// ─── GlassCard ────────────────────────────────────────────────────────────────
+//
+// Direct port of Gymdash.html's <Glass> component. The numeric formula for
+// blur / saturate / fillA / fillB / strokeA lives in `glassTokensFor()`; the
+// rest of the card (shadow layering, radial specular, prototype-matching
+// defaults) is reproduced here 1:1.
+//
+// Prop defaults mirror the prototype: `radius = 22`, `padding = 18`,
+// `intensity = 65`, `strong = false`.
+//
+// On native RN we can't apply a real `backdrop-filter`, so the card relies on
+// the aurora background diffusing behind it and on two layered fills to read
+// as "frosted". The specular highlight uses react-native-svg's radial
+// gradient for a true top-left sheen (matches the prototype's
+// `radial-gradient(240px 120px at 20% 0%, ...)`).
+
 type GlassCardProps = {
   children: React.ReactNode;
-  blur?: boolean;
+  /** 0..100, default 65. Leave unset to follow the theme's current intensity. */
+  intensity?: number;
+  /** Hero-card variant: thicker border highlight + deeper drop shadow. */
+  strong?: boolean;
+  /** Draw the top-left specular sheen. Default true. */
+  highlight?: boolean;
+  /** Lift the card 1px when true (prototype's `active` prop). */
+  active?: boolean;
+  /** Overlay a subtle aurora-tint inside the card. */
   gradient?: boolean;
+  gradientColors?: readonly string[];
+  /** Border radius. Default 22 (prototype). */
+  radius?: number;
+  /** Inner padding. Default 18 (prototype). */
+  padding?: number;
+  /** Kept for backwards-compat with callers passing `shadow="sm"` etc. */
   shadow?: "sm" | "md" | "lg";
+  /** Kept for back-compat; no runtime effect. */
+  blur?: boolean;
   style?: ViewStyle;
-  gradientColors?: string[];
 };
 
 export function GlassCard({
   children,
-  blur = true,
+  intensity,
+  strong = false,
+  highlight = true,
+  active = false,
   gradient = false,
-  shadow = "md",
-  style,
   gradientColors,
+  radius = 22,
+  padding = 18,
+  shadow: _shadow,
+  blur: _blur,
+  style,
 }: GlassCardProps) {
   const theme = useTheme();
+  const i = typeof intensity === "number" ? intensity : theme.glassIntensity ?? DEFAULT_GLASS_INTENSITY;
+  const g = glassTokensFor(i);
 
-  const shadowStyle = {
-    shadowColor: theme.shadow[shadow].color,
-    shadowOpacity: theme.shadow[shadow].opacity,
-    shadowRadius: theme.shadow[shadow].radius,
-    shadowOffset: theme.shadow[shadow].offset,
-  };
+  // ── Layered styling, in z-order ────────────────────────────────────────────
+  //
+  // 1. Root View — border + drop shadow.
+  // 2. 155° linear fill gradient (fillA → fillB).
+  // 3. Top-left radial specular (strong white near 20% 0%, fading to transparent).
+  // 4. 1px highlight line along the top edge (inset highlight in CSS).
+  // 5. 1px dark line along the bottom edge (inset dark in CSS).
+  // 6. Optional aurora-tint overlay when `gradient` is true.
+  // 7. Children.
 
-  const defaultGradientColors = gradient
-    ? theme.isDark
-      ? ["rgba(90, 40, 160, 0.18)", "transparent", "rgba(249, 115, 22, 0.08)"]
-      : ["rgba(124, 58, 237, 0.10)", "transparent", "rgba(249, 115, 22, 0.06)"]
-    : undefined;
+  const topInsetAlpha = strong ? 0.35 : 0.20;
+  const bottomInsetAlpha = strong ? 0.25 : 0.18;
 
-  const colors = gradientColors || defaultGradientColors;
+  // Drop shadow — prototype uses `0 18px 40px -12px rgba(0,0,0,0.55)` (strong)
+  // and `0 10px 26px -10px rgba(0,0,0,0.45)` (regular).
+  const dropShadow = strong
+    ? {
+        shadowColor: "#000",
+        shadowOpacity: 0.55,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: 18 },
+        elevation: 14,
+      }
+    : {
+        shadowColor: "#000",
+        shadowOpacity: 0.45,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 8,
+      };
+
+  const overlayColors = gradient
+    ? (gradientColors ?? [
+        "rgba(96,165,250,0.14)",
+        "rgba(192,132,252,0.08)",
+        "rgba(244,114,182,0.10)",
+      ])
+    : null;
+
+  // The card is built from three stacked layers, in this order:
+  //
+  //   ┌───────────────────────────────────────────────────┐
+  //   │ OUTER — no border, no background. Provides radius │
+  //   │   and drop shadow only. Children stack inside it. │
+  //   │                                                   │
+  //   │  ┌─────────────────────────────────────────────┐  │
+  //   │  │ COMPOSITION (absoluteFill, clipped)          │  │
+  //   │  │   155° fill • radial specular • inset lines  │  │
+  //   │  └─────────────────────────────────────────────┘  │
+  //   │                                                   │
+  //   │  ┌─────────────────────────────────────────────┐  │
+  //   │  │ CHILDREN wrapper — gets the padding          │  │
+  //   │  └─────────────────────────────────────────────┘  │
+  //   │                                                   │
+  //   │  ┌─────────────────────────────────────────────┐  │
+  //   │  │ BORDER OVERLAY (absoluteFill, pointer-none)  │  │
+  //   │  │   borderWidth 1 with the same radius.        │  │
+  //   │  └─────────────────────────────────────────────┘  │
+  //   └───────────────────────────────────────────────────┘
+  //
+  // Keeping the border on a separate overlay instead of on the outer View
+  // avoids RN's quirk where absoluteFill siblings are positioned INSIDE the
+  // border (creating a 2px-smaller rectangle with its own rounded corners
+  // that didn't align with the outer corners — the "lighter square" artifact).
+  // Border drawn as a pointer-events:none overlay sits ON TOP of the glass
+  // composition, so the composition fills the full card edge-to-edge.
+
+  // The entire card is ONE View. This is deliberate — nested Views with
+  // `borderRadius` + `overflow: hidden` have been the source of the "inner
+  // rectangle" artifact. Each nested rounded-rect renders its own clip path
+  // and Android sub-pixel rasterization can reveal tiny offsets where those
+  // paths disagree, reading as a ghost rectangle inside the card.
+  //
+  // Stack, from back to front:
+  //   • View itself — border + rounded shape + `overflow: hidden` +
+  //     `backgroundColor` as a dark veil (fallback if BlurView doesn't work).
+  //   • BlurView (absoluteFill) — real GPU backdrop blur of the aurora below.
+  //   • 155° white-tint LinearGradient (absoluteFill) — the prototype's
+  //     subtle top-left highlight.
+  //   • Optional aurora-tint overlay.
+  //   • Children in flow, wrapped by a View with `padding`.
+  //
+  // `intensity` (0..100) drives BOTH the BlurView intensity AND the fallback
+  // veil opacity, so the slider stays meaningful in either path.
+
+  const k = i / 100;
+  const veilAlpha = 0.18 + k * 0.22; // 0.18..0.40 — fallback darkening
+  const whiteFillA = g.fillA + k * 0.05;
+  const whiteFillB = g.fillB + k * 0.03;
+  const blurIntensity = Math.max(0, Math.min(100, Math.round(i)));
 
   return (
     <View
       style={[
-        styles.glassCard,
         {
-          backgroundColor: blur ? theme.glass : theme.panel,
-          borderColor: gradient ? theme.accentGradient[0] + "40" : theme.glassBorder,
-          borderRadius: theme.radius.xl,
+          borderRadius: radius,
+          borderWidth: 1,
+          borderColor: `rgba(255,255,255,${g.stroke.toFixed(3)})`,
+          // Flat dark veil as the card's own background — also the fallback
+          // when BlurView's native module isn't available (Expo Go warning),
+          // and the surface Android uses for the elevation clip path.
+          backgroundColor: `rgba(10, 13, 26, ${veilAlpha.toFixed(3)})`,
           overflow: "hidden",
+          transform: active ? [{ translateY: -1 }] : undefined,
         },
-        shadowStyle,
+        dropShadow,
         style,
       ]}
     >
-      {colors && (
+      {/* Real backdrop blur — GPU on iOS, software blur on Android dev
+          builds. Falls through (renders nothing) inside Expo Go when the
+          SDK's native module isn't registered; the dark veil above handles
+          that gracefully. */}
+      <BlurView intensity={blurIntensity} tint="dark" style={StyleSheet.absoluteFill} />
+
+      {/* 155° white tint gradient — the diffuse top-left highlight */}
+      <LinearGradient
+        colors={[
+          `rgba(255,255,255,${whiteFillA.toFixed(3)})`,
+          `rgba(255,255,255,${whiteFillB.toFixed(3)})`,
+        ]}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Optional aurora-tint overlay */}
+      {overlayColors ? (
         <LinearGradient
-          colors={colors as [string, string, ...string[]]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
+          colors={overlayColors as [string, string, ...string[]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-      )}
-      {children}
+      ) : null}
+
+      {/* Inset 1px highlight + 1px shadow — fakes CSS inset box-shadow */}
+      {highlight ? (
+        <>
+          <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, backgroundColor: `rgba(255,255,255,${topInsetAlpha})` }} />
+          <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 1, backgroundColor: `rgba(0,0,0,${bottomInsetAlpha})` }} />
+        </>
+      ) : null}
+
+      {/* Children — padding on this wrapper so the card's height auto-sizes
+          around the content without a padding "ring" between fill and border. */}
+      <View style={{ padding }}>{children}</View>
     </View>
   );
 }
 
-/**
- * ProgressRing - Circular progress indicator with animation
- */
+// ─── ProgressRing ─────────────────────────────────────────────────────────────
+
 type ProgressRingProps = {
   progress: number; // 0 to 1
   size?: number;
   strokeWidth?: number;
-  color?: "accent" | "success" | "danger";
+  /** Accent uses the aurora gradient stroke. */
+  color?: "accent" | "success" | "danger" | "aurora";
   showPercentage?: boolean;
   animated?: boolean;
+  /** Optional label rendered inside the ring (overrides percentage). */
+  label?: React.ReactNode;
 };
 
 export function ProgressRing({
   progress,
   size = 120,
   strokeWidth = 8,
-  color = "accent",
+  color = "aurora",
   showPercentage = true,
   animated = true,
+  label,
 }: ProgressRingProps) {
   const theme = useTheme();
   const [displayProgress, setDisplayProgress] = useState(animated ? 0 : progress);
@@ -225,19 +545,29 @@ export function ProgressRing({
     }
   }, [progress, animated, animatedProgress, theme.animation.slow]);
 
-  const colorValue = {
-    accent: theme.accent,
-    success: theme.success,
-    danger: theme.danger,
-  }[color];
-
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference * (1 - displayProgress);
 
+  // For aurora we render a two-stop gradient stroke; for solid variants we
+  // use the theme token. This avoids branching in the stroke value.
+  const solidColor =
+    color === "success" ? theme.success : color === "danger" ? theme.danger : theme.accent;
+  const useGradient = color === "accent" || color === "aurora";
+  const gradId = `pr-grad-${useGradient ? "aurora" : "solid"}`;
+
   return (
-    <View style={[styles.progressRing, { width: size, height: size }]}>
+    <View style={[{ width: size, height: size, alignItems: "center", justifyContent: "center" }]}>
       <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
+        {useGradient ? (
+          <Defs>
+            <SvgLinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0%" stopColor={theme.auroraGradient[0]} />
+              <Stop offset="60%" stopColor={theme.auroraGradient[1]} />
+              <Stop offset="100%" stopColor={theme.auroraGradient[2]} />
+            </SvgLinearGradient>
+          </Defs>
+        ) : null}
         <Circle
           cx={size / 2}
           cy={size / 2}
@@ -250,7 +580,7 @@ export function ProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={colorValue}
+          stroke={useGradient ? `url(#${gradId})` : solidColor}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={`${circumference} ${circumference}`}
@@ -258,20 +588,28 @@ export function ProgressRing({
           strokeLinecap="round"
         />
       </Svg>
-      {showPercentage && (
-        <View style={styles.progressRingCenter}>
-          <Text style={[styles.progressRingText, { color: theme.text }]}>
+      <View style={{ position: "absolute", alignItems: "center", justifyContent: "center" }}>
+        {label !== undefined ? (
+          label
+        ) : showPercentage ? (
+          <Text
+            style={{
+              color: theme.text,
+              fontSize: Math.max(14, size / 6),
+              fontWeight: "600",
+              fontFamily: theme.mono,
+            }}
+          >
             {Math.round(progress * 100)}%
           </Text>
-        </View>
-      )}
+        ) : null}
+      </View>
     </View>
   );
 }
 
-/**
- * StatPill - Compact stat display with optional gradient for PRs
- */
+// ─── StatPill (existing API kept) ─────────────────────────────────────────────
+
 type StatPillProps = {
   label: string;
   value: string;
@@ -310,29 +648,14 @@ export function StatPill({
         style,
       ]}
     >
-      <Text
-        style={[
-          styles.statPillLabel,
-          { color: isPR ? "#FFFFFF" : theme.muted, fontFamily: theme.mono },
-        ]}
-      >
+      <Text style={[styles.statPillLabel, { color: isPR ? "#FFFFFF" : theme.muted, fontFamily: theme.mono }]}>
         {label}
       </Text>
-      <Text
-        style={[
-          styles.statPillValue,
-          { color: isPR ? "#FFFFFF" : theme.text },
-        ]}
-      >
+      <Text style={[styles.statPillValue, { color: isPR ? "#FFFFFF" : theme.text, fontFamily: theme.mono }]}>
         {value}
       </Text>
       {rpe !== undefined && (
-        <Text
-          style={[
-            styles.statPillRpe,
-            { color: isPR ? "#FFFFFF" : theme.muted, fontFamily: theme.mono },
-          ]}
-        >
+        <Text style={[styles.statPillRpe, { color: isPR ? "#FFFFFF" : theme.muted, fontFamily: theme.mono }]}>
           RPE {rpe}
         </Text>
       )}
@@ -343,15 +666,13 @@ export function StatPill({
     return (
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <LinearGradient
-          colors={theme.successGradient}
+          colors={theme.auroraGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.statPill, compact && styles.statPillCompact, style]}
         >
-          <Text style={[styles.statPillLabel, { color: "#FFFFFF", fontFamily: theme.mono }]}>
-            {label}
-          </Text>
-          <Text style={[styles.statPillValue, { color: "#FFFFFF" }]}>{value}</Text>
+          <Text style={[styles.statPillLabel, { color: "#FFFFFF", fontFamily: theme.mono }]}>{label}</Text>
+          <Text style={[styles.statPillValue, { color: "#FFFFFF", fontFamily: theme.mono }]}>{value}</Text>
           {rpe !== undefined && (
             <Text style={[styles.statPillRpe, { color: "#FFFFFF", fontFamily: theme.mono }]}>
               RPE {rpe}
@@ -365,9 +686,8 @@ export function StatPill({
   return <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>{content}</Animated.View>;
 }
 
-/**
- * AnimatedNumber - Smooth counting animation for numbers
- */
+// ─── AnimatedNumber ───────────────────────────────────────────────────────────
+
 type AnimatedNumberProps = {
   value: number;
   decimals?: number;
@@ -414,9 +734,8 @@ export function AnimatedNumber({
   );
 }
 
-/**
- * SkeletonLoader - Shimmer loading animation
- */
+// ─── SkeletonLoader ───────────────────────────────────────────────────────────
+
 type SkeletonLoaderProps = {
   width?: ViewStyle["width"];
   height?: number;
@@ -448,7 +767,7 @@ export function SkeletonLoader({
           easing: Easing.linear,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     anim.start();
     return () => anim.stop();
@@ -460,14 +779,7 @@ export function SkeletonLoader({
   });
 
   return (
-    <Animated.View
-      style={[
-        {
-          opacity,
-        },
-        style,
-      ]}
-    >
+    <Animated.View style={[{ opacity }, style]}>
       <View
         style={[
           styles.skeleton,
@@ -483,9 +795,8 @@ export function SkeletonLoader({
   );
 }
 
-/**
- * AchievementToast - Toast notification for achievement unlocks
- */
+// ─── Toasts ───────────────────────────────────────────────────────────────────
+
 type AchievementToastProps = {
   visible: boolean;
   achievementName: string;
@@ -512,16 +823,15 @@ export function AchievementToast({
   const onDismissRef = React.useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
-  const tierColors = {
-    common: theme.muted,
-    rare: theme.accent,
-    epic: "#9C27B0",
-    legendary: "#FFD700",
+  const tierGradient: Record<typeof tier, [string, string]> = {
+    common:     [theme.muted, theme.muted],
+    rare:       [theme.aurora.blue, theme.aurora.violet],
+    epic:       [theme.aurora.violet, theme.aurora.pink],
+    legendary:  ["#FFD700", "#FFA500"],
   };
 
   useEffect(() => {
     if (visible) {
-      // Slide in
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
@@ -536,10 +846,8 @@ export function AchievementToast({
         }),
       ]).start();
 
-      // Haptic feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Auto dismiss after 4 seconds
       const timeout = setTimeout(() => {
         Animated.parallel([
           Animated.spring(translateY, {
@@ -574,7 +882,7 @@ export function AchievementToast({
     >
       <Pressable onPress={() => { onDismiss(); onTap?.(); }}>
         <LinearGradient
-          colors={tier === "legendary" ? ["#FFD700", "#FFA500"] : theme.successGradient}
+          colors={tierGradient[tier]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.toastContent}
@@ -700,8 +1008,6 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
   );
 }
 
-// ── Success Toast ─────────────────────────────────────────
-
 export function SuccessToast({
   visible,
   message,
@@ -747,47 +1053,8 @@ export function SuccessToast({
 }
 
 const styles = StyleSheet.create({
-  gradientButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
-  },
-  gradientButtonDisabled: {
-    opacity: 0.5,
-  },
-  gradientButtonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gradientButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontFamily: "Manrope_600SemiBold",
-  },
-  glassCard: {
-    borderWidth: 1,
-    padding: 18,
-  },
-  progressRing: {
-    position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressRingBackground: {
-    position: "absolute",
-  },
-  progressRingCenter: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressRingText: {
-    fontSize: 24,
-    fontWeight: "600",
+  skeleton: {
+    overflow: "hidden",
   },
   statPill: {
     paddingHorizontal: 14,
@@ -811,9 +1078,6 @@ const styles = StyleSheet.create({
   },
   statPillRpe: {
     fontSize: 11,
-  },
-  skeleton: {
-    overflow: "hidden",
   },
   toastContainer: {
     position: "absolute",

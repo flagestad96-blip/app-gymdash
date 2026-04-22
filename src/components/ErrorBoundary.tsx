@@ -15,7 +15,7 @@ export const DARK_FALLBACK_COLORS: FallbackColors = {
   bg: "#0D0B1A",
   text: "#F5F0FF",
   muted: "#A89CC8",
-  accent: "#B668F5",
+  accent: "#c084fc",
 };
 
 type Props = {

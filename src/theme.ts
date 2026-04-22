@@ -1,30 +1,59 @@
-﻿import React from "react";
-import { Appearance, type TextStyle, Platform } from "react-native";
+// src/theme.ts — Aurora redesign theme (dark only).
+//
+// One aesthetic. No light mode. Personalization knobs come from the prototype's
+// Tweaks panel:
+//
+//   palette          aurora / violet / emerald / sunset
+//   glassIntensity   0..100 slider (prototype default 65)
+//
+// The glass look is driven by `glassIntensity` via the *exact* formula from
+// Gymdash.html's Glass component. See `glassTokensFor()` below — everything
+// else on the screen (buttons, chips, inputs) inherits those same numbers
+// through `theme.glass` / `theme.glassBorder`, so the whole app feels like
+// one frosted surface.
 
-export type ThemeMode = "light" | "dark" | "system";
+import React from "react";
+import { type TextStyle } from "react-native";
 
 export type Theme = {
-  mode: "light" | "dark";
-  isDark: boolean;
+  /** Kept for back-compat with callers that branch on isDark; always true now. */
+  isDark: true;
+  mode: "dark";
 
-  // Base colors
+  // Base
   bg: string;
   panel: string;
   panel2: string;
   text: string;
   muted: string;
+  muted2: string;
+  /** Tertiary ink (for labels that need to recede further). */
+  ink3: string;
   line: string;
   divider: string;
 
-  // Glass effects
+  /** Raw intensity value (0..100) — read by GlassCard. */
+  glassIntensity: number;
+  /** Pre-computed glass numbers at the current intensity. */
+  glassBlur: number;          // px, maps to CSS backdrop-filter on web
+  glassSat: number;           // saturation % (same)
+  glassFillA: number;         // gradient start alpha
+  glassFillB: number;         // gradient end alpha
+  glassStroke: number;        // border alpha
+  /** Flat-average glass fill used by non-GlassCard surfaces. */
   glass: string;
+  glassStrong: string;
   glassBorder: string;
+  glassBorderStrong: string;
+  glassHighlight: string;
   modalOverlay: string;
   modalGlass: string;
 
-  // Accent colors
+  // Accents
   accent: string;
   accentGradient: [string, string];
+  auroraGradient: [string, string, string];
+  aurora: { blue: string; violet: string; cyan: string; pink: string };
   success: string;
   successGradient: [string, string];
   warn: string;
@@ -37,77 +66,28 @@ export type Theme = {
     medium: string;
     semibold: string;
     bold: string;
+    serif: string;
   };
   mono: string;
-  fontSize: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    xxl: number;
-  };
+  fontSize: { xs: number; sm: number; md: number; lg: number; xl: number; xxl: number };
   fontWeight: {
     regular: TextStyle["fontWeight"];
     medium: TextStyle["fontWeight"];
     semibold: TextStyle["fontWeight"];
     bold: TextStyle["fontWeight"];
   };
-  lineHeight: {
-    sm: number;
-    md: number;
-    lg: number;
-  };
+  lineHeight: { sm: number; md: number; lg: number };
 
-  // Spacing
-  space: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    xxl: number;
-  };
-
-  // Radius
-  radius: {
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    pill: number;
-  };
+  // Tokens
+  space: { xs: number; sm: number; md: number; lg: number; xl: number; xxl: number };
+  radius: { sm: number; md: number; lg: number; xl: number; pill: number };
 
   // Shadows
   shadow: {
-    sm: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
-    md: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
-    lg: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
-    glow: {
-      color: string;
-      opacity: number;
-      radius: number;
-      offset: { width: number; height: number };
-      elevation: number;
-    };
+    sm: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
+    md: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
+    lg: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
+    glow: { color: string; opacity: number; radius: number; offset: { width: number; height: number }; elevation: number };
   };
 
   // Animation
@@ -115,331 +95,213 @@ export type Theme = {
     fast: number;
     normal: number;
     slow: number;
-    spring: {
-      damping: number;
-      stiffness: number;
-    };
+    spring: { damping: number; stiffness: number };
   };
 
-  // Interaction
   hitSlop: {
     sm: { top: number; bottom: number; left: number; right: number };
     md: { top: number; bottom: number; left: number; right: number };
   };
 
-  // Legacy
-  textSize: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    xxl: number;
-  };
+  /** @deprecated Alias of fontSize, kept for a handful of older call sites. */
+  textSize: { xs: number; sm: number; md: number; lg: number; xl: number; xxl: number };
 };
 
+// ── Aurora palette (the signature accent colors behind the glass) ────────────
+
+export const AURORA = {
+  blue: "#60a5fa",
+  violet: "#c084fc",
+  cyan: "#67e8f9",
+  pink: "#f472b6",
+} as const;
+
+export type Palette = "aurora" | "violet" | "emerald" | "sunset";
+
+const PALETTES: Record<Palette, { blue: string; violet: string; cyan: string; pink: string }> = {
+  aurora:  { blue: "#60a5fa", violet: "#c084fc", cyan: "#67e8f9", pink: "#f472b6" },
+  violet:  { blue: "#8b5cf6", violet: "#ec4899", cyan: "#6366f1", pink: "#a78bfa" },
+  emerald: { blue: "#34d399", violet: "#22d3ee", cyan: "#a7f3d0", pink: "#60a5fa" },
+  sunset:  { blue: "#fb7185", violet: "#f59e0b", cyan: "#ef4444", pink: "#e879f9" },
+};
+
+export const PALETTE_LIST: Palette[] = ["aurora", "violet", "emerald", "sunset"];
+
+export function getPaletteColors(p: Palette) {
+  return PALETTES[p];
+}
+
+// ── Glass intensity (0..100) ─────────────────────────────────────────────────
+//
+// Values below mirror the prototype's Glass component verbatim:
+//   const blur    = 8 + (intensity / 100) * 24;       // 8..32
+//   const sat     = 120 + (intensity / 100) * 60;     // 120..180
+//   const fillA   = 0.04 + (intensity / 100) * 0.10;  // 0.04..0.14
+//   const fillB   = 0.02 + (intensity / 100) * 0.06;  // 0.02..0.08
+//   const strokeA = 0.12 + (intensity / 100) * 0.22;  // 0.12..0.34
+
+export const DEFAULT_GLASS_INTENSITY = 65;
+
+export function glassTokensFor(intensity: number) {
+  const i = Math.max(0, Math.min(100, intensity));
+  const k = i / 100;
+  return {
+    intensity: i,
+    blur: 8 + k * 24,
+    sat: 120 + k * 60,
+    fillA: 0.04 + k * 0.10,
+    fillB: 0.02 + k * 0.06,
+    stroke: 0.12 + k * 0.22,
+  };
+}
+
+// ── Token plumbing ───────────────────────────────────────────────────────────
+
 const TOKENS = {
+  // Body font stack — Inter, matches the prototype's `font-family: 'Inter'`.
   fontFamily: {
-    regular: "Manrope_400Regular",
-    medium: "Manrope_500Medium",
-    semibold: "Manrope_600SemiBold",
-    bold: "Manrope_700Bold",
+    regular: "Inter_400Regular",
+    medium: "Inter_500Medium",
+    semibold: "Inter_600SemiBold",
+    bold: "Inter_700Bold",
+    serif: "InstrumentSerif_400Regular",
   },
-  fontSize: {
-    xs: 11,
-    sm: 13,
-    md: 15,
-    lg: 18,
-    xl: 22,
-    xxl: 28,
-  },
-  fontWeight: {
-    regular: "400",
-    medium: "500",
-    semibold: "600",
-    bold: "700",
-  } as const,
-  lineHeight: {
-    sm: 20,
-    md: 24,
-    lg: 36,
-  },
-  space: {
-    xs: 6,
-    sm: 10,
-    md: 14,
-    lg: 18,
-    xl: 24,
-    xxl: 32,
-  },
-  radius: {
-    sm: 10,
-    md: 14,
-    lg: 18,
-    xl: 22,
-    pill: 999,
-  },
+  mono: "JetBrainsMono_500Medium",
+  fontSize: { xs: 11, sm: 13, md: 15, lg: 18, xl: 22, xxl: 28 },
+  fontWeight: { regular: "400", medium: "500", semibold: "600", bold: "700" } as const,
+  lineHeight: { sm: 20, md: 24, lg: 36 },
+  space: { xs: 6, sm: 10, md: 14, lg: 18, xl: 24, xxl: 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 22, pill: 999 },
   hitSlop: {
     sm: { top: 6, bottom: 6, left: 6, right: 6 },
     md: { top: 10, bottom: 10, left: 10, right: 10 },
   },
 };
 
-function createTheme(mode: "light" | "dark"): Theme {
-  if (mode === "dark") {
-    return {
-      mode,
-      isDark: true,
+function rgba(r: number, g: number, b: number, a: number) {
+  const clamped = Math.max(0, Math.min(1, a));
+  return `rgba(${r}, ${g}, ${b}, ${clamped.toFixed(3)})`;
+}
 
-      // Base colors - Deep purple-black with warmth
-      bg: "#0D0B1A",
-      panel: "rgba(30, 20, 55, 0.55)",
-      panel2: "rgba(45, 30, 75, 0.35)",
-      text: "#F5F0FF",
-      muted: "#A89CC8",
-      line: "rgba(255, 255, 255, 0.07)",
-      divider: "rgba(255, 255, 255, 0.04)",
+function createTheme(palette: Palette, intensity: number): Theme {
+  const P = PALETTES[palette];
+  const g = glassTokensFor(intensity);
 
-      // Glass effects - frosted purple glass
-      glass: "rgba(80, 50, 140, 0.28)",
-      glassBorder: "rgba(120, 80, 200, 0.22)",
-      modalOverlay: "rgba(0, 0, 0, 0.85)",
-      modalGlass: "rgba(30, 20, 55, 0.92)",
-
-      // Accent: purple-to-orange gradient
-      accent: "#B668F5",
-      accentGradient: ["#9C44DC", "#F97316"],
-      success: "#6EE7A0",
-      successGradient: ["#34D399", "#10B981"],
-      warn: "#FBBF24",
-      danger: "#FB7185",
-      dangerGradient: ["#FB7185", "#F43F5E"],
-
-      // Typography
-      fontFamily: TOKENS.fontFamily,
-      mono: "monospace",
-      fontSize: TOKENS.fontSize,
-      fontWeight: TOKENS.fontWeight,
-      lineHeight: TOKENS.lineHeight,
-
-      // Spacing
-      space: TOKENS.space,
-
-      // Radius
-      radius: TOKENS.radius,
-
-      // Soft shadows with purple glow
-      shadow: {
-        sm: {
-          color: "#1A0A30",
-          opacity: 0.25,
-          radius: 6,
-          offset: { width: 0, height: 3 },
-          elevation: 2,
-        },
-        md: {
-          color: "#1A0A30",
-          opacity: 0.35,
-          radius: 12,
-          offset: { width: 0, height: 6 },
-          elevation: 5,
-        },
-        lg: {
-          color: "#1A0A30",
-          opacity: 0.45,
-          radius: 24,
-          offset: { width: 0, height: 10 },
-          elevation: 10,
-        },
-        glow: {
-          color: "#B668F5",
-          opacity: 0.35,
-          radius: 18,
-          offset: { width: 0, height: 0 },
-          elevation: 0,
-        },
-      },
-
-      // Animation
-      animation: {
-        fast: 180,
-        normal: 280,
-        slow: 450,
-        spring: {
-          damping: 14,
-          stiffness: 160,
-        },
-      },
-
-      // Interaction
-      hitSlop: TOKENS.hitSlop,
-
-      // Legacy
-      textSize: TOKENS.fontSize,
-    };
-  }
+  // Flat-average fill for non-GlassCard surfaces (buttons, inputs, chips).
+  // We bump the strong variant ~1.6× to match the prototype's `strong` feel.
+  const avgFill = (g.fillA + g.fillB) / 2;
+  const strongFill = Math.min(0.95, avgFill * 1.6);
+  const strongStroke = Math.min(0.95, g.stroke * 1.15);
 
   return {
-    mode,
-    isDark: false,
+    mode: "dark",
+    isDark: true,
 
-    // Base colors - Warm light with purple tint
-    bg: "#F8F5FF",
-    panel: "rgba(245, 240, 255, 0.55)",
-    panel2: "rgba(238, 232, 252, 0.35)",
-    text: "#1A0E2E",
-    muted: "#6E5C8E",
-    line: "rgba(100, 60, 160, 0.07)",
-    divider: "rgba(100, 60, 160, 0.04)",
+    bg: "#05070f",
+    panel: rgba(255, 255, 255, avgFill),
+    panel2: rgba(255, 255, 255, strongFill),
+    text: "#f3f5ff",
+    muted: "rgba(243, 245, 255, 0.72)",
+    muted2: "rgba(243, 245, 255, 0.48)",
+    ink3: "rgba(243, 245, 255, 0.28)",
+    line: rgba(255, 255, 255, g.stroke),
+    divider: "rgba(255, 255, 255, 0.06)",
 
-    // Glass effects - subtle purple-tinted glass
-    glass: "rgba(160, 120, 220, 0.10)",
-    glassBorder: "rgba(140, 100, 200, 0.12)",
-    modalOverlay: "rgba(0, 0, 0, 0.85)",
-    modalGlass: "rgba(248, 245, 255, 0.95)",
+    // Raw + averaged glass tokens — GlassCard reads the raw numbers and
+    // composes its own gradient; everyone else reads the averaged values.
+    glassIntensity: g.intensity,
+    glassBlur: g.blur,
+    glassSat: g.sat,
+    glassFillA: g.fillA,
+    glassFillB: g.fillB,
+    glassStroke: g.stroke,
+    glass: rgba(255, 255, 255, avgFill),
+    glassStrong: rgba(255, 255, 255, strongFill),
+    glassBorder: rgba(255, 255, 255, g.stroke),
+    glassBorderStrong: rgba(255, 255, 255, strongStroke),
+    glassHighlight: "rgba(255, 255, 255, 0.20)",
+    modalOverlay: "rgba(0, 0, 0, 0.72)",
+    modalGlass: "rgba(15, 17, 28, 0.88)",
 
-    // Accent: purple-to-orange gradient
-    accent: "#7C3AED",
-    accentGradient: ["#7C3AED", "#F97316"],
-    success: "#16A34A",
-    successGradient: ["#16A34A", "#15803D"],
-    warn: "#D97706",
-    danger: "#DC2626",
-    dangerGradient: ["#DC2626", "#B91C1C"],
+    accent: P.violet,
+    accentGradient: [P.blue, P.violet],
+    auroraGradient: [P.blue, P.violet, P.pink],
+    aurora: P,
+    success: P.cyan,
+    successGradient: [P.blue, P.cyan],
+    warn: "#f59e0b",
+    danger: "#fb7185",
+    dangerGradient: ["#fb7185", "#f43f5e"],
 
-    // Typography
     fontFamily: TOKENS.fontFamily,
-    mono: "monospace",
+    mono: TOKENS.mono,
     fontSize: TOKENS.fontSize,
     fontWeight: TOKENS.fontWeight,
     lineHeight: TOKENS.lineHeight,
-
-    // Spacing
     space: TOKENS.space,
-
-    // Radius
     radius: TOKENS.radius,
 
-    // Soft shadows with purple tint
     shadow: {
-      sm: {
-        color: "#7C3AED",
-        opacity: 0.06,
-        radius: 6,
-        offset: { width: 0, height: 3 },
-        elevation: 2,
-      },
-      md: {
-        color: "#7C3AED",
-        opacity: 0.1,
-        radius: 12,
-        offset: { width: 0, height: 6 },
-        elevation: 5,
-      },
-      lg: {
-        color: "#7C3AED",
-        opacity: 0.14,
-        radius: 24,
-        offset: { width: 0, height: 10 },
-        elevation: 10,
-      },
-      glow: {
-        color: "#7C3AED",
-        opacity: 0.3,
-        radius: 18,
-        offset: { width: 0, height: 0 },
-        elevation: 0,
-      },
+      sm:   { color: "#000000", opacity: 0.35, radius: 8,  offset: { width: 0, height: 4 },  elevation: 2 },
+      md:   { color: "#000000", opacity: 0.45, radius: 26, offset: { width: 0, height: 10 }, elevation: 6 },
+      lg:   { color: "#000000", opacity: 0.55, radius: 40, offset: { width: 0, height: 18 }, elevation: 12 },
+      glow: { color: P.violet,  opacity: 0.45, radius: 24, offset: { width: 0, height: 0 },  elevation: 0 },
     },
 
-    // Animation
-    animation: {
-      fast: 180,
-      normal: 280,
-      slow: 450,
-      spring: {
-        damping: 14,
-        stiffness: 160,
-      },
-    },
-
-    // Interaction
+    animation: { fast: 180, normal: 280, slow: 450, spring: { damping: 14, stiffness: 160 } },
     hitSlop: TOKENS.hitSlop,
-
-    // Legacy
     textSize: TOKENS.fontSize,
   };
 }
 
+// ── State + listeners ────────────────────────────────────────────────────────
+
 const listeners = new Set<() => void>();
-let currentMode: ThemeMode = "system";
-
-function getSystemColorScheme(): "dark" | "light" {
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-  return Appearance.getColorScheme() === "dark" ? "dark" : "light";
-}
-
-let currentTheme: Theme = createTheme(getSystemColorScheme());
-
-function resolveMode(mode: ThemeMode) {
-  if (mode === "system") {
-    return getSystemColorScheme();
-  }
-  return mode;
-}
+let currentPalette: Palette = "aurora";
+let currentIntensity: number = DEFAULT_GLASS_INTENSITY;
+let currentTheme: Theme = createTheme(currentPalette, currentIntensity);
 
 function notify() {
   listeners.forEach((cb) => cb());
 }
 
-export function setThemeMode(mode: ThemeMode) {
-  currentMode = mode;
-  currentTheme = createTheme(resolveMode(mode));
+function rebuild() {
+  currentTheme = createTheme(currentPalette, currentIntensity);
   notify();
 }
 
-export function getThemeMode(): ThemeMode {
-  return currentMode;
+export function setPalette(p: Palette) {
+  currentPalette = p;
+  rebuild();
+}
+
+export function getPalette(): Palette {
+  return currentPalette;
+}
+
+/** Accepts any 0..100 number; clamped on set. */
+export function setGlassIntensity(i: number) {
+  const clamped = Math.max(0, Math.min(100, Math.round(i)));
+  if (clamped === currentIntensity) return;
+  currentIntensity = clamped;
+  rebuild();
+}
+
+export function getGlassIntensity(): number {
+  return currentIntensity;
 }
 
 export function getTheme(): Theme {
   return currentTheme;
 }
 
-let appearanceSubAttached = false;
-function ensureAppearanceListener() {
-  if (appearanceSubAttached) return;
-  appearanceSubAttached = true;
-
-  // Listen to React Native Appearance changes (mobile)
-  Appearance.addChangeListener(() => {
-    if (currentMode === "system") {
-      currentTheme = createTheme(resolveMode("system"));
-      notify();
-    }
-  });
-
-  // Listen to web theme changes
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      if (currentMode === "system") {
-        currentTheme = createTheme(resolveMode("system"));
-        notify();
-      }
-    };
-    mediaQuery.addEventListener("change", handleChange);
-  }
-}
+// ── React context ────────────────────────────────────────────────────────────
 
 const ThemeContext = React.createContext<Theme>(currentTheme);
 
 function useThemeState() {
   const [themeState, setThemeState] = React.useState(currentTheme);
   React.useEffect(() => {
-    ensureAppearanceListener();
     const cb = () => setThemeState(currentTheme);
     listeners.add(cb);
     return () => {
@@ -458,7 +320,7 @@ export function useTheme(): Theme {
   return React.useContext(ThemeContext);
 }
 
-// Legacy export for screens still importing { theme }
+/** Legacy proxy for files still importing `{ theme }` as a value. */
 export const theme = new Proxy({} as Theme, {
   get(_target, prop) {
     return (currentTheme as any)[prop as keyof Theme];
