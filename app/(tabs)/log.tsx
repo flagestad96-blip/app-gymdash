@@ -602,55 +602,47 @@ export default function Logg() {
   useEffect(() => {
     if (!ready || exerciseIds.length === 0) { setLastSets({}); return; }
     try {
-      const placeholders = exerciseIds.map(() => "?").join(",");
       const last: Record<string, LastSetInfo> = {};
+      const db = getDb();
 
-      if (activeGymId) {
-        // Pass 1: gym-scoped
-        const gymRows = getDb().getAllSync<SetRow>(
-          `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at
-           FROM sets s
-           JOIN workouts w ON s.workout_id = w.id
-           WHERE s.exercise_id IN (${placeholders})
-             AND w.gym_id = ?
-           ORDER BY s.created_at DESC
-           LIMIT ?`,
-          [...exerciseIds, activeGymId, exerciseIds.length * 5]
-        );
-        for (const r of gymRows ?? []) {
-          const key = r.exercise_id ? String(r.exercise_id) : "";
-          if (!key || last[key]) continue;
-          last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
-        }
-
-        // Pass 2: global fallback for remaining exercise IDs
-        const remaining = exerciseIds.filter((id) => !last[id]);
-        if (remaining.length > 0) {
-          const remainingPlaceholders = remaining.map(() => "?").join(",");
-          const globalRows = getDb().getAllSync<SetRow>(
-            `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-             FROM sets WHERE exercise_id IN (${remainingPlaceholders}) ORDER BY created_at DESC
-             LIMIT ?`,
-            [...remaining, remaining.length * 5]
+      // Per-exercise lookup: a single LIMIT across all exercises drops history
+      // for ad-hoc exercises whose last log is older than the program rotation.
+      for (const exId of exerciseIds) {
+        if (activeGymId) {
+          const gymRow = db.getFirstSync<SetRow>(
+            `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at
+             FROM sets s
+             JOIN workouts w ON s.workout_id = w.id
+             WHERE s.exercise_id = ? AND w.gym_id = ?
+             ORDER BY s.created_at DESC
+             LIMIT 1`,
+            [exId, activeGymId]
           );
-          for (const r of globalRows ?? []) {
-            const key = r.exercise_id ? String(r.exercise_id) : "";
-            if (!key || last[key]) continue;
-            last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id, fromOtherGym: true };
+          if (gymRow) {
+            last[exId] = { weight: gymRow.weight, reps: gymRow.reps, rpe: gymRow.rpe ?? null, created_at: gymRow.created_at, workout_id: gymRow.workout_id };
+            continue;
           }
-        }
-      } else {
-        // No gym — global query (original behavior)
-        const rows = getDb().getAllSync<SetRow>(
-          `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-           FROM sets WHERE exercise_id IN (${placeholders}) ORDER BY created_at DESC
-           LIMIT ?`,
-          [...exerciseIds, exerciseIds.length * 5]
-        );
-        for (const r of rows ?? []) {
-          const key = r.exercise_id ? String(r.exercise_id) : "";
-          if (!key || last[key]) continue;
-          last[key] = { weight: r.weight, reps: r.reps, rpe: r.rpe ?? null, created_at: r.created_at, workout_id: r.workout_id };
+          const fallback = db.getFirstSync<SetRow>(
+            `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
+             FROM sets WHERE exercise_id = ?
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [exId]
+          );
+          if (fallback) {
+            last[exId] = { weight: fallback.weight, reps: fallback.reps, rpe: fallback.rpe ?? null, created_at: fallback.created_at, workout_id: fallback.workout_id, fromOtherGym: true };
+          }
+        } else {
+          const row = db.getFirstSync<SetRow>(
+            `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
+             FROM sets WHERE exercise_id = ?
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [exId]
+          );
+          if (row) {
+            last[exId] = { weight: row.weight, reps: row.reps, rpe: row.rpe ?? null, created_at: row.created_at, workout_id: row.workout_id };
+          }
         }
       }
 
@@ -678,7 +670,7 @@ export default function Logg() {
         const current = next[exId];
         const empty = !current || (!current.weight && !current.reps && !current.rpe);
         if (!empty) continue;
-        next[exId] = { weight: formatWeight(info.weight), reps: String(info.reps), rpe: info.rpe != null ? String(info.rpe) : "" };
+        next[exId] = { weight: formatWeight(wu.toDisplay(info.weight)), reps: String(info.reps), rpe: info.rpe != null ? String(info.rpe) : "" };
       }
       return next;
     });
