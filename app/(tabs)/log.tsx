@@ -284,7 +284,27 @@ export default function Logg() {
         if (row?.id) {
           activeRow = row;
           setActiveWorkoutId(row.id);
-          setWorkoutStartedAt(row.started_at ?? null);
+          // Heal stale started_at: if a workout was created earlier but no sets
+          // were logged, the elapsed clock would show time-since-creation (could
+          // be hours). Treat any started_at on a row with zero sets as stale and
+          // clear it so the clock starts fresh on the first logged set.
+          let effectiveStartedAt = row.started_at ?? null;
+          if (effectiveStartedAt) {
+            try {
+              const setCount = getDb().getFirstSync<{ c: number }>(
+                `SELECT COUNT(1) as c FROM sets WHERE workout_id = ?`,
+                [row.id]
+              );
+              if (!setCount || (setCount.c ?? 0) === 0) {
+                await getDb().runAsync(
+                  `UPDATE workouts SET started_at = NULL WHERE id = ?`,
+                  [row.id]
+                );
+                effectiveStartedAt = null;
+              }
+            } catch {}
+          }
+          setWorkoutStartedAt(effectiveStartedAt);
           setWorkoutNotes(row.notes ?? "");
         } else {
           await setSettingAsync("activeWorkoutId", "");
@@ -885,129 +905,158 @@ export default function Logg() {
   async function startWorkout() {
     if (activeWorkoutId) return;
     const id = uid("workout");
-    const startedAt = isoNow();
     const programId = program?.id ?? null;
+    // started_at stays NULL until the first set is logged. This prevents a
+    // stale elapsed clock if the user opens a session and walks away without
+    // logging anything.
     await getDb().runAsync(
       `INSERT INTO workouts(id, date, program_mode, program_id, day_key, back_status, notes, day_index, started_at, gym_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, isoDateOnly(), programMode, programId, getDayKey(), "green", "", activeDayIndex, startedAt, activeGymId ?? null]
+      [id, isoDateOnly(), programMode, programId, getDayKey(), "green", "", activeDayIndex, null, activeGymId ?? null]
     );
     await setSettingAsync("activeWorkoutId", id);
     setActiveWorkoutId(id);
     restTimer.setActiveWorkoutId(id); // Show floating timer
-    setWorkoutStartedAt(startedAt);
+    setWorkoutStartedAt(null);
     setWorkoutSets([]);
     setWorkoutNotes("");
   }
 
   async function endWorkout() {
     if (!activeWorkoutId) return;
+    const endingWorkoutId = activeWorkoutId;
     const programId = program?.id ?? "";
     const dayCount = Math.max(1, program?.days.length ?? 1);
     const nextIdx = (activeDayIndex + 1) % dayCount;
 
-    // Build summary before clearing state
-    const totalVolume = workoutSets.reduce((sum, s) => {
-      const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
-      return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
-    }, 0);
-    const exerciseIds = new Set(workoutSets.map((s) => s.exercise_id ?? s.exercise_name));
-    let topE1rm: { name: string; value: number } | null = null;
-    for (const s of workoutSets) {
-      if (s.weight > 0 && s.reps > 0) {
-        const e = round1(epley1RM(s.weight, s.reps));
-        if (!topE1rm || e > topE1rm.value) {
-          topE1rm = { name: displayNameFor(s.exercise_id ?? s.exercise_name), value: e };
+    try {
+      // Build summary before clearing state
+      const totalVolume = workoutSets.reduce((sum, s) => {
+        const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
+        return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
+      }, 0);
+      const exerciseIds = new Set(workoutSets.map((s) => s.exercise_id ?? s.exercise_name));
+      let topE1rm: { name: string; value: number } | null = null;
+      for (const s of workoutSets) {
+        if (s.weight > 0 && s.reps > 0) {
+          const e = round1(epley1RM(s.weight, s.reps));
+          if (!topE1rm || e > topE1rm.value) {
+            topE1rm = { name: displayNameFor(s.exercise_id ?? s.exercise_name), value: e };
+          }
         }
       }
-    }
-    // ── Volume PRs (session-total per exercise) ──
-    const { dbPrMap, volumePrs: rawVolumePrs } = await checkSessionVolumePRs({
-      workoutId: activeWorkoutId ?? "",
-      programId,
-      sets: workoutSets,
-    });
-    const volumePrs = rawVolumePrs.map((msg) => {
-      const [, exId, vol] = msg.split(":");
-      return `${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(Number(vol)))} ${wu.unitLabel()}`;
-    });
-    // Merge DB records into React state
-    setPrRecords((prev) => {
-      const merged = { ...prev };
-      for (const [eid, rec] of Object.entries(dbPrMap)) merged[eid] = { ...merged[eid], ...rec };
-      return merged;
-    });
-
-    const prs: string[] = [];
-    for (const [exId, rec] of Object.entries(dbPrMap)) {
-      if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
-    }
-
-    // Compute set tracking stats (exclude ad-hoc exercises from planned ratio)
-    let totalPlannedSets = 0;
-    let totalDoneSets = 0;
-    let totalBonusSets = 0;
-    for (const block of renderBlocks) {
-      const exIdsInBlock = block.type === "single" ? [block.exId] : [block.a, block.b];
-      for (const eid of exIdsInBlock) {
-        if (adHocSet.has(eid)) continue;
-        const tgt = getTargetFor(eid);
-        const workingSets = (setsByExercise[eid] ?? []).filter(s => !s.is_warmup).length;
-        if (tgt.targetSets > 0) {
-          totalPlannedSets += tgt.targetSets;
-          totalDoneSets += Math.min(workingSets, tgt.targetSets);
-          totalBonusSets += Math.max(0, workingSets - tgt.targetSets);
-        } else {
-          totalDoneSets += workingSets;
-        }
-      }
-    }
-
-    setFinishSummary({
-      duration: mmss(workoutElapsedSec),
-      totalSets: workoutSets.length,
-      totalVolume: round1(wu.toDisplay(totalVolume)),
-      exercises: exerciseIds.size,
-      topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
-      prs,
-      volumePrs,
-      plannedSets: totalPlannedSets,
-      doneSets: totalDoneSets,
-      bonusSets: totalBonusSets,
-      adHocExerciseNames: adHocExercises.map((exId) => displayNameFor(exId)),
-    });
-
-    try {
-      await getDb().runAsync(
-        `UPDATE workouts SET day_key = ?, day_index = ?, program_id = ?, ended_at = ? WHERE id = ?`,
-        [dayKeyForIndex(activeDayIndex), activeDayIndex, programId || null, isoNow(), activeWorkoutId]
-      );
-    } catch {}
-    if (programId) {
-      await setSettingAsync(`lastCompletedDayIndex_${programId}`, String(activeDayIndex));
-      await setSettingAsync(`nextSuggestedDayIndex_${programId}`, String(nextIdx));
-    }
-    try {
-      const { analyzeWorkoutForProgression } = await import("../../src/progressionStore");
-      if (programId) await analyzeWorkoutForProgression(activeWorkoutId, programId);
-    } catch {}
-    // Advance periodization week
-    if (programId) {
+      // ── Volume PRs (session-total per exercise) ──
+      let dbPrMap: PrMap = {};
+      let rawVolumePrs: string[] = [];
       try {
-        const updated = await advanceWeek(programId);
-        setPeriodization(updated);
-      } catch {}
+        const result = await checkSessionVolumePRs({
+          workoutId: endingWorkoutId,
+          programId,
+          sets: workoutSets,
+        });
+        dbPrMap = result.dbPrMap;
+        rawVolumePrs = result.volumePrs;
+      } catch (err) {
+        console.warn("[endWorkout] checkSessionVolumePRs failed", err);
+      }
+      const volumePrs = rawVolumePrs.map((msg) => {
+        const [, exId, vol] = msg.split(":");
+        return `${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(Number(vol)))} ${wu.unitLabel()}`;
+      });
+      // Merge DB records into React state
+      setPrRecords((prev) => {
+        const merged = { ...prev };
+        for (const [eid, rec] of Object.entries(dbPrMap)) merged[eid] = { ...merged[eid], ...rec };
+        return merged;
+      });
+
+      const prs: string[] = [];
+      for (const [exId, rec] of Object.entries(dbPrMap)) {
+        if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
+      }
+
+      // Compute set tracking stats (exclude ad-hoc exercises from planned ratio)
+      let totalPlannedSets = 0;
+      let totalDoneSets = 0;
+      let totalBonusSets = 0;
+      for (const block of renderBlocks) {
+        const exIdsInBlock = block.type === "single" ? [block.exId] : [block.a, block.b];
+        for (const eid of exIdsInBlock) {
+          if (adHocSet.has(eid)) continue;
+          const tgt = getTargetFor(eid);
+          const workingSets = (setsByExercise[eid] ?? []).filter(s => !s.is_warmup).length;
+          if (tgt.targetSets > 0) {
+            totalPlannedSets += tgt.targetSets;
+            totalDoneSets += Math.min(workingSets, tgt.targetSets);
+            totalBonusSets += Math.max(0, workingSets - tgt.targetSets);
+          } else {
+            totalDoneSets += workingSets;
+          }
+        }
+      }
+
+      setFinishSummary({
+        duration: mmss(workoutElapsedSec),
+        totalSets: workoutSets.length,
+        totalVolume: round1(wu.toDisplay(totalVolume)),
+        exercises: exerciseIds.size,
+        topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
+        prs,
+        volumePrs,
+        plannedSets: totalPlannedSets,
+        doneSets: totalDoneSets,
+        bonusSets: totalBonusSets,
+        adHocExerciseNames: adHocExercises.map((exId) => displayNameFor(exId)),
+      });
+
+      try {
+        await getDb().runAsync(
+          `UPDATE workouts SET day_key = ?, day_index = ?, program_id = ?, ended_at = ? WHERE id = ?`,
+          [dayKeyForIndex(activeDayIndex), activeDayIndex, programId || null, isoNow(), endingWorkoutId]
+        );
+      } catch (err) {
+        console.warn("[endWorkout] update workout row failed", err);
+      }
+      if (programId) {
+        try {
+          await setSettingAsync(`lastCompletedDayIndex_${programId}`, String(activeDayIndex));
+          await setSettingAsync(`nextSuggestedDayIndex_${programId}`, String(nextIdx));
+        } catch (err) {
+          console.warn("[endWorkout] persist day index failed", err);
+        }
+      }
+      try {
+        const { analyzeWorkoutForProgression } = await import("../../src/progressionStore");
+        if (programId) await analyzeWorkoutForProgression(endingWorkoutId, programId);
+      } catch (err) {
+        console.warn("[endWorkout] analyzeWorkoutForProgression failed", err);
+      }
+      // Advance periodization week
+      if (programId) {
+        try {
+          const updated = await advanceWeek(programId);
+          setPeriodization(updated);
+        } catch (err) {
+          console.warn("[endWorkout] advanceWeek failed", err);
+        }
+      }
+    } catch (err) {
+      console.warn("[endWorkout] failed mid-flow, forcing cleanup", err);
+    } finally {
+      // Always clear active-workout state, even if any of the bookkeeping
+      // above threw — otherwise the user is stranded in a session they
+      // can't end. Each setting clear is independently swallowed.
+      try { await setSettingAsync("activeWorkoutId", ""); } catch {}
+      try { await setSettingAsync("selectedAlternatives", ""); } catch {}
+      try { await setSettingAsync("adHocExercises", ""); } catch {}
+      setAdHocExercises([]);
+      setActiveWorkoutId(null);
+      restTimer.setActiveWorkoutId(null); // Hide floating timer
+      setWorkoutStartedAt(null);
+      setWorkoutElapsedSec(0);
+      setWorkoutSets([]);
+      setSuggestedDayIndex(nextIdx);
+      setActiveDayIndex(nextIdx);
     }
-    await setSettingAsync("activeWorkoutId", "");
-    await setSettingAsync("selectedAlternatives", "").catch(() => {});
-    await setSettingAsync("adHocExercises", "").catch(() => {});
-    setAdHocExercises([]);
-    setActiveWorkoutId(null);
-    restTimer.setActiveWorkoutId(null); // Hide floating timer
-    setWorkoutStartedAt(null);
-    setWorkoutElapsedSec(0);
-    setWorkoutSets([]);
-    setSuggestedDayIndex(nextIdx);
-    setActiveDayIndex(nextIdx);
   }
 
   async function handleSaveTemplate() {
@@ -1088,6 +1137,19 @@ export default function Logg() {
       `INSERT INTO sets(id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup, external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, rest_seconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [row.id, row.workout_id, row.exercise_name, row.set_index, row.weight, row.reps, row.rpe ?? null, row.created_at, row.exercise_id ?? null, row.set_type ?? null, row.is_warmup ?? 0, row.external_load_kg ?? 0, row.bodyweight_kg_used ?? null, row.bodyweight_factor ?? null, row.est_total_load_kg ?? null, row.rest_seconds ?? null]
     );
+
+    // Stamp started_at on the first logged set so the elapsed clock
+    // reflects actual training time, not the time spent staring at inputs.
+    if (!workoutStartedAt) {
+      const stamp = isoNow();
+      try {
+        await getDb().runAsync(
+          `UPDATE workouts SET started_at = COALESCE(started_at, ?) WHERE id = ?`,
+          [stamp, activeWorkoutId]
+        );
+        setWorkoutStartedAt(stamp);
+      } catch {}
+    }
 
     const key = anchorKeyByExerciseId[exId];
     if (key) {
