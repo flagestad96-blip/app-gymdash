@@ -596,6 +596,25 @@ export async function initDb() {
         { version: 24, up: (d) => {
           d.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_date_id ON workouts(date, id);`);
         }},
+        // 25: meals table for nutrition tracking
+        { version: 25, up: (d) => {
+          d.execSync(`
+            CREATE TABLE IF NOT EXISTS meals (
+              id          TEXT    PRIMARY KEY NOT NULL,
+              date        TEXT    NOT NULL,
+              meal_type   TEXT    NOT NULL,
+              name        TEXT,
+              calories    REAL    NOT NULL DEFAULT 0,
+              protein_g   REAL    NOT NULL DEFAULT 0,
+              carbs_g     REAL    NOT NULL DEFAULT 0,
+              fat_g       REAL    NOT NULL DEFAULT 0,
+              notes       TEXT,
+              created_at  TEXT    NOT NULL
+            );
+          `);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_meals_date ON meals(date);`);
+          d.execSync(`CREATE INDEX IF NOT EXISTS idx_meals_date_type ON meals(date, meal_type);`);
+        }},
       ];
 
       // Run pending migrations

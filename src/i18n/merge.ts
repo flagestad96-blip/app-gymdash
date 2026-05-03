@@ -14,6 +14,7 @@ import nbOnboarding from "./nb/onboarding";
 import nbPatchNotes from "./nb/patchNotes";
 import nbNotifications from "./nb/notifications";
 import nbGym from "./nb/gym";
+import nbNutrition from "./nb/nutrition";
 
 import enCommon from "./en/common";
 import enHome from "./en/home";
@@ -29,6 +30,7 @@ import enOnboarding from "./en/onboarding";
 import enPatchNotes from "./en/patchNotes";
 import enNotifications from "./en/notifications";
 import enGym from "./en/gym";
+import enNutrition from "./en/nutrition";
 
 function merge(...maps: TranslationMap[]): TranslationMap {
   const result: TranslationMap = {};
@@ -40,14 +42,14 @@ export const nb: TranslationMap = merge(
   nbCommon, nbHome, nbLog, nbProgram, nbAnalysis,
   nbCalendar, nbHistory, nbBody, nbSettings,
   nbAchievements, nbOnboarding, nbPatchNotes, nbNotifications,
-  nbGym,
+  nbGym, nbNutrition,
 );
 
 export const en: TranslationMap = merge(
   enCommon, enHome, enLog, enProgram, enAnalysis,
   enCalendar, enHistory, enBody, enSettings,
   enAchievements, enOnboarding, enPatchNotes, enNotifications,
-  enGym,
+  enGym, enNutrition,
 );
 
 // Key count assertion — ensures no keys are accidentally lost during splits.

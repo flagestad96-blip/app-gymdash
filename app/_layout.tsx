@@ -79,6 +79,7 @@ function CustomDrawerContent(props: any) {
     { label: t("nav.analysis"), path: "/analysis" },
     { label: t("nav.achievements"), path: "/achievements" },
     { label: t("nav.body"), path: "/body" },
+    { label: t("nav.nutrition"), path: "/nutrition" },
     { label: t("nav.calendar"), path: "/calendar" },
     { label: t("nav.history"), path: "/history" },
     { label: t("nav.settings"), path: "/settings" },

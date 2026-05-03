@@ -56,6 +56,7 @@ export default function TabLayout() {
         <Stack.Screen name="analysis" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="body" />
+        <Stack.Screen name="nutrition" />
         <Stack.Screen name="calendar" />
         <Stack.Screen name="history" />
         <Stack.Screen name="settings" />
