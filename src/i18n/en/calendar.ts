@@ -24,6 +24,7 @@ const calendar: TranslationMap = {
   "calendar.type.legs": "Legs",
   "calendar.type.other": "Other",
   "calendar.daySummary": "SUMMARY",
+  "calendar.duration": "DURATION",
   "calendar.markDay": "Mark day",
   "calendar.markDayMsg": "Choose a status for this day.",
   "calendar.markRest": "Rest day",

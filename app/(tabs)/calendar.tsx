@@ -25,6 +25,7 @@ type WorkoutRow = {
 
 type SetRow = {
   id: string;
+  workout_id: string;
   exercise_id: string;
   exercise_name: string;
   set_index: number;
@@ -124,8 +125,9 @@ export default function CalendarScreen() {
   // Day summary data: exercises + best set per exercise for each workout
   const [daySummaries, setDaySummaries] = useState<Record<string, Array<{ exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }>>>({});
 
-  // Detail modal state
-  const [detailWorkout, setDetailWorkout] = useState<WorkoutRow | null>(null);
+  // Day detail modal state (aggregates all workouts on a date)
+  const [detailDate, setDetailDate] = useState<string | null>(null);
+  const [detailWorkouts, setDetailWorkouts] = useState<WorkoutRow[]>([]);
   const [detailSets, setDetailSets] = useState<SetRow[]>([]);
   const [detailPRSetIds, setDetailPRSetIds] = useState<Set<string>>(new Set());
   const [prevExOrder, setPrevExOrder] = useState<string[]>([]);
@@ -251,33 +253,50 @@ export default function CalendarScreen() {
     } catch {}
   }, []);
 
-  const openDetail = useCallback(async (w: WorkoutRow) => {
-    setDetailWorkout(w);
+  const closeDetail = useCallback(() => {
+    setDetailDate(null);
+    setDetailWorkouts([]);
+    setDetailSets([]);
+    setDetailPRSetIds(new Set());
+    setPrevExOrder([]);
+  }, []);
+
+  const openDayDetail = useCallback(async (date: string, dayWorkouts: WorkoutRow[]) => {
+    if (!dayWorkouts.length) return;
+    setDetailDate(date);
+    setDetailWorkouts(dayWorkouts);
+    setDetailSets([]);
+    setDetailPRSetIds(new Set());
+    setPrevExOrder([]);
     try {
+      const ids = dayWorkouts.map((w) => w.id);
+      const placeholders = ids.map(() => "?").join(",");
+
       const sets = await getDb().getAllAsync<SetRow>(
-        `SELECT id, exercise_id, exercise_name, set_index, weight, reps, rpe, created_at, notes
-         FROM sets WHERE workout_id = ? ORDER BY created_at ASC, set_index ASC`,
-        [w.id]
+        `SELECT id, workout_id, exercise_id, exercise_name, set_index, weight, reps, rpe, created_at, notes
+         FROM sets WHERE workout_id IN (${placeholders}) ORDER BY created_at ASC, set_index ASC`,
+        ids
       );
       setDetailSets(Array.isArray(sets) ? sets : []);
 
-      // Find PR set IDs for this workout
+      // PR set IDs across all workouts on this day
       const prRows = await getDb().getAllAsync<{ set_id: string }>(
         `SELECT set_id FROM pr_records WHERE set_id IN (
-           SELECT id FROM sets WHERE workout_id = ?
+           SELECT id FROM sets WHERE workout_id IN (${placeholders})
          )`,
-        [w.id]
+        ids
       );
       const prIds = new Set<string>();
       for (const r of prRows ?? []) if (r.set_id) prIds.add(r.set_id);
       setDetailPRSetIds(prIds);
 
-      // Load previous session's exercise order for comparison
-      if (w.program_id && w.day_index != null) {
+      // Load previous session's exercise order using the latest workout that has a program/day
+      const ref = [...dayWorkouts].reverse().find((w) => w.program_id && w.day_index != null);
+      if (ref && ref.program_id && ref.day_index != null) {
         try {
           const prevW = await getDb().getAllAsync<{ id: string }>(
             `SELECT id FROM workouts WHERE program_id = ? AND day_index = ? AND id != ? AND ended_at IS NOT NULL ORDER BY date DESC LIMIT 1`,
-            [w.program_id, w.day_index, w.id]
+            [ref.program_id, ref.day_index, ref.id]
           );
           if (prevW && prevW.length > 0) {
             const prevSets = await getDb().getAllAsync<{ exercise_id: string }>(
@@ -285,19 +304,12 @@ export default function CalendarScreen() {
               [prevW[0].id]
             );
             setPrevExOrder((prevSets ?? []).map((r) => r.exercise_id));
-          } else {
-            setPrevExOrder([]);
           }
-        } catch {
-          setPrevExOrder([]);
-        }
-      } else {
-        setPrevExOrder([]);
+        } catch {}
       }
     } catch {
       setDetailSets([]);
       setDetailPRSetIds(new Set());
-      setPrevExOrder([]);
     }
   }, []);
 
@@ -324,22 +336,46 @@ export default function CalendarScreen() {
     return groups;
   }, [detailSets, prevExOrder]);
 
-  // Summary stats
+  // Summary stats — aggregated across all workouts on the day
   const detailSummary = useMemo(() => {
-    if (!detailSets.length) return { totalSets: 0, totalVolume: 0, exercises: 0, duration: "" };
+    if (!detailSets.length) return { totalSets: 0, totalVolume: 0, exercises: 0, duration: "", startedAt: null as string | null };
     const totalVolume = detailSets.reduce((sum, s) => {
       const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
       return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
     }, 0);
-    const lastSet = detailSets[detailSets.length - 1];
-    const endRef = detailWorkout?.ended_at || lastSet?.created_at;
+
+    let earliestStart: number | null = null;
+    let latestEnd: number | null = null;
+    let earliestStartIso: string | null = null;
+    for (const w of detailWorkouts) {
+      if (w.started_at) {
+        const t = new Date(w.started_at).getTime();
+        if (!isNaN(t) && (earliestStart === null || t < earliestStart)) {
+          earliestStart = t;
+          earliestStartIso = w.started_at;
+        }
+      }
+      if (w.ended_at) {
+        const t = new Date(w.ended_at).getTime();
+        if (!isNaN(t) && (latestEnd === null || t > latestEnd)) latestEnd = t;
+      }
+    }
+    if (latestEnd === null) {
+      const lastSet = detailSets[detailSets.length - 1];
+      if (lastSet?.created_at) {
+        const t = new Date(lastSet.created_at).getTime();
+        if (!isNaN(t)) latestEnd = t;
+      }
+    }
+
     return {
       totalSets: detailSets.length,
       totalVolume: Math.round(totalVolume),
       exercises: exerciseGroups.length,
-      duration: formatDuration(detailWorkout?.started_at, endRef),
+      duration: formatDuration(earliestStartIso, latestEnd ? new Date(latestEnd).toISOString() : undefined),
+      startedAt: earliestStartIso,
     };
-  }, [detailSets, detailWorkout, exerciseGroups]);
+  }, [detailSets, detailWorkouts, exerciseGroups]);
 
   const monthDate = useMemo(() => {
     const now = new Date();
@@ -449,7 +485,12 @@ export default function CalendarScreen() {
               return (
                 <Pressable
                   key={`${cell.label}_${idx}`}
-                  onPress={() => cell.date && setSelectedDate(cell.date)}
+                  onPress={() => {
+                    if (!cell.date) return;
+                    setSelectedDate(cell.date);
+                    const wd = workoutsByDate[cell.date] ?? [];
+                    if (wd.length > 0) openDayDetail(cell.date, wd);
+                  }}
                   onLongPress={() => cell.date && showMarkOptions(cell.date)}
                   style={{
                     width: "14.28%",
@@ -620,7 +661,7 @@ export default function CalendarScreen() {
                     key={w.id}
                     title={dayLabel || t("common.workouts")}
                     subtitle={`${setsCount} ${t("common.sets").toLowerCase()}`}
-                    onPress={() => openDetail(w)}
+                    onPress={() => openDayDetail(selectedDate, selectedWorkouts)}
                     right={
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
                         {w.date.slice(5)}
@@ -640,8 +681,8 @@ export default function CalendarScreen() {
         </Card>
       </ScrollView>
 
-      {/* Workout Detail Modal */}
-      <Modal visible={detailWorkout !== null} transparent animationType="slide" onRequestClose={() => setDetailWorkout(null)}>
+      {/* Day Detail Modal */}
+      <Modal visible={detailDate !== null} transparent animationType="slide" onRequestClose={closeDetail}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, paddingTop: 60, justifyContent: "flex-start" }}>
           <View
             style={{
@@ -655,19 +696,43 @@ export default function CalendarScreen() {
           >
             {/* Header */}
             <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View>
-                <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 18 }}>
-                  {detailWorkout?.date ?? ""}
-                  {detailWorkout?.day_index != null ? ` \u2014 ${t("common.day")} ${(detailWorkout.day_index ?? 0) + 1}` : ""}
-                </Text>
-                {detailWorkout?.started_at ? (
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-                    {t("calendar.started", { time: formatTime(detailWorkout.started_at) })}
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 18 }}>
+                    {detailDate ?? ""}
+                  </Text>
+                  {detailDate && workoutTypeByDate[detailDate] ? (
+                    <View style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 6,
+                      backgroundColor: `${WORKOUT_TYPE_COLORS[workoutTypeByDate[detailDate]]}22`,
+                      borderWidth: 1,
+                      borderColor: WORKOUT_TYPE_COLORS[workoutTypeByDate[detailDate]],
+                    }}>
+                      <Text style={{
+                        color: WORKOUT_TYPE_COLORS[workoutTypeByDate[detailDate]],
+                        fontFamily: theme.mono,
+                        fontSize: 10,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}>
+                        {t(`calendar.type.${workoutTypeByDate[detailDate]}`)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                {detailWorkouts.length > 0 ? (
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, marginTop: 2 }}>
+                    {detailWorkouts.length === 1 && detailWorkouts[0].day_index != null
+                      ? `${t("common.day")} ${(detailWorkouts[0].day_index ?? 0) + 1}`
+                      : `${detailWorkouts.length} ${t("common.workouts").toLowerCase()}`}
+                    {detailSummary.startedAt ? ` \u00B7 ${t("calendar.started", { time: formatTime(detailSummary.startedAt) })}` : ""}
                     {detailSummary.duration ? ` \u00B7 ${detailSummary.duration}` : ""}
                   </Text>
                 ) : null}
               </View>
-              <IconButton icon="close" onPress={() => setDetailWorkout(null)} />
+              <IconButton icon="close" onPress={closeDetail} />
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 30 }}>
@@ -676,15 +741,18 @@ export default function CalendarScreen() {
                 <StatChip label={t("common.exercises")} value={String(detailSummary.exercises)} theme={theme} />
                 <StatChip label={t("common.sets")} value={String(detailSummary.totalSets)} theme={theme} />
                 <StatChip label={t("common.volume")} value={wu.formatWeight(detailSummary.totalVolume)} theme={theme} />
+                {detailSummary.duration ? (
+                  <StatChip label={t("calendar.duration")} value={detailSummary.duration} theme={theme} />
+                ) : null}
               </View>
 
-              {/* Workout notes */}
-              {detailWorkout?.notes ? (
-                <View style={{ backgroundColor: theme.glass, borderRadius: 10, padding: 10 }}>
+              {/* Workout notes (one card per workout that has notes) */}
+              {detailWorkouts.filter((w) => !!w.notes).map((w) => (
+                <View key={`note_${w.id}`} style={{ backgroundColor: theme.glass, borderRadius: 10, padding: 10 }}>
                   <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, marginBottom: 4 }}>{t("calendar.note")}</Text>
-                  <Text style={{ color: theme.text, fontFamily: theme.fontFamily.regular, fontSize: 14 }}>{detailWorkout.notes}</Text>
+                  <Text style={{ color: theme.text, fontFamily: theme.fontFamily.regular, fontSize: 14 }}>{w.notes}</Text>
                 </View>
-              ) : null}
+              ))}
 
               {/* Order change hint */}
               {prevExOrder.length > 0 && exerciseGroups.some((g) => g.prevOrderNum !== null && g.prevOrderNum !== g.orderNum) ? (
