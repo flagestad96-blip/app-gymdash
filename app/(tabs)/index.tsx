@@ -4,11 +4,10 @@ import { View, Text, ScrollView, Pressable } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { ensureDb, getDb, getSettingAsync, formatDuration } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
-import { Screen, TopBar, IconButton, Card } from "../../src/ui";
+import { Screen, TopBar, IconButton, Card, SectionHeader } from "../../src/ui";
 import { GradientButton } from "../../src/ui/modern";
 import { displayNameFor, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
@@ -328,7 +327,15 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 80 }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: theme.space.lg,
+          paddingTop: theme.space.md,
+          paddingBottom: theme.space.xxl + theme.space.lg,
+          gap: theme.space.md,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         <TopBar
           title={t("home.title")}
           subtitle={greeting}
@@ -337,18 +344,29 @@ export default function HomeScreen() {
 
         {/* Backup Reminder */}
         {backupDaysAgo != null && !backupDismissed && (
-          <View style={{
-            backgroundColor: theme.isDark ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.08)",
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: theme.warn,
-            padding: 14,
-            gap: 8,
-          }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View
+            style={{
+              backgroundColor: theme.isDark ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.08)",
+              borderRadius: theme.radius.xl,
+              borderWidth: 1,
+              borderColor: theme.warn,
+              paddingVertical: theme.space.md,
+              paddingHorizontal: theme.space.md,
+              gap: theme.space.sm,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.space.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.sm, flex: 1 }}>
                 <MaterialIcons name="cloud-off" size={20} color={theme.warn} />
-                <Text style={{ color: theme.warn, fontFamily: theme.fontFamily.semibold, fontSize: 13, flex: 1 }}>
+                <Text
+                  style={{
+                    color: theme.warn,
+                    fontFamily: theme.fontFamily.semibold,
+                    fontSize: theme.fontSize.sm,
+                    flex: 1,
+                    lineHeight: theme.fontSize.sm * 1.4,
+                  }}
+                >
                   {backupDaysAgo < 0
                     ? t("home.backupNever")
                     : t("home.backupReminder", { days: String(backupDaysAgo) })}
@@ -362,12 +380,12 @@ export default function HomeScreen() {
               onPress={() => router.push("/settings")}
               style={{
                 backgroundColor: theme.warn,
-                borderRadius: 10,
-                paddingVertical: 8,
+                borderRadius: theme.radius.md,
+                paddingVertical: 10,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
+              <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.sm }}>
                 {t("home.backupNow")}
               </Text>
             </Pressable>
@@ -376,17 +394,25 @@ export default function HomeScreen() {
 
         {/* Today's Workout */}
         <Card>
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
-            {t("home.todayWorkout")}
-          </Text>
-          {activeGymName ? (
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, opacity: 0.7 }}>
-              {activeGymName}
-            </Text>
-          ) : null}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.space.sm }}>
+            <SectionHeader title={t("home.todayWorkout")} />
+            {activeGymName ? (
+              <Text
+                style={{
+                  color: theme.muted,
+                  fontFamily: theme.mono,
+                  fontSize: theme.fontSize.xs,
+                  opacity: 0.75,
+                }}
+                numberOfLines={1}
+              >
+                {activeGymName}
+              </Text>
+            ) : null}
+          </View>
           {todayWorkout ? (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+            <View style={{ gap: theme.space.sm }}>
+              <View style={{ flexDirection: "row", gap: theme.space.sm, flexWrap: "wrap" }}>
                 <StatBadge label={t("common.exercises")} value={String(todayWorkout.exercises)} theme={theme} />
                 <StatBadge label={t("common.sets")} value={String(todayWorkout.totalSets)} theme={theme} />
                 <StatBadge label={t("common.volume")} value={wu.formatWeight(todayWorkout.totalVolume)} theme={theme} />
@@ -401,8 +427,14 @@ export default function HomeScreen() {
               />
             </View>
           ) : (
-            <View style={{ gap: 10 }}>
-              <Text style={{ color: theme.muted, fontSize: theme.fontSize.sm }}>
+            <View style={{ gap: theme.space.sm }}>
+              <Text
+                style={{
+                  color: theme.muted,
+                  fontSize: theme.fontSize.sm,
+                  lineHeight: theme.fontSize.sm * 1.5,
+                }}
+              >
                 {t("home.noWorkout")}
               </Text>
               <GradientButton
@@ -417,32 +449,51 @@ export default function HomeScreen() {
         {/* Next Workout Preview */}
         {!todayWorkout && nextWorkout && (
           <Card>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
-                {t("home.nextWorkout")}
-              </Text>
-              <MaterialIcons name="arrow-forward" size={14} color={theme.muted} />
-            </View>
-            <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 17, marginBottom: 8 }}>
+            <SectionHeader
+              title={t("home.nextWorkout")}
+              action={<MaterialIcons name="arrow-forward" size={14} color={theme.muted} />}
+            />
+            <Text
+              style={{
+                color: theme.text,
+                fontFamily: theme.fontFamily.semibold,
+                fontSize: theme.fontSize.lg,
+                lineHeight: theme.fontSize.lg * 1.3,
+              }}
+            >
               {nextWorkout.dayName}
             </Text>
-            <View style={{ gap: 5 }}>
+            <View style={{ gap: theme.space.xs }}>
               {nextWorkout.exercises.slice(0, 5).map((exId, idx) => (
-                <View key={`${exId}_${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View key={`${exId}_${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: theme.space.sm }}>
                   <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.accent }} />
-                  <Text style={{ color: theme.text, fontFamily: theme.fontFamily.regular, fontSize: 14 }}>
+                  <Text
+                    style={{
+                      color: theme.text,
+                      fontFamily: theme.fontFamily.regular,
+                      fontSize: theme.fontSize.sm,
+                      flexShrink: 1,
+                    }}
+                  >
                     {displayNameFor(exId)}
                   </Text>
                   <BackImpactDot exerciseId={exId} />
                 </View>
               ))}
               {nextWorkout.exercises.length > 5 && (
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, marginTop: 2 }}>
+                <Text
+                  style={{
+                    color: theme.muted,
+                    fontFamily: theme.mono,
+                    fontSize: theme.fontSize.xs,
+                    marginTop: 2,
+                  }}
+                >
                   {t("home.andMore", { count: String(nextWorkout.exercises.length - 5) })}
                 </Text>
               )}
             </View>
-            <View style={{ marginTop: 12 }}>
+            <View style={{ marginTop: theme.space.xs }}>
               <GradientButton
                 text={t("home.startThisWorkout")}
                 onPress={() => router.push("/log")}
@@ -454,10 +505,8 @@ export default function HomeScreen() {
 
         {/* Weekly Stats */}
         <Card>
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
-            {t("home.thisWeek")}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+          <SectionHeader title={t("home.thisWeek")} />
+          <View style={{ flexDirection: "row", gap: theme.space.sm, flexWrap: "wrap" }}>
             <StatBadge label={t("common.workouts")} value={String(weekStats.days)} theme={theme} accent />
             <StatBadge label={t("common.sets")} value={String(weekStats.sets)} theme={theme} />
             <StatBadge label={t("common.volume")} value={wu.formatWeight(weekStats.volume)} theme={theme} />
@@ -471,18 +520,34 @@ export default function HomeScreen() {
             )}
           </View>
           {volumeTrend && (
-            <Text style={{
-              color: volumeTrend.dir === "up" ? theme.success : volumeTrend.dir === "down" ? theme.danger : theme.muted,
-              fontFamily: theme.mono,
-              fontSize: 11,
-              marginTop: 4,
-            }}>
-              {volumeTrend.dir === "up"
-                ? t("home.volumeTrend.up", { pct: String(volumeTrend.pct) })
-                : volumeTrend.dir === "down"
+            <View
+              style={{
+                marginTop: theme.space.xs,
+                paddingTop: theme.space.sm,
+                borderTopWidth: 1,
+                borderTopColor: theme.divider,
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    volumeTrend.dir === "up"
+                      ? theme.success
+                      : volumeTrend.dir === "down"
+                      ? theme.danger
+                      : theme.muted,
+                  fontFamily: theme.mono,
+                  fontSize: theme.fontSize.xs,
+                  letterSpacing: 0.3,
+                }}
+              >
+                {volumeTrend.dir === "up"
+                  ? t("home.volumeTrend.up", { pct: String(volumeTrend.pct) })
+                  : volumeTrend.dir === "down"
                   ? t("home.volumeTrend.down", { pct: String(volumeTrend.pct) })
                   : t("home.volumeTrend.flat")}
-            </Text>
+              </Text>
+            </View>
           )}
         </Card>
 
@@ -507,30 +572,35 @@ export default function HomeScreen() {
         {/* Progression Suggestions */}
         {suggestions.length > 0 ? (
           <Card>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
-              {t("progression.suggestions")}
-            </Text>
-            <View style={{ gap: 8 }}>
-              {suggestions.map((s) => (
+            <SectionHeader title={t("progression.suggestions")} />
+            <View style={{ gap: theme.space.xs }}>
+              {suggestions.map((s, idx) => (
                 <View
                   key={s.id}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 10,
-                    paddingVertical: 8,
-                    borderBottomWidth: 1,
+                    gap: theme.space.sm,
+                    paddingVertical: theme.space.sm,
+                    borderBottomWidth: idx < suggestions.length - 1 ? 1 : 0,
                     borderBottomColor: theme.divider,
                   }}
                 >
-                  <View style={{ flex: 1, gap: 2 }}>
+                  <View style={{ flex: 1, gap: 3 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                      <Text
+                        style={{
+                          color: theme.text,
+                          fontFamily: theme.fontFamily.medium,
+                          fontSize: theme.fontSize.sm,
+                        }}
+                        numberOfLines={1}
+                      >
                         {displayNameFor(s.exerciseId)}
                       </Text>
                       <BackImpactDot exerciseId={s.exerciseId} />
                     </View>
-                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
                       {wu.formatWeight(s.oldWeightKg)} {"\u2192"} {wu.formatWeight(s.newWeightKg)}
                     </Text>
                     {s.reason ? (
@@ -544,9 +614,9 @@ export default function HomeScreen() {
                         setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
                       } catch {}
                     }}
-                    style={{ borderColor: theme.accent, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 }}
+                    style={{ borderColor: theme.accent, borderWidth: 1, borderRadius: theme.radius.md, paddingVertical: 7, paddingHorizontal: 12 }}
                   >
-                    <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>{t("progression.apply")}</Text>
+                    <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{t("progression.apply")}</Text>
                   </Pressable>
                   <Pressable
                     onPress={async () => {
@@ -555,9 +625,9 @@ export default function HomeScreen() {
                         setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
                       } catch {}
                     }}
-                    style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 }}
+                    style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingVertical: 7, paddingHorizontal: 12 }}
                   >
-                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>{t("progression.dismiss")}</Text>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{t("progression.dismiss")}</Text>
                   </Pressable>
                 </View>
               ))}
@@ -565,31 +635,68 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
-        {/* Streak + Total */}
-        <View style={{ flexDirection: "row", gap: theme.space.md }}>
-          <Card style={{ flex: 1 }}>
-            <View style={{ alignItems: "center", gap: 4 }}>
-              <MaterialIcons name="local-fire-department" size={28} color={theme.warn} />
-              <Text style={{ color: theme.text, fontFamily: theme.fontFamily.bold, fontSize: 28 }}>{streak}</Text>
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{t("home.streak")}</Text>
+        {/* Streak + Total (compact strip) */}
+        <Card style={{ paddingVertical: theme.space.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.space.sm }}>
+              <MaterialIcons name="local-fire-department" size={22} color={theme.warn} />
+              <View style={{ gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.text,
+                    fontFamily: theme.fontFamily.bold,
+                    fontSize: theme.fontSize.xl,
+                    lineHeight: theme.fontSize.xl * 1.1,
+                  }}
+                >
+                  {streak}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.muted,
+                    fontFamily: theme.mono,
+                    fontSize: theme.fontSize.xs,
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  {t("home.streak")}
+                </Text>
+              </View>
             </View>
-          </Card>
-          <Card style={{ flex: 1 }}>
-            <View style={{ alignItems: "center", gap: 4 }}>
-              <MaterialIcons name="trending-up" size={28} color={theme.accent} />
-              <Text style={{ color: theme.text, fontFamily: theme.fontFamily.bold, fontSize: 28 }}>{totalWorkouts}</Text>
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{t("home.total")}</Text>
+            <View style={{ width: 1, alignSelf: "stretch", backgroundColor: theme.divider, marginHorizontal: theme.space.sm }} />
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: theme.space.sm }}>
+              <MaterialIcons name="trending-up" size={22} color={theme.accent} />
+              <View style={{ gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.text,
+                    fontFamily: theme.fontFamily.bold,
+                    fontSize: theme.fontSize.xl,
+                    lineHeight: theme.fontSize.xl * 1.1,
+                  }}
+                >
+                  {totalWorkouts}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.muted,
+                    fontFamily: theme.mono,
+                    fontSize: theme.fontSize.xs,
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  {t("home.total")}
+                </Text>
+              </View>
             </View>
-          </Card>
-        </View>
+          </View>
+        </Card>
 
         {/* Recent PRs */}
         {recentPRs.length > 0 ? (
           <Card>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
-              {t("home.recentPRs")}
-            </Text>
-            <View style={{ gap: 8 }}>
+            <SectionHeader title={t("home.recentPRs")} />
+            <View style={{ gap: 2 }}>
               {recentPRs.map((pr, idx) => (
                 <View
                   key={`${pr.exercise_id}_${pr.type}_${idx}`}
@@ -597,29 +704,39 @@ export default function HomeScreen() {
                     flexDirection: "row",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    paddingVertical: 6,
+                    gap: theme.space.sm,
+                    paddingVertical: theme.space.sm,
                     borderBottomWidth: idx < recentPRs.length - 1 ? 1 : 0,
                     borderBottomColor: theme.divider,
                   }}
                 >
-                  <View style={{ flex: 1, gap: 2 }}>
+                  <View style={{ flex: 1, gap: 3 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
+                      <Text
+                        style={{
+                          color: theme.text,
+                          fontFamily: theme.fontFamily.medium,
+                          fontSize: theme.fontSize.sm,
+                        }}
+                        numberOfLines={1}
+                      >
                         {displayNameFor(pr.exercise_id)}
                       </Text>
                       <BackImpactDot exerciseId={pr.exercise_id} />
                     </View>
-                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-                      {prTypeLabel(pr.type)} \u00B7 {pr.date.slice(5).replace("-", ".")}
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+                      {`${prTypeLabel(pr.type)} \u00B7 ${pr.date.slice(5).replace("-", ".")}`}
                     </Text>
                   </View>
-                  <View style={{
-                    backgroundColor: theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)",
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                  }}>
-                    <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 14 }}>
+                  <View
+                    style={{
+                      backgroundColor: theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)",
+                      borderRadius: theme.radius.sm,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: theme.fontSize.sm }}>
                       {wu.formatWeight(pr.value)}
                     </Text>
                   </View>
@@ -654,19 +771,19 @@ export default function HomeScreen() {
           style={{
             position: "absolute",
             bottom: 50,
-            left: 24,
-            right: 24,
+            left: theme.space.xl,
+            right: theme.space.xl,
             backgroundColor: theme.glass,
             borderColor: theme.success,
             borderWidth: 1,
-            borderRadius: 14,
-            paddingVertical: 12,
-            paddingHorizontal: 18,
+            borderRadius: theme.radius.lg,
+            paddingVertical: theme.space.md,
+            paddingHorizontal: theme.space.lg,
             alignItems: "center",
             zIndex: 9999,
           }}
         >
-          <Text style={{ color: theme.success, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+          <Text style={{ color: theme.success, fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.sm }}>
             {t("home.deloadStarted")}
           </Text>
         </View>
@@ -679,23 +796,44 @@ function StatBadge({ label, value, theme, accent, accentColor }: { label: string
   const highlighted = accent || !!accentColor;
   const color = accentColor ?? theme.accent;
   return (
-    <View style={{
-      flex: 1,
-      minWidth: 80,
-      backgroundColor: highlighted
-        ? (theme.isDark ? `${color}26` : `${color}1A`)
-        : theme.glass,
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderWidth: 1,
-      borderColor: highlighted ? color : theme.glassBorder,
-      alignItems: "center",
-    }}>
-      <Text style={{ color: highlighted ? color : theme.text, fontFamily: theme.fontFamily.bold, fontSize: 18 }}>
+    <View
+      style={{
+        flex: 1,
+        minWidth: 78,
+        backgroundColor: highlighted
+          ? theme.isDark
+            ? `${color}26`
+            : `${color}1A`
+          : theme.glass,
+        borderRadius: theme.radius.md,
+        paddingHorizontal: theme.space.sm,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: highlighted ? color : theme.glassBorder,
+        alignItems: "center",
+        gap: 3,
+      }}
+    >
+      <Text
+        style={{
+          color: highlighted ? color : theme.text,
+          fontFamily: theme.fontFamily.bold,
+          fontSize: theme.fontSize.lg,
+          lineHeight: theme.fontSize.lg * 1.1,
+        }}
+      >
         {value}
       </Text>
-      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{label}</Text>
+      <Text
+        style={{
+          color: theme.muted,
+          fontFamily: theme.mono,
+          fontSize: theme.fontSize.xs,
+          letterSpacing: 0.4,
+        }}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
