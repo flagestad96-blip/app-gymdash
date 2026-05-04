@@ -240,11 +240,20 @@ export function Chip({
         borderWidth: 1,
         borderRadius: theme.radius.pill,
         paddingHorizontal: 12,
-        paddingVertical: 7,
+        paddingVertical: 8,
         backgroundColor: bg,
       }}
     >
-      <Text style={{ color: textColor, fontSize: theme.fontSize.xs, fontFamily: theme.fontFamily.medium }}>
+      <Text
+        style={{
+          color: textColor,
+          fontSize: theme.fontSize.xs,
+          fontFamily: theme.fontFamily.medium,
+          lineHeight: 16,
+          includeFontPadding: false,
+          textAlignVertical: "center",
+        }}
+      >
         {text}
       </Text>
     </View>
