@@ -1,6 +1,6 @@
 // src/components/modals/ExerciseAddModal.tsx — Add ad-hoc exercise to workout
 import React, { useState, useMemo, useEffect } from "react";
-import { View, Text, Pressable, Modal, FlatList, Keyboard } from "react-native";
+import { View, Text, Pressable, Modal, FlatList, Keyboard, KeyboardAvoidingView, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
@@ -44,6 +44,10 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
       <Pressable
         onPress={handleClose}
         style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}
@@ -134,6 +138,7 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
           />
         </View>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
