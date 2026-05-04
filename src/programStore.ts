@@ -304,32 +304,47 @@ async function seedProgramAlternativesIfMissing(programId: string, alts: Alterna
 }
 
 async function seedProgramTargetsIfMissing(
-  programId: string,
+  program: Program,
   targets: Record<string, { repMin: number; repMax: number; targetSets: number }>
 ) {
   const count = await getDb().getFirstAsync<{ c: number }>(
     `SELECT COUNT(1) as c FROM exercise_targets WHERE program_id = ?`,
-    [programId]
+    [program.id]
   );
   if ((count?.c ?? 0) > 0) return;
   const now = isoNow();
-  for (const [exerciseId, t] of Object.entries(targets)) {
-    const incRaw = defaultIncrementFor(exerciseId);
-    const incrementKg = incRaw > 0 ? incRaw : 2.5;
-    await getDb().runAsync(
-      `INSERT OR IGNORE INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        `target_${programId}_${exerciseId}`,
-        programId,
-        exerciseId,
-        t.repMin,
-        t.repMax,
-        t.targetSets,
-        incrementKg,
-        now,
-      ]
-    );
+  // Seed one row per (day_index, exerciseId) so each day's rep range is independent.
+  for (let di = 0; di < program.days.length; di += 1) {
+    const day = program.days[di];
+    const seenInDay = new Set<string>();
+    const exerciseIds: string[] = [];
+    for (const block of day.blocks) {
+      if (block.type === "single") exerciseIds.push(block.exId);
+      else { exerciseIds.push(block.a); exerciseIds.push(block.b); }
+    }
+    for (const exerciseId of exerciseIds) {
+      if (!exerciseId || seenInDay.has(exerciseId)) continue;
+      seenInDay.add(exerciseId);
+      const tpl = targets[exerciseId];
+      if (!tpl) continue;
+      const incRaw = defaultIncrementFor(exerciseId);
+      const incrementKg = incRaw > 0 ? incRaw : 2.5;
+      await getDb().runAsync(
+        `INSERT OR IGNORE INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `target_${program.id}_${exerciseId}_d${di}`,
+          program.id,
+          exerciseId,
+          di,
+          tpl.repMin,
+          tpl.repMax,
+          tpl.targetSets,
+          incrementKg,
+          now,
+        ]
+      );
+    }
   }
 }
 
@@ -495,7 +510,7 @@ export async function ensurePrograms() {
   await insertDefaultIfMissing("normal", PPL5_BRYSTFOKUS_PROGRAM);
 
   await seedProgramAlternativesIfMissing(PPL5_BRYSTFOKUS_ID, PPL5_BRYSTFOKUS_ALTERNATIVES);
-  await seedProgramTargetsIfMissing(PPL5_BRYSTFOKUS_ID, PPL5_BRYSTFOKUS_TARGETS);
+  await seedProgramTargetsIfMissing(PPL5_BRYSTFOKUS_PROGRAM, PPL5_BRYSTFOKUS_TARGETS);
 
   await ensureProgramTablesForAll();
 

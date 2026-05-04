@@ -6,6 +6,7 @@ import { uid, isoNow } from "./storage";
 export type ExerciseTarget = {
   programId: string;
   exerciseId: string;
+  dayIndex: number;
   repMin: number;
   repMax: number;
   targetSets: number;
@@ -13,6 +14,14 @@ export type ExerciseTarget = {
   updatedAt: string;
   autoProgress: boolean;
 };
+
+export type DayExerciseRef = {
+  dayIndex: number;
+  exerciseId: string;
+};
+
+// Targets keyed by day index, then by exercise id.
+export type TargetsByDay = Record<number, Record<string, ExerciseTarget>>;
 
 export type ProgressionSuggestion = {
   id: string;
@@ -44,23 +53,32 @@ export function defaultTargetForExercise(exerciseId: string) {
   return { repMin, repMax, incrementKg, targetSets };
 }
 
-export async function ensureTargets(programId: string, exerciseIds: string[] = []): Promise<void> {
+function targetId(programId: string, exerciseId: string, dayIndex: number) {
+  return `target_${programId}_${exerciseId}_d${dayIndex}`;
+}
+
+export async function ensureTargets(
+  programId: string,
+  pairs: DayExerciseRef[] = []
+): Promise<void> {
   if (!programId) return;
-  if (!exerciseIds.length) return;
+  if (!pairs.length) return;
   await ensureDb();
 
   const now = isoNow();
   const db = getDb();
 
-  for (const exerciseId of exerciseIds) {
+  for (const { dayIndex, exerciseId } of pairs) {
+    if (!exerciseId) continue;
     const { repMin, repMax, incrementKg, targetSets } = defaultTargetForExercise(exerciseId);
     await db.runAsync(
-      `INSERT OR IGNORE INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        `target_${programId}_${exerciseId}`,
+        targetId(programId, exerciseId, dayIndex),
         programId,
         exerciseId,
+        dayIndex,
         repMin,
         repMax,
         targetSets,
@@ -71,44 +89,55 @@ export async function ensureTargets(programId: string, exerciseIds: string[] = [
   }
 }
 
-export async function getTargets(programId: string): Promise<Record<string, ExerciseTarget>> {
+type TargetRow = {
+  program_id: string;
+  exercise_id: string;
+  day_index: number;
+  rep_min: number;
+  rep_max: number;
+  target_sets?: number | null;
+  increment_kg: number;
+  updated_at: string;
+  auto_progress?: number | null;
+};
+
+function rowToTarget(r: TargetRow): ExerciseTarget {
+  return {
+    programId: r.program_id,
+    exerciseId: r.exercise_id,
+    dayIndex: r.day_index,
+    repMin: r.rep_min,
+    repMax: r.rep_max,
+    targetSets: Number.isFinite(r.target_sets ?? NaN) ? Number(r.target_sets) : 3,
+    incrementKg: r.increment_kg,
+    updatedAt: r.updated_at,
+    autoProgress: r.auto_progress === 1,
+  };
+}
+
+export async function getTargets(programId: string): Promise<TargetsByDay> {
   if (!programId) return {};
   await ensureDb();
-  const rows = await getDb().getAllAsync<{
-    program_id: string;
-    exercise_id: string;
-    rep_min: number;
-    rep_max: number;
-    target_sets?: number | null;
-    increment_kg: number;
-    updated_at: string;
-    auto_progress?: number | null;
-  }>(
-    `SELECT program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress
+  const rows = await getDb().getAllAsync<TargetRow>(
+    `SELECT program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress
      FROM exercise_targets
      WHERE program_id = ?`,
     [programId]
   );
 
-  const map: Record<string, ExerciseTarget> = {};
+  const byDay: TargetsByDay = {};
   for (const r of rows ?? []) {
-    map[r.exercise_id] = {
-      programId: r.program_id,
-      exerciseId: r.exercise_id,
-      repMin: r.rep_min,
-      repMax: r.rep_max,
-      targetSets: Number.isFinite(r.target_sets ?? NaN) ? Number(r.target_sets) : 3,
-      incrementKg: r.increment_kg,
-      updatedAt: r.updated_at,
-      autoProgress: r.auto_progress === 1,
-    };
+    const target = rowToTarget(r);
+    if (!byDay[target.dayIndex]) byDay[target.dayIndex] = {};
+    byDay[target.dayIndex][target.exerciseId] = target;
   }
-  return map;
+  return byDay;
 }
 
 export async function upsertTarget(args: {
   programId: string;
   exerciseId: string;
+  dayIndex: number;
   repMin: number;
   repMax: number;
   targetSets: number;
@@ -119,14 +148,15 @@ export async function upsertTarget(args: {
   const now = isoNow();
   const ap = args.autoProgress !== false ? 1 : 0;
   await getDb().runAsync(
-    `INSERT INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(program_id, exercise_id)
+    `INSERT INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(program_id, exercise_id, day_index)
      DO UPDATE SET rep_min=excluded.rep_min, rep_max=excluded.rep_max, target_sets=excluded.target_sets, increment_kg=excluded.increment_kg, updated_at=excluded.updated_at, auto_progress=excluded.auto_progress`,
     [
-      `target_${args.programId}_${args.exerciseId}`,
+      targetId(args.programId, args.exerciseId, args.dayIndex),
       args.programId,
       args.exerciseId,
+      args.dayIndex,
       args.repMin,
       args.repMax,
       args.targetSets,
@@ -149,6 +179,12 @@ export async function analyzeWorkoutForProgression(
   await ensureDb();
   const db = getDb();
 
+  const workout = await db.getFirstAsync<{ day_index: number | null }>(
+    `SELECT day_index FROM workouts WHERE id = ? LIMIT 1`,
+    [workoutId]
+  );
+  const dayIndex = Number.isFinite(workout?.day_index ?? NaN) ? Number(workout!.day_index) : 0;
+
   const sets = await db.getAllAsync<SetRow>(
     `SELECT exercise_id, weight, reps FROM sets
      WHERE workout_id = ? AND is_warmup IS NOT 1
@@ -164,11 +200,12 @@ export async function analyzeWorkoutForProgression(
     (byEx[s.exercise_id] ??= []).push(s);
   }
 
-  const targets = await getTargets(programId);
+  const targetsByDay = await getTargets(programId);
+  const dayTargets = targetsByDay[dayIndex] ?? {};
   const created: string[] = [];
 
   for (const [exerciseId, exSets] of Object.entries(byEx)) {
-    const target = targets[exerciseId];
+    const target = dayTargets[exerciseId];
     if (!target || !target.autoProgress) continue;
 
     // Check: did all targetSets sets hit repMax or above?

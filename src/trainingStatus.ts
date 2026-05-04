@@ -319,8 +319,8 @@ export async function computeTrainingStatus(
 
   if (resolvedProgramId && topExerciseIds.length > 0) {
     try {
-      const targets = db.getAllSync<{ exercise_id: string; rep_min: number; rep_max: number }>(
-        `SELECT exercise_id, rep_min, rep_max
+      const targets = db.getAllSync<{ exercise_id: string; day_index: number; rep_min: number; rep_max: number }>(
+        `SELECT exercise_id, day_index, rep_min, rep_max
          FROM exercise_targets
          WHERE program_id = ?
            AND exercise_id IN (${placeholders})`,
@@ -329,13 +329,18 @@ export async function computeTrainingStatus(
 
       if ((targets?.length ?? 0) > 0) {
         hasRepTargets = true;
-        const targetMap: Record<string, { min: number; max: number }> = {};
+        // Per-day target range; fall back to any day's target if the workout's day_index is missing.
+        const dayMap: Record<string, { min: number; max: number }> = {};
+        const fallbackMap: Record<string, { min: number; max: number }> = {};
         for (const t of targets ?? []) {
-          targetMap[t.exercise_id] = { min: t.rep_min, max: t.rep_max };
+          dayMap[`${t.day_index}:${t.exercise_id}`] = { min: t.rep_min, max: t.rep_max };
+          if (!fallbackMap[t.exercise_id]) {
+            fallbackMap[t.exercise_id] = { min: t.rep_min, max: t.rep_max };
+          }
         }
 
-        const repRows = db.getAllSync<{ exercise_id: string; reps: number }>(
-          `SELECT s.exercise_id, s.reps
+        const repRows = db.getAllSync<{ exercise_id: string; reps: number; day_index: number | null }>(
+          `SELECT s.exercise_id, s.reps, w.day_index
            FROM sets s
            JOIN workouts w ON s.workout_id = w.id
            WHERE w.date >= ?
@@ -347,7 +352,8 @@ export async function computeTrainingStatus(
         let hits = 0;
         let total = 0;
         for (const r of repRows ?? []) {
-          const target = targetMap[r.exercise_id];
+          const dayKey = Number.isFinite(r.day_index ?? NaN) ? `${r.day_index}:${r.exercise_id}` : null;
+          const target = (dayKey && dayMap[dayKey]) || fallbackMap[r.exercise_id];
           if (!target) continue;
           total++;
           if (r.reps >= target.min && r.reps <= target.max) hits++;

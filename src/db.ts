@@ -320,6 +320,7 @@ export async function initDb() {
         id TEXT PRIMARY KEY NOT NULL,
         program_id TEXT NOT NULL,
         exercise_id TEXT NOT NULL,
+        day_index INTEGER NOT NULL DEFAULT 0,
         rep_min INTEGER NOT NULL,
         rep_max INTEGER NOT NULL,
         target_sets INTEGER,
@@ -382,7 +383,7 @@ export async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_program_replacements_program ON program_replacements(program_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_program_replacements_unique ON program_replacements(program_id, day_index, original_ex_id);
       CREATE INDEX IF NOT EXISTS idx_exercise_targets_program ON exercise_targets(program_id);
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id, day_index);
       CREATE INDEX IF NOT EXISTS idx_pr_records_exercise ON pr_records(exercise_id);
       CREATE INDEX IF NOT EXISTS idx_user_achievements_achievement ON user_achievements(achievement_id);
       CREATE INDEX IF NOT EXISTS idx_user_achievements_unlocked ON user_achievements(unlocked_at DESC);
@@ -595,6 +596,42 @@ export async function initDb() {
         // 24: workouts — composite (date, id) covering index for training status queries
         { version: 24, up: (d) => {
           d.execSync(`CREATE INDEX IF NOT EXISTS idx_workouts_date_id ON workouts(date, id);`);
+        }},
+        // 25: exercise_targets — per-day rep ranges (day_index column + new unique index)
+        { version: 25, up: (d) => {
+          if (!hasColumn("exercise_targets", "day_index")) {
+            d.execSync(`ALTER TABLE exercise_targets ADD COLUMN day_index INTEGER NOT NULL DEFAULT 0;`);
+          }
+          // Drop the old (program_id, exercise_id) unique index before fanning rows out per day,
+          // otherwise inserts for additional days would collide.
+          d.execSync(`DROP INDEX IF EXISTS idx_exercise_targets_unique;`);
+
+          // For each existing target, add a copy for every day where the exercise actually appears
+          // in the program (excluding day 0, which existing rows already cover via the default).
+          d.execSync(`
+            INSERT OR IGNORE INTO exercise_targets
+              (id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
+            SELECT
+              'target_' || et.program_id || '_' || et.exercise_id || '_d' || pde.day_index,
+              et.program_id, et.exercise_id, pde.day_index,
+              et.rep_min, et.rep_max, et.target_sets, et.increment_kg, et.updated_at,
+              COALESCE(et.auto_progress, 1)
+            FROM exercise_targets et
+            JOIN (
+              SELECT DISTINCT program_id, day_index, ex_id AS exercise_id
+                FROM program_day_exercises WHERE ex_id IS NOT NULL
+              UNION
+              SELECT DISTINCT program_id, day_index, a_id AS exercise_id
+                FROM program_day_exercises WHERE a_id IS NOT NULL
+              UNION
+              SELECT DISTINCT program_id, day_index, b_id AS exercise_id
+                FROM program_day_exercises WHERE b_id IS NOT NULL
+            ) pde ON pde.program_id = et.program_id AND pde.exercise_id = et.exercise_id
+            WHERE pde.day_index <> 0
+              AND et.day_index = 0;
+          `);
+
+          d.execSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id, day_index);`);
         }},
       ];
 

@@ -39,6 +39,7 @@ import type { Program, ProgramBlock, AlternativesMap } from "../../src/programSt
 import ProgressionStore, {
   defaultTargetForExercise,
   type ExerciseTarget,
+  type TargetsByDay,
 } from "../../src/progressionStore";
 import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
@@ -153,7 +154,7 @@ export default function Logg() {
   const [inputs, setInputs] = useState<Record<string, InputState>>({});
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   const [lastSets, setLastSets] = useState<Record<string, LastSetInfo>>({});
-  const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
+  const [targets, setTargets] = useState<TargetsByDay>({});
   const [prRecords, setPrRecords] = useState<PrMap>({});
   const [prBanners, setPrBanners] = useState<Record<string, string>>({});
   const [lastAddedSetId, setLastAddedSetId] = useState<string | null>(null);
@@ -581,13 +582,14 @@ export default function Logg() {
     if (!program?.id || exerciseIds.length === 0) return;
     let alive = true;
     (async () => {
-      await ProgressionStore.ensureTargets(program.id, exerciseIds);
+      const pairs = exerciseIds.map((exerciseId) => ({ dayIndex: activeDayIndex, exerciseId }));
+      await ProgressionStore.ensureTargets(program.id, pairs);
       const targetMap = await ProgressionStore.getTargets(program.id);
       if (!alive) return;
       setTargets(targetMap);
     })();
     return () => { alive = false; };
-  }, [program?.id, exerciseIdsKey, exerciseIds]);
+  }, [program?.id, exerciseIdsKey, exerciseIds, activeDayIndex]);
 
   useEffect(() => {
     if (exerciseIds.length === 0) { setExerciseNotes({}); return; }
@@ -679,8 +681,8 @@ export default function Logg() {
   const isDeload = periodization ? isDeloadWeek(periodization) : false;
 
   function getTargetFor(exId: string) {
-    const target = targets[exId];
-    const base = target ?? { programId: program?.id ?? "", exerciseId: exId, repMin: defaultTargetForExercise(exId).repMin, repMax: defaultTargetForExercise(exId).repMax, targetSets: defaultTargetForExercise(exId).targetSets, incrementKg: defaultTargetForExercise(exId).incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
+    const target = targets[activeDayIndex]?.[exId];
+    const base = target ?? { programId: program?.id ?? "", exerciseId: exId, dayIndex: activeDayIndex, repMin: defaultTargetForExercise(exId).repMin, repMax: defaultTargetForExercise(exId).repMax, targetSets: defaultTargetForExercise(exId).targetSets, incrementKg: defaultTargetForExercise(exId).incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
     if (isDeload) {
       return { ...base, targetSets: Math.max(1, base.targetSets - 1) };
     }
@@ -688,7 +690,7 @@ export default function Logg() {
   }
 
   function getIncrementForExercise(exId: string) {
-    const target = targets[exId];
+    const target = targets[activeDayIndex]?.[exId];
     if (target && target.incrementKg > 0) return target.incrementKg;
     const inc = defaultIncrementFor(exId);
     return inc > 0 ? inc : 2.5;

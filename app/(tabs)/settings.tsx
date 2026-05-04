@@ -398,7 +398,7 @@ export default function Settings() {
       const alternatives = await ProgramStore.getAlternativesForProgram(program.id);
       const db = getDb();
       const targets = await db.getAllAsync(
-        `SELECT exercise_id, rep_min, rep_max, increment_kg
+        `SELECT exercise_id, day_index, rep_min, rep_max, increment_kg
          FROM exercise_targets
          WHERE program_id = ?`,
         [program.id]
@@ -435,6 +435,7 @@ export default function Settings() {
         alternatives: altList,
         targets: (targets ?? []).map((t: any) => ({
           exerciseId: t.exercise_id,
+          dayIndex: t.day_index ?? 0,
           repMin: t.rep_min,
           repMax: t.rep_max,
           incrementKg: t.increment_kg,
@@ -547,10 +548,11 @@ export default function Settings() {
         ) {
           continue;
         }
+        const dayIndex = typeof t.dayIndex === "number" ? t.dayIndex : 0;
         await db.runAsync(
-          `INSERT OR REPLACE INTO exercise_targets(id, program_id, exercise_id, rep_min, rep_max, increment_kg, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?, ?)` ,
-          [uid("target"), nextProgram.id, t.exerciseId, t.repMin, t.repMax, t.incrementKg, new Date().toISOString()]
+          `INSERT OR REPLACE INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, increment_kg, updated_at)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?)` ,
+          [uid("target"), nextProgram.id, t.exerciseId, dayIndex, t.repMin, t.repMax, t.incrementKg, new Date().toISOString()]
         );
       }
 

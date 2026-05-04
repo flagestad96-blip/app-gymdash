@@ -69,7 +69,7 @@ export async function exportFullBackup(): Promise<string> {
     `SELECT id, program_id, day_index, original_ex_id, replaced_ex_id, updated_at FROM program_replacements`
   );
   const exerciseTargets = await db.getAllAsync(
-    `SELECT id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress FROM exercise_targets`
+    `SELECT id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress FROM exercise_targets`
   );
   const prRecords = await db.getAllAsync(
     `SELECT exercise_id, type, value, reps, weight, set_id, date, program_id FROM pr_records`
@@ -348,9 +348,9 @@ export async function importBackup(
 
     for (const t of exerciseTargets) {
       await db.runAsync(
-        `${verb} exercise_targets(id, program_id, exercise_id, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [t.id, t.program_id, t.exercise_id, t.rep_min, t.rep_max, t.target_sets ?? null, t.increment_kg, t.updated_at, t.auto_progress ?? 1]
+        `${verb} exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [t.id, t.program_id, t.exercise_id, t.day_index ?? 0, t.rep_min, t.rep_max, t.target_sets ?? null, t.increment_kg, t.updated_at, t.auto_progress ?? 1]
       );
     }
 

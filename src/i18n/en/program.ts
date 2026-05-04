@@ -55,6 +55,7 @@ const program: TranslationMap = {
   "program.duplicateProgram": "Duplicate program",
   "program.remove": "Remove",
   "program.targetBtn": "Target",
+  "program.targetForDay": "For {day}",
   "program.clear": "Clear",
   "program.exportProgram": "Share program",
   "program.importProgram": "Receive program",

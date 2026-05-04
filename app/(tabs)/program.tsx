@@ -16,7 +16,7 @@ import {
 import BackImpactDot from "../../src/components/BackImpactDot";
 import ProgramStore, { getEstimatedDuration } from "../../src/programStore";
 import type { Program, ProgramBlock, ProgramDay } from "../../src/programStore";
-import ProgressionStore, { defaultTargetForExercise, type ExerciseTarget } from "../../src/progressionStore";
+import ProgressionStore, { defaultTargetForExercise, type DayExerciseRef, type TargetsByDay } from "../../src/progressionStore";
 import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, toggleManualDeload, type Periodization } from "../../src/periodization";
 import { shareFile, saveBackupFile } from "../../src/fileSystem";
 import { getShareableProgramJson } from "../../src/sharing";
@@ -42,24 +42,32 @@ type ImportPayload = {
   days: Array<{ name: string; blocks: Array<{ type: string; exId?: string; ex?: string; a?: string; b?: string }> }>;
 };
 
-function collectExerciseIds(program: Program, alts: AlternativesMap): string[] {
-  const set = new Set<string>();
+function collectDayExercisePairs(program: Program, alts: AlternativesMap): DayExerciseRef[] {
+  const seen = new Set<string>();
+  const pairs: DayExerciseRef[] = [];
+  const add = (dayIndex: number, exerciseId: string) => {
+    if (!exerciseId) return;
+    const key = `${dayIndex}:${exerciseId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    pairs.push({ dayIndex, exerciseId });
+  };
   for (let di = 0; di < program.days.length; di += 1) {
     const day = program.days[di];
     const map = alts[di] ?? {};
     for (const block of day.blocks) {
       if (block.type === "single") {
-        set.add(block.exId);
-        for (const alt of map[block.exId] ?? []) set.add(alt);
+        add(di, block.exId);
+        for (const alt of map[block.exId] ?? []) add(di, alt);
       } else {
-        set.add(block.a);
-        set.add(block.b);
-        for (const alt of map[block.a] ?? []) set.add(alt);
-        for (const alt of map[block.b] ?? []) set.add(alt);
+        add(di, block.a);
+        add(di, block.b);
+        for (const alt of map[block.a] ?? []) add(di, alt);
+        for (const alt of map[block.b] ?? []) add(di, alt);
       }
     }
   }
-  return Array.from(set);
+  return pairs;
 }
 
 function validateImport(payload: unknown): { ok: true; program: ImportPayload } | { ok: false; errorKey: string } {
@@ -107,7 +115,7 @@ export default function ProgramScreen() {
   const [activeProgramId, setActiveProgramId] = useState<string>("");
   const [activeProgram, setActiveProgram] = useState<Program | null>(null);
   const [alternatives, setAlternatives] = useState<AlternativesMap>({});
-  const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
+  const [targets, setTargets] = useState<TargetsByDay>({});
   const [workoutLocked, setWorkoutLocked] = useState(false);
 
   const navigation = useNavigation();
@@ -153,6 +161,7 @@ export default function ProgramScreen() {
 
   const [targetEditorOpen, setTargetEditorOpen] = useState(false);
   const [targetExerciseId, setTargetExerciseId] = useState<string | null>(null);
+  const [targetDayIndex, setTargetDayIndex] = useState<number>(0);
   const [targetRepMin, setTargetRepMin] = useState(6);
   const [targetRepMax, setTargetRepMax] = useState(10);
   const [targetSets, setTargetSets] = useState(3);
@@ -202,8 +211,8 @@ export default function ProgramScreen() {
       adi = clampInt(locked, 0, dayMax);
     }
     const alts = await ProgramStore.getAlternativesForProgram(active.id);
-    const exerciseIds = collectExerciseIds(active, alts);
-    await ProgressionStore.ensureTargets(active.id, exerciseIds);
+    const dayExercisePairs = collectDayExercisePairs(active, alts);
+    await ProgressionStore.ensureTargets(active.id, dayExercisePairs);
     const targetMap = await ProgressionStore.getTargets(active.id);
 
     setProgramMode(pm);
@@ -353,7 +362,7 @@ export default function ProgramScreen() {
     setActiveProgramId(prog.id);
     const alts = await ProgramStore.getAlternativesForProgram(prog.id);
     setAlternatives(alts);
-    await ProgressionStore.ensureTargets(prog.id, collectExerciseIds(prog, alts));
+    await ProgressionStore.ensureTargets(prog.id, collectDayExercisePairs(prog, alts));
     setTargets(await ProgressionStore.getTargets(prog.id));
   }
 
@@ -426,16 +435,17 @@ export default function ProgramScreen() {
     });
     const map = await ProgramStore.getAlternativesForProgram(activeProgram.id);
     setAlternatives(map);
-    await ProgressionStore.ensureTargets(activeProgram.id, collectExerciseIds(activeProgram, map));
+    await ProgressionStore.ensureTargets(activeProgram.id, collectDayExercisePairs(activeProgram, map));
     setTargets(await ProgressionStore.getTargets(activeProgram.id));
     setAltEditorOpen(false);
   }
 
-  function openTargetEditor(exId: string) {
+  function openTargetEditor(exId: string, dayIndex: number) {
     if (!ensureUnlocked()) return;
-    const current = targets[exId];
+    const current = targets[dayIndex]?.[exId];
     const fallback = defaultTargetForExercise(exId);
     setTargetExerciseId(exId);
+    setTargetDayIndex(dayIndex);
     setTargetRepMin(current?.repMin ?? fallback.repMin);
     setTargetRepMax(current?.repMax ?? fallback.repMax);
     setTargetSets(current?.targetSets ?? fallback.targetSets);
@@ -455,6 +465,7 @@ export default function ProgramScreen() {
     await ProgressionStore.upsertTarget({
       programId: activeProgram.id,
       exerciseId: targetExerciseId,
+      dayIndex: targetDayIndex,
       repMin,
       repMax,
       targetSets: sets,
@@ -937,7 +948,7 @@ export default function ProgramScreen() {
                         return (
                           <View key={`prev_${bi}`} style={{ gap: 4 }}>
                             {exIds.map((exId, ei) => {
-                              const tgt = targets[exId];
+                              const tgt = previewDayIdx != null ? targets[previewDayIdx]?.[exId] : undefined;
                               return (
                                 <View key={`${exId}_${ei}`} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                                   <View style={{ flex: 1, gap: 2 }}>
@@ -1006,14 +1017,21 @@ export default function ProgramScreen() {
                   ) : (
                     activeDay.blocks.map((block, idx) => {
                       const altMap = alternatives[editingDayIndex] ?? {};
+                      const dayTargets = targets[editingDayIndex] ?? {};
                       if (block.type === "single") {
                         const altList = altMap[block.exId] ?? [];
+                        const tgt = dayTargets[block.exId];
                         return (
                           <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                               <Text style={{ color: theme.text }}>{displayNameFor(block.exId)}</Text>
                               <BackImpactDot exerciseId={block.exId} />
                             </View>
+                            {tgt ? (
+                              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                                {tgt.targetSets}×{tgt.repMin}–{tgt.repMax}
+                              </Text>
+                            ) : null}
                             {altList.length ? (
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                 {t("program.alternatives")}: {altList.map((id) => displayNameFor(id)).join(", ")}
@@ -1021,7 +1039,7 @@ export default function ProgramScreen() {
                             ) : null}
                             <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                               <Btn label={t("program.alternatives")} onPress={() => openAlternatives(editingDayIndex, block.exId)} />
-                              <Btn label={t("program.targetBtn")} onPress={() => openTargetEditor(block.exId)} />
+                              <Btn label={t("program.targetBtn")} onPress={() => openTargetEditor(block.exId, editingDayIndex)} />
                               <Pressable onPress={() => moveBlock(idx, -1)} disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
                                 <MaterialIcons name="arrow-upward" size={18} color={theme.text} />
                               </Pressable>
@@ -1035,12 +1053,19 @@ export default function ProgramScreen() {
                       }
                       const altA = altMap[block.a] ?? [];
                       const altB = altMap[block.b] ?? [];
+                      const tgtA = dayTargets[block.a];
+                      const tgtB = dayTargets[block.b];
                       return (
                         <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                             <Text style={{ color: theme.text }}>A: {displayNameFor(block.a)}</Text>
                             <BackImpactDot exerciseId={block.a} />
                           </View>
+                          {tgtA ? (
+                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                              {tgtA.targetSets}×{tgtA.repMin}–{tgtA.repMax}
+                            </Text>
+                          ) : null}
                           {altA.length ? (
                             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                               {t("program.alternatives")}: {altA.map((id) => displayNameFor(id)).join(", ")}
@@ -1050,6 +1075,11 @@ export default function ProgramScreen() {
                             <Text style={{ color: theme.text }}>B: {displayNameFor(block.b)}</Text>
                             <BackImpactDot exerciseId={block.b} />
                           </View>
+                          {tgtB ? (
+                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                              {tgtB.targetSets}×{tgtB.repMin}–{tgtB.repMax}
+                            </Text>
+                          ) : null}
                           {altB.length ? (
                             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                               {t("program.alternatives")}: {altB.map((id) => displayNameFor(id)).join(", ")}
@@ -1058,8 +1088,8 @@ export default function ProgramScreen() {
                           <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                             <Btn label="Alt A" onPress={() => openAlternatives(editingDayIndex, block.a)} />
                             <Btn label="Alt B" onPress={() => openAlternatives(editingDayIndex, block.b)} />
-                            <Btn label={`${t("program.targetBtn")} A`} onPress={() => openTargetEditor(block.a)} />
-                            <Btn label={`${t("program.targetBtn")} B`} onPress={() => openTargetEditor(block.b)} />
+                            <Btn label={`${t("program.targetBtn")} A`} onPress={() => openTargetEditor(block.a, editingDayIndex)} />
+                            <Btn label={`${t("program.targetBtn")} B`} onPress={() => openTargetEditor(block.b, editingDayIndex)} />
                             <Pressable onPress={() => moveBlock(idx, -1)} disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
                               <MaterialIcons name="arrow-upward" size={18} color={theme.text} />
                             </Pressable>
@@ -1336,6 +1366,11 @@ export default function ProgramScreen() {
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.targets")}</Text>
             <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
               {targetExerciseId ? displayNameFor(targetExerciseId) : ""}
+            </Text>
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+              {t("program.targetForDay", {
+                day: activeProgram?.days[targetDayIndex]?.name || `${t("common.day")} ${targetDayIndex + 1}`,
+              })}
             </Text>
 
             <View style={{ gap: 8 }}>
