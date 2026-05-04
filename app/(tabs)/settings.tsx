@@ -429,7 +429,9 @@ export default function Settings() {
             if (b.type === "single") {
               return { type: "single", exerciseId: b.exId, sortIndex };
             }
-            return { type: "superset", a: b.a, b: b.b, sortIndex };
+            return b.c
+              ? { type: "superset", a: b.a, b: b.b, c: b.c, sortIndex }
+              : { type: "superset", a: b.a, b: b.b, sortIndex };
           }),
         })),
         alternatives: altList,
@@ -500,6 +502,9 @@ export default function Settings() {
                   return { type: "single", exId: b.exerciseId };
                 }
                 if (b.type === "superset" && typeof b.a === "string" && typeof b.b === "string") {
+                  if (typeof b.c === "string" && b.c.length > 0) {
+                    return { type: "superset", a: b.a, b: b.b, c: b.c };
+                  }
                   return { type: "superset", a: b.a, b: b.b };
                 }
                 return null;

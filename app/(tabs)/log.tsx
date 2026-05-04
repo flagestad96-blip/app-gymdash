@@ -98,8 +98,10 @@ type RenderBlock =
       type: "superset";
       a: string;
       b: string;
+      c?: string;
       baseA: string;
       baseB: string;
+      baseC?: string;
       anchorKey: string;
     };
 
@@ -196,7 +198,7 @@ export default function Logg() {
   const restTimer = useRestTimer();
 
   const [supersetAlternate, setSupersetAlternate] = useState(true);
-  const [supersetNext, setSupersetNext] = useState<Record<string, "a" | "b">>({});
+  const [supersetNext, setSupersetNext] = useState<Record<string, "a" | "b" | "c">>({});
 
   const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
   const [altPickerOpen, setAltPickerOpen] = useState(false);
@@ -332,19 +334,14 @@ export default function Logg() {
               mergedAlts[dayIndex][exId] = combined;
             }
           } else if (block.type === "superset") {
-            const exIdA = block.a;
-            const libraryAltsA = alternativesFor(exIdA);
-            const programAltsForA = programAlts[dayIndex]?.[exIdA] ?? [];
-            const combinedA = Array.from(new Set([...libraryAltsA, ...programAltsForA]));
-            if (combinedA.length > 0) {
-              mergedAlts[dayIndex][exIdA] = combinedA;
-            }
-            const exIdB = block.b;
-            const libraryAltsB = alternativesFor(exIdB);
-            const programAltsForB = programAlts[dayIndex]?.[exIdB] ?? [];
-            const combinedB = Array.from(new Set([...libraryAltsB, ...programAltsForB]));
-            if (combinedB.length > 0) {
-              mergedAlts[dayIndex][exIdB] = combinedB;
+            const supersetIds = block.c ? [block.a, block.b, block.c] : [block.a, block.b];
+            for (const exIdSlot of supersetIds) {
+              const libraryAltsSlot = alternativesFor(exIdSlot);
+              const programAltsForSlot = programAlts[dayIndex]?.[exIdSlot] ?? [];
+              const combinedSlot = Array.from(new Set([...libraryAltsSlot, ...programAltsForSlot]));
+              if (combinedSlot.length > 0) {
+                mergedAlts[dayIndex][exIdSlot] = combinedSlot;
+              }
             }
           }
         });
@@ -438,14 +435,21 @@ export default function Logg() {
     if (dayPlan) {
       for (let idx = 0; idx < dayPlan.blocks.length; idx++) {
         const b = dayPlan.blocks[idx];
-        const anchorKey = b.type === "single" ? `ex_${b.exId}_${idx}` : `ss_${b.a}_${b.b}_${idx}`;
+        const anchorKey = b.type === "single"
+          ? `ex_${b.exId}_${idx}`
+          : `ss_${b.a}_${b.b}${b.c ? `_${b.c}` : ""}_${idx}`;
         if (b.type === "single") {
           const selected = resolveSelectedExId(b.exId);
           blocks.push({ type: "single", exId: selected, baseExId: b.exId, anchorKey });
         } else {
           const selectedA = resolveSelectedExId(b.a);
           const selectedB = resolveSelectedExId(b.b);
-          blocks.push({ type: "superset", a: selectedA, b: selectedB, baseA: b.a, baseB: b.b, anchorKey });
+          if (b.c) {
+            const selectedC = resolveSelectedExId(b.c);
+            blocks.push({ type: "superset", a: selectedA, b: selectedB, c: selectedC, baseA: b.a, baseB: b.b, baseC: b.c, anchorKey });
+          } else {
+            blocks.push({ type: "superset", a: selectedA, b: selectedB, baseA: b.a, baseB: b.b, anchorKey });
+          }
         }
       }
     }
@@ -460,7 +464,10 @@ export default function Logg() {
     const list: string[] = [];
     for (const b of renderBlocks) {
       if (b.type === "single") list.push(b.exId);
-      else { list.push(b.a, b.b); }
+      else {
+        list.push(b.a, b.b);
+        if (b.c) list.push(b.c);
+      }
     }
     return Array.from(new Set(list));
   }, [renderBlocks]);
@@ -478,7 +485,10 @@ export default function Logg() {
   const anchorItems = useMemo(() => {
     return renderBlocks.map((b) => {
       if (b.type === "single") return { key: b.anchorKey, label: displayNameFor(b.exId) };
-      return { key: b.anchorKey, label: `${displayNameFor(b.a)} / ${displayNameFor(b.b)}` };
+      const label = b.c
+        ? `${displayNameFor(b.a)} / ${displayNameFor(b.b)} / ${displayNameFor(b.c)}`
+        : `${displayNameFor(b.a)} / ${displayNameFor(b.b)}`;
+      return { key: b.anchorKey, label };
     });
   }, [renderBlocks]);
 
@@ -486,7 +496,11 @@ export default function Logg() {
     const map: Record<string, string> = {};
     for (const b of renderBlocks) {
       if (b.type === "single") { map[b.exId] = b.anchorKey; }
-      else { map[b.a] = b.anchorKey; map[b.b] = b.anchorKey; }
+      else {
+        map[b.a] = b.anchorKey;
+        map[b.b] = b.anchorKey;
+        if (b.c) map[b.c] = b.anchorKey;
+      }
     }
     return map;
   }, [renderBlocks]);
@@ -794,6 +808,7 @@ export default function Logg() {
         if (block.type === "superset") {
           if (block.a === baseExId) return { ...block, a: newDefaultExId };
           if (block.b === baseExId) return { ...block, b: newDefaultExId };
+          if (block.c === baseExId) return { ...block, c: newDefaultExId };
         }
         return block;
       });
@@ -1166,12 +1181,16 @@ export default function Logg() {
 
   async function addSetForSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
     const key = block.anchorKey;
-    const next = supersetAlternate ? (supersetNext[key] ?? "a") : "a";
-    const exId = next === "a" ? block.a : block.b;
+    const slots = block.c ? (["a", "b", "c"] as const) : (["a", "b"] as const);
+    const current = supersetAlternate ? (supersetNext[key] ?? "a") : "a";
+    const currentIdx = Math.max(0, slots.indexOf(current as any));
+    const exId = current === "a" ? block.a : current === "b" ? block.b : (block.c ?? block.a);
     await addSetForExercise(exId);
     if (supersetAlternate) {
-      setSupersetNext((prev) => ({ ...prev, [key]: next === "a" ? "b" : "a" }));
-      const nextExId = next === "a" ? block.b : block.a;
+      const nextIdx = (currentIdx + 1) % slots.length;
+      const nextSlot = slots[nextIdx];
+      setSupersetNext((prev) => ({ ...prev, [key]: nextSlot }));
+      const nextExId = nextSlot === "a" ? block.a : nextSlot === "b" ? block.b : (block.c ?? block.a);
       setTimeout(() => { focusExercise(nextExId, { scroll: true }); }, 50);
     }
   }
@@ -1574,7 +1593,7 @@ export default function Logg() {
               }
 
               const nextSide = supersetAlternate ? (supersetNext[block.anchorKey] ?? "a") : "a";
-              const nextLabel = nextSide === "a" ? "A" : "B";
+              const nextLabel = nextSide === "a" ? "A" : nextSide === "b" ? "B" : "C";
 
               return (
                 <SupersetCard
@@ -1582,24 +1601,34 @@ export default function Logg() {
                   anchorKey={block.anchorKey}
                   exIdA={block.a}
                   exIdB={block.b}
+                  exIdC={block.c}
                   baseA={block.baseA}
                   baseB={block.baseB}
+                  baseC={block.baseC}
                   inputA={inputs[block.a] ?? { weight: "", reps: "", rpe: "" }}
                   inputB={inputs[block.b] ?? { weight: "", reps: "", rpe: "" }}
+                  inputC={block.c ? (inputs[block.c] ?? { weight: "", reps: "", rpe: "" }) : undefined}
                   setsA={setsByExercise[block.a] ?? []}
                   setsB={setsByExercise[block.b] ?? []}
+                  setsC={block.c ? (setsByExercise[block.c] ?? []) : undefined}
                   targetA={getTargetFor(block.a)}
                   targetB={getTargetFor(block.b)}
+                  targetC={block.c ? getTargetFor(block.c) : undefined}
                   lastSetA={lastSets[block.a]}
                   lastSetB={lastSets[block.b]}
+                  lastSetC={block.c ? lastSets[block.c] : undefined}
                   prBannerA={prBanners[block.a]}
                   prBannerB={prBanners[block.b]}
+                  prBannerC={block.c ? prBanners[block.c] : undefined}
                   coachHintA={buildCoachHint(block.a)}
                   coachHintB={buildCoachHint(block.b)}
+                  coachHintC={block.c ? buildCoachHint(block.c) : null}
                   altListA={alternatives[activeDayIndex]?.[block.baseA] ?? []}
                   altListB={alternatives[activeDayIndex]?.[block.baseB] ?? []}
+                  altListC={block.baseC ? (alternatives[activeDayIndex]?.[block.baseC] ?? []) : []}
                   exerciseNoteA={exerciseNotes[block.a] ?? ""}
                   exerciseNoteB={exerciseNotes[block.b] ?? ""}
+                  exerciseNoteC={block.c ? (exerciseNotes[block.c] ?? "") : ""}
                   focusedExerciseId={quickExerciseId}
                   lastAddedSetId={lastAddedSetId}
                   lastAddedAnim={lastAddedAnim}
@@ -1609,6 +1638,7 @@ export default function Logg() {
                   gymEquipment={activeGymEquipment}
                   activeGoalLabelA={goalLabels[block.a]}
                   activeGoalLabelB={goalLabels[block.b]}
+                  activeGoalLabelC={block.c ? goalLabels[block.c] : undefined}
                   nextLabel={nextLabel}
                   onLayout={(e) => {
                     anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;

@@ -6,7 +6,7 @@ import { uid, isoNow } from "./storage";
 
 export type ProgramBlock =
   | { type: "single"; exId: string }
-  | { type: "superset"; a: string; b: string };
+  | { type: "superset"; a: string; b: string; c?: string };
 
 export type ProgramDay = {
   id: string;
@@ -48,6 +48,7 @@ type BlockRow = {
   ex_id?: string | null;
   a_id?: string | null;
   b_id?: string | null;
+  c_id?: string | null;
 };
 
 const ACTIVE_KEY_NORMAL = "activeProgramId_normal";
@@ -320,7 +321,11 @@ async function seedProgramTargetsIfMissing(
     const exerciseIds: string[] = [];
     for (const block of day.blocks) {
       if (block.type === "single") exerciseIds.push(block.exId);
-      else { exerciseIds.push(block.a); exerciseIds.push(block.b); }
+      else {
+        exerciseIds.push(block.a);
+        exerciseIds.push(block.b);
+        if (block.c) exerciseIds.push(block.c);
+      }
     }
     for (const exerciseId of exerciseIds) {
       if (!exerciseId || seenInDay.has(exerciseId)) continue;
@@ -360,7 +365,9 @@ function normalizeProgram(raw: Program): Program {
         return { type: "single", exId: String(exId) } as ProgramBlock;
       }
       if (b.type === "superset") {
-        return { type: "superset", a: String(b.a), b: String(b.b) } as ProgramBlock;
+        const block: ProgramBlock = { type: "superset", a: String(b.a), b: String(b.b) };
+        if (b.c) block.c = String(b.c);
+        return block;
       }
       return b as ProgramBlock;
     }),
@@ -403,9 +410,9 @@ async function writeProgramTables(program: Program): Promise<void> {
         );
       } else {
         await database.runAsync(
-          `INSERT INTO program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id)
-           VALUES(?, ?, ?, ?, ?, NULL, ?, ?)`,
-          [uid("pde"), program.id, di, bi, "superset", block.a, block.b]
+          `INSERT INTO program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id, c_id)
+           VALUES(?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+          [uid("pde"), program.id, di, bi, "superset", block.a, block.b, block.c ?? null]
         );
       }
     }
@@ -427,7 +434,7 @@ async function loadProgramFromTables(programId: string, row?: ProgramRow): Promi
   if (!dayRows || dayRows.length === 0) return null;
 
   const blockRows = await database.getAllAsync<BlockRow>(
-    `SELECT day_index, sort_index, type, ex_id, a_id, b_id
+    `SELECT day_index, sort_index, type, ex_id, a_id, b_id, c_id
      FROM program_day_exercises
      WHERE program_id = ?
      ORDER BY day_index ASC, sort_index ASC`,
@@ -442,7 +449,9 @@ async function loadProgramFromTables(programId: string, row?: ProgramRow): Promi
       if (rowBlock.ex_id) blocksByDay[di].push({ type: "single", exId: String(rowBlock.ex_id) });
     } else {
       if (rowBlock.a_id && rowBlock.b_id) {
-        blocksByDay[di].push({ type: "superset", a: String(rowBlock.a_id), b: String(rowBlock.b_id) });
+        const block: ProgramBlock = { type: "superset", a: String(rowBlock.a_id), b: String(rowBlock.b_id) };
+        if (rowBlock.c_id) block.c = String(rowBlock.c_id);
+        blocksByDay[di].push(block);
       }
     }
   }
@@ -642,11 +651,13 @@ export async function applyReplacements(
     if (b.type === "single") {
       return { type: "single", exId: map.get(b.exId) ?? b.exId };
     }
-    return {
+    const next: ProgramBlock = {
       type: "superset",
       a: map.get(b.a) ?? b.a,
       b: map.get(b.b) ?? b.b,
     };
+    if (b.c) next.c = map.get(b.c) ?? b.c;
+    return next;
   });
 }
 
@@ -791,6 +802,7 @@ export async function getNextWorkoutPreview(
     } else {
       exercises.push(block.a);
       exercises.push(block.b);
+      if (block.c) exercises.push(block.c);
     }
   }
   return { dayName: day.name, exercises };

@@ -830,24 +830,34 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   anchorKey: string;
   exIdA: string;
   exIdB: string;
+  exIdC?: string;
   baseA: string;
   baseB: string;
+  baseC?: string;
   inputA: InputState;
   inputB: InputState;
+  inputC?: InputState;
   setsA: SetRow[];
   setsB: SetRow[];
+  setsC?: SetRow[];
   targetA: ExerciseTarget;
   targetB: ExerciseTarget;
+  targetC?: ExerciseTarget;
   lastSetA: LastSetInfo | undefined;
   lastSetB: LastSetInfo | undefined;
+  lastSetC?: LastSetInfo | undefined;
   prBannerA: string | undefined;
   prBannerB: string | undefined;
+  prBannerC?: string | undefined;
   coachHintA: string | null;
   coachHintB: string | null;
+  coachHintC?: string | null;
   altListA: string[];
   altListB: string[];
+  altListC?: string[];
   exerciseNoteA: string;
   exerciseNoteB: string;
+  exerciseNoteC?: string;
   focusedExerciseId: string | null;
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
@@ -860,17 +870,25 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   gymEquipment?: Set<Equipment> | null;
   activeGoalLabelA?: string;
   activeGoalLabelB?: string;
+  activeGoalLabelC?: string;
 };
 
 export function SupersetCard(props: SupersetCardProps) {
   const theme = useTheme();
   const { t } = useI18n();
-  const isFocused = props.focusedExerciseId === props.exIdA || props.focusedExerciseId === props.exIdB;
+  const hasC = !!props.exIdC && !!props.baseC;
+  const isFocused =
+    props.focusedExerciseId === props.exIdA ||
+    props.focusedExerciseId === props.exIdB ||
+    (hasC && props.focusedExerciseId === props.exIdC);
   const eqA = getExercise(props.exIdA)?.equipment as Equipment | undefined;
   const eqB = getExercise(props.exIdB)?.equipment as Equipment | undefined;
+  const eqC = hasC ? (getExercise(props.exIdC!)?.equipment as Equipment | undefined) : undefined;
   const equipmentUnavailable =
     props.gymEquipment != null &&
-    ((eqA != null && !props.gymEquipment.has(eqA)) || (eqB != null && !props.gymEquipment.has(eqB)));
+    ((eqA != null && !props.gymEquipment.has(eqA)) ||
+      (eqB != null && !props.gymEquipment.has(eqB)) ||
+      (hasC && eqC != null && !props.gymEquipment.has(eqC)));
 
   return (
     <View onLayout={props.onLayout} style={{ position: "relative", opacity: equipmentUnavailable ? 0.4 : 1 }}>
@@ -966,6 +984,45 @@ export function SupersetCard(props: SupersetCardProps) {
           gymEquipment={props.gymEquipment}
           activeGoalLabel={props.activeGoalLabelB}
         />
+
+        {hasC ? (
+          <ExerciseHalf
+            exId={props.exIdC!}
+            baseExId={props.baseC!}
+            anchorKey={props.anchorKey}
+            prefix="C"
+            input={props.inputC ?? { weight: "", reps: "", rpe: "" }}
+            sets={props.setsC ?? []}
+            target={props.targetC!}
+            lastSet={props.lastSetC}
+            prBanner={props.prBannerC}
+            coachHint={props.coachHintC ?? null}
+            altList={props.altListC ?? []}
+            exerciseNote={props.exerciseNoteC ?? ""}
+            isFocused={props.focusedExerciseId === props.exIdC}
+            lastAddedSetId={props.lastAddedSetId}
+            lastAddedAnim={props.lastAddedAnim}
+            onSetInput={props.onSetInput}
+            onApplyWeightStep={props.onApplyWeightStep}
+            onApplyLastSet={props.onApplyLastSet}
+            onAddSet={props.onAddSet}
+            onAddSetMultiple={props.onAddSetMultiple}
+            onEditSet={props.onEditSet}
+            onDeleteSet={props.onDeleteSet}
+            onFocusExercise={props.onFocusExercise}
+            onOpenAltPicker={props.onOpenAltPicker}
+            onSetAsDefault={props.onSetAsDefault}
+            onExerciseNoteChange={props.onExerciseNoteChange}
+            onExerciseNoteBlur={props.onExerciseNoteBlur}
+            onSetGoal={props.onSetGoal}
+            onOpenPlateCalc={props.onOpenPlateCalc}
+            workoutId={props.workoutId}
+            exerciseIndex={props.exerciseIndex}
+            gymId={props.gymId}
+            gymEquipment={props.gymEquipment}
+            activeGoalLabel={props.activeGoalLabelC}
+          />
+        ) : null}
       </View>
 
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>

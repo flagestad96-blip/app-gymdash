@@ -60,7 +60,7 @@ export async function exportFullBackup(): Promise<string> {
     `SELECT id, program_id, day_index, name FROM program_days`
   );
   const programDayExercises = await db.getAllAsync(
-    `SELECT id, program_id, day_index, sort_index, type, ex_id, a_id, b_id FROM program_day_exercises`
+    `SELECT id, program_id, day_index, sort_index, type, ex_id, a_id, b_id, c_id FROM program_day_exercises`
   );
   const programAlternatives = await db.getAllAsync(
     `SELECT id, program_id, day_index, exercise_id, alt_exercise_id, sort_index FROM program_exercise_alternatives`
@@ -324,9 +324,9 @@ export async function importBackup(
 
     for (const b of programDayExercises) {
       await db.runAsync(
-        `${verb} program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-        [b.id, b.program_id, b.day_index, b.sort_index, b.type, b.ex_id ?? null, b.a_id ?? null, b.b_id ?? null]
+        `${verb} program_day_exercises(id, program_id, day_index, sort_index, type, ex_id, a_id, b_id, c_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [b.id, b.program_id, b.day_index, b.sort_index, b.type, b.ex_id ?? null, b.a_id ?? null, b.b_id ?? null, b.c_id ?? null]
       );
     }
 

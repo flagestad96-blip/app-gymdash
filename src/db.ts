@@ -295,7 +295,8 @@ export async function initDb() {
         type TEXT NOT NULL,
         ex_id TEXT,
         a_id TEXT,
-        b_id TEXT
+        b_id TEXT,
+        c_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS program_exercise_alternatives (
@@ -632,6 +633,12 @@ export async function initDb() {
           `);
 
           d.execSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_targets_unique ON exercise_targets(program_id, exercise_id, day_index);`);
+        }},
+        // 26: program_day_exercises — c_id column for three-way supersets
+        { version: 26, up: (d) => {
+          if (!hasColumn("program_day_exercises", "c_id")) {
+            d.execSync(`ALTER TABLE program_day_exercises ADD COLUMN c_id TEXT;`);
+          }
         }},
       ];
 

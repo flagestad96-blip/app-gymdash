@@ -1,6 +1,6 @@
 // app/(tabs)/program.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Switch } from "react-native";
+import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Switch, KeyboardAvoidingView, Platform } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
@@ -26,7 +26,18 @@ import { SuccessToast } from "../../src/ui/modern";
 import { uid, isoNow } from "../../src/storage";
 import { clampInt } from "../../src/format";
 
-type PickerMode = "addSingle" | "addSupersetA" | "addSupersetB";
+type PickerMode =
+  | "addSingle"
+  | "addSupersetA"
+  | "addSupersetB"
+  | "addSupersetC"
+  | "swapSlot"
+  | "addSlotC";
+
+type EditSupersetTarget = {
+  blockIndex: number;
+  slot: "a" | "b" | "c";
+};
 
 type ProgramMode = "normal" | "back";
 
@@ -39,7 +50,7 @@ type AlternativesMap = Record<number, Record<string, string[]>>;
 
 type ImportPayload = {
   name: string;
-  days: Array<{ name: string; blocks: Array<{ type: string; exId?: string; ex?: string; a?: string; b?: string }> }>;
+  days: Array<{ name: string; blocks: Array<{ type: string; exId?: string; ex?: string; a?: string; b?: string; c?: string }> }>;
 };
 
 function collectDayExercisePairs(program: Program, alts: AlternativesMap): DayExerciseRef[] {
@@ -62,8 +73,10 @@ function collectDayExercisePairs(program: Program, alts: AlternativesMap): DayEx
       } else {
         add(di, block.a);
         add(di, block.b);
+        if (block.c) add(di, block.c);
         for (const alt of map[block.a] ?? []) add(di, alt);
         for (const alt of map[block.b] ?? []) add(di, alt);
+        if (block.c) for (const alt of map[block.c] ?? []) add(di, alt);
       }
     }
   }
@@ -89,6 +102,9 @@ function validateImport(payload: unknown): { ok: true; program: ImportPayload } 
         if (!exId || typeof exId !== "string") return { ok: false, errorKey: "program.singleMissingExId" };
       } else if (block.type === "superset") {
         if (!block.a || !block.b || typeof block.a !== "string" || typeof block.b !== "string") {
+          return { ok: false, errorKey: "program.supersetMissingAB" };
+        }
+        if (block.c != null && typeof block.c !== "string") {
           return { ok: false, errorKey: "program.supersetMissingAB" };
         }
       } else {
@@ -138,6 +154,10 @@ export default function ProgramScreen() {
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerTag, setPickerTag] = useState<ExerciseTag | "all">("all");
   const [pendingSupersetA, setPendingSupersetA] = useState<string | null>(null);
+  const [pendingSupersetB, setPendingSupersetB] = useState<string | null>(null);
+  const [editSupersetTarget, setEditSupersetTarget] = useState<EditSupersetTarget | null>(null);
+  const [renameDayOpen, setRenameDayOpen] = useState(false);
+  const [renameDayValue, setRenameDayValue] = useState("");
   const [altEditorOpen, setAltEditorOpen] = useState(false);
   const [altContext, setAltContext] = useState<AltContext | null>(null);
   const [altQuery, setAltQuery] = useState("");
@@ -491,7 +511,56 @@ export default function ProgramScreen() {
     setPickerQuery("");
     setPickerTag("all");
     setPendingSupersetA(null);
+    setPendingSupersetB(null);
+    setEditSupersetTarget(null);
     setPickerOpen(true);
+  }
+
+  function startSwapSupersetSlot(blockIndex: number, slot: "a" | "b" | "c") {
+    if (!ensureUnlocked()) return;
+    setEditSupersetTarget({ blockIndex, slot });
+    setPickerMode("swapSlot");
+    setPickerQuery("");
+    setPickerTag("all");
+    setPickerOpen(true);
+  }
+
+  function startAddThirdToSuperset(blockIndex: number) {
+    if (!ensureUnlocked()) return;
+    setEditSupersetTarget({ blockIndex, slot: "c" });
+    setPickerMode("addSlotC");
+    setPickerQuery("");
+    setPickerTag("all");
+    setPickerOpen(true);
+  }
+
+  function updateBlockAt(blockIndex: number, updater: (block: ProgramBlock) => ProgramBlock) {
+    if (!activeProgram || !activeDay) return;
+    const nextDays = activeProgram.days.map((d, di) => {
+      if (di !== editingDayIndex) return d;
+      const blocks = d.blocks.map((b, i) => (i === blockIndex ? updater(b) : b));
+      return { ...d, blocks };
+    });
+    saveProgram({ ...activeProgram, days: nextDays }).catch(() => {});
+  }
+
+  function removeThirdFromSuperset(blockIndex: number) {
+    if (!ensureUnlocked()) return;
+    updateBlockAt(blockIndex, (b) => {
+      if (b.type !== "superset" || !b.c) return b;
+      const next: ProgramBlock = { type: "superset", a: b.a, b: b.b };
+      return next;
+    });
+  }
+
+  function swapSupersetAB(blockIndex: number) {
+    if (!ensureUnlocked()) return;
+    updateBlockAt(blockIndex, (b) => {
+      if (b.type !== "superset") return b;
+      const next: ProgramBlock = { type: "superset", a: b.b, b: b.a };
+      if (b.c) next.c = b.c;
+      return next;
+    });
   }
 
   function handlePickExercise(exId: string) {
@@ -509,11 +578,74 @@ export default function ProgramScreen() {
     }
     if (pickerMode === "addSupersetB") {
       if (!pendingSupersetA) return;
-      addBlock({ type: "superset", a: pendingSupersetA, b: exId });
+      setPendingSupersetB(exId);
+      setPickerMode("addSupersetC");
+      setPickerQuery("");
+      return;
+    }
+    if (pickerMode === "addSupersetC") {
+      if (!pendingSupersetA || !pendingSupersetB) return;
+      addBlock({ type: "superset", a: pendingSupersetA, b: pendingSupersetB, c: exId });
       setPendingSupersetA(null);
+      setPendingSupersetB(null);
       setPickerOpen(false);
       return;
     }
+    if (pickerMode === "swapSlot" && editSupersetTarget) {
+      const { blockIndex, slot } = editSupersetTarget;
+      updateBlockAt(blockIndex, (b) => {
+        if (b.type !== "superset") return b;
+        const next: ProgramBlock = { type: "superset", a: b.a, b: b.b };
+        if (b.c) next.c = b.c;
+        if (slot === "a") next.a = exId;
+        else if (slot === "b") next.b = exId;
+        else if (slot === "c") next.c = exId;
+        return next;
+      });
+      setEditSupersetTarget(null);
+      setPickerOpen(false);
+      return;
+    }
+    if (pickerMode === "addSlotC" && editSupersetTarget) {
+      const { blockIndex } = editSupersetTarget;
+      updateBlockAt(blockIndex, (b) => {
+        if (b.type !== "superset") return b;
+        return { type: "superset", a: b.a, b: b.b, c: exId };
+      });
+      setEditSupersetTarget(null);
+      setPickerOpen(false);
+      return;
+    }
+  }
+
+  function finishSupersetTwoWay() {
+    if (pickerMode !== "addSupersetC") return;
+    if (!pendingSupersetA || !pendingSupersetB) return;
+    addBlock({ type: "superset", a: pendingSupersetA, b: pendingSupersetB });
+    setPendingSupersetA(null);
+    setPendingSupersetB(null);
+    setPickerOpen(false);
+  }
+
+  function openRenameDay() {
+    if (!ensureUnlocked()) return;
+    if (!activeDay) return;
+    setRenameDayValue(activeDay.name ?? "");
+    setRenameDayOpen(true);
+  }
+
+  async function submitRenameDay() {
+    if (!activeProgram || !activeDay) return;
+    const nextName = renameDayValue.trim();
+    if (!nextName) {
+      setRenameDayOpen(false);
+      return;
+    }
+    const nextDays = activeProgram.days.map((d, di) =>
+      di === editingDayIndex ? { ...d, name: nextName } : d
+    );
+    await saveProgram({ ...activeProgram, days: nextDays });
+    setRenameDayOpen(false);
   }
 
   function openNameModal(action: "new" | "rename" | "duplicate") {
@@ -632,7 +764,9 @@ export default function ProgramScreen() {
         blocks: d.blocks.map((b) =>
           b.type === "single"
             ? { type: "single", exId: b.exId }
-            : { type: "superset", a: b.a, b: b.b }
+            : b.c
+              ? { type: "superset", a: b.a, b: b.b, c: b.c }
+              : { type: "superset", a: b.a, b: b.b }
         ),
       })),
     };
@@ -684,7 +818,9 @@ export default function ProgramScreen() {
         name: d.name,
         blocks: d.blocks.map((b) => {
           if (b.type === "single") return { type: "single", exId: (b.exId ?? b.ex) as string };
-          return { type: "superset", a: b.a as string, b: b.b as string };
+          const block: ProgramBlock = { type: "superset", a: b.a as string, b: b.b as string };
+          if (b.c) block.c = b.c as string;
+          return block;
         }),
       })),
     };
@@ -891,6 +1027,7 @@ export default function ProgramScreen() {
                         }
                         const altA = altMap[block.a] ?? [];
                         const altB = altMap[block.b] ?? [];
+                        const altC = block.c ? (altMap[block.c] ?? []) : [];
                         return (
                           <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -910,6 +1047,19 @@ export default function ProgramScreen() {
                               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                                 Alt: {altB.map((id) => displayNameFor(id)).join(", ")}
                               </Text>
+                            ) : null}
+                            {block.c ? (
+                              <>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <Text style={{ color: theme.text }}>  + {displayNameFor(block.c)}</Text>
+                                  <BackImpactDot exerciseId={block.c} />
+                                </View>
+                                {altC.length ? (
+                                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                                    Alt: {altC.map((id) => displayNameFor(id)).join(", ")}
+                                  </Text>
+                                ) : null}
+                              </>
                             ) : null}
                           </View>
                         );
@@ -944,7 +1094,12 @@ export default function ProgramScreen() {
                   <ScrollView style={{ maxHeight: 400 }}>
                     <View style={{ gap: 10 }}>
                       {day.blocks.map((block, bi) => {
-                        const exIds = block.type === "single" ? [block.exId] : [block.a, block.b];
+                        const exIds =
+                          block.type === "single"
+                            ? [block.exId]
+                            : block.c
+                              ? [block.a, block.b, block.c]
+                              : [block.a, block.b];
                         return (
                           <View key={`prev_${bi}`} style={{ gap: 4 }}>
                             {exIds.map((exId, ei) => {
@@ -954,7 +1109,7 @@ export default function ProgramScreen() {
                                   <View style={{ flex: 1, gap: 2 }}>
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                                       <Text style={{ color: theme.text, fontFamily: theme.fontFamily.medium, fontSize: 14 }}>
-                                        {block.type === "superset" && ei === 1 ? "  + " : "\u2022 "}{displayNameFor(exId)}
+                                        {block.type === "superset" && ei > 0 ? "  + " : "\u2022 "}{displayNameFor(exId)}
                                       </Text>
                                       <BackImpactDot exerciseId={exId} />
                                     </View>
@@ -989,11 +1144,16 @@ export default function ProgramScreen() {
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
             <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: theme.text, fontSize: 16 }} numberOfLines={1} ellipsizeMode="tail">
+              <Pressable
+                onPress={openRenameDay}
+                style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8 }}
+                accessibilityLabel={t("program.renameDay")}
+              >
+                <Text style={{ color: theme.text, fontSize: 16, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
                   {activeDay?.name ?? t("common.day")}
                 </Text>
-              </View>
+                <MaterialIcons name="edit" size={16} color={theme.muted} />
+              </Pressable>
               <View style={{ flexShrink: 0 }}>
                 <Pressable
                   onPress={() => setDayEditorOpen(false)}
@@ -1051,45 +1211,60 @@ export default function ProgramScreen() {
                           </View>
                         );
                       }
-                      const altA = altMap[block.a] ?? [];
-                      const altB = altMap[block.b] ?? [];
-                      const tgtA = dayTargets[block.a];
-                      const tgtB = dayTargets[block.b];
+                      const renderSlot = (slot: "a" | "b" | "c", exId: string) => {
+                        const slotAlt = altMap[exId] ?? [];
+                        const slotTgt = dayTargets[exId];
+                        const label = slot === "a" ? "A" : slot === "b" ? "B" : "C";
+                        return (
+                          <View key={`${activeDay.id}_${idx}_${slot}`} style={{ marginTop: slot === "a" ? 0 : 6, gap: 4 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={{ color: theme.text }}>{label}: {displayNameFor(exId)}</Text>
+                              <BackImpactDot exerciseId={exId} />
+                              <Pressable
+                                onPress={() => startSwapSupersetSlot(idx, slot)}
+                                hitSlop={6}
+                                style={{ marginLeft: 4 }}
+                                accessibilityLabel={t("program.swapExercise")}
+                              >
+                                <MaterialIcons name="swap-horiz" size={18} color={theme.muted} />
+                              </Pressable>
+                            </View>
+                            {slotTgt ? (
+                              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                                {slotTgt.targetSets}×{slotTgt.repMin}–{slotTgt.repMax}
+                              </Text>
+                            ) : null}
+                            {slotAlt.length ? (
+                              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                                {t("program.alternatives")}: {slotAlt.map((id) => displayNameFor(id)).join(", ")}
+                              </Text>
+                            ) : null}
+                          </View>
+                        );
+                      };
                       return (
                         <View key={`${activeDay.id}_${idx}`} style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: theme.glass }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Text style={{ color: theme.text }}>A: {displayNameFor(block.a)}</Text>
-                            <BackImpactDot exerciseId={block.a} />
-                          </View>
-                          {tgtA ? (
-                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                              {tgtA.targetSets}×{tgtA.repMin}–{tgtA.repMax}
-                            </Text>
-                          ) : null}
-                          {altA.length ? (
-                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                              {t("program.alternatives")}: {altA.map((id) => displayNameFor(id)).join(", ")}
-                            </Text>
-                          ) : null}
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-                            <Text style={{ color: theme.text }}>B: {displayNameFor(block.b)}</Text>
-                            <BackImpactDot exerciseId={block.b} />
-                          </View>
-                          {tgtB ? (
-                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                              {tgtB.targetSets}×{tgtB.repMin}–{tgtB.repMax}
-                            </Text>
-                          ) : null}
-                          {altB.length ? (
-                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                              {t("program.alternatives")}: {altB.map((id) => displayNameFor(id)).join(", ")}
-                            </Text>
-                          ) : null}
-                          <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                            <Btn label="Alt A" onPress={() => openAlternatives(editingDayIndex, block.a)} />
-                            <Btn label="Alt B" onPress={() => openAlternatives(editingDayIndex, block.b)} />
+                          {renderSlot("a", block.a)}
+                          {renderSlot("b", block.b)}
+                          {block.c ? renderSlot("c", block.c) : null}
+
+                          <View style={{ flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                            <Btn label={`${t("program.alternatives")} A`} onPress={() => openAlternatives(editingDayIndex, block.a)} />
+                            <Btn label={`${t("program.alternatives")} B`} onPress={() => openAlternatives(editingDayIndex, block.b)} />
+                            {block.c ? (
+                              <Btn label={`${t("program.alternatives")} C`} onPress={() => openAlternatives(editingDayIndex, block.c!)} />
+                            ) : null}
                             <Btn label={`${t("program.targetBtn")} A`} onPress={() => openTargetEditor(block.a, editingDayIndex)} />
                             <Btn label={`${t("program.targetBtn")} B`} onPress={() => openTargetEditor(block.b, editingDayIndex)} />
+                            {block.c ? (
+                              <Btn label={`${t("program.targetBtn")} C`} onPress={() => openTargetEditor(block.c!, editingDayIndex)} />
+                            ) : null}
+                            <Btn label={t("program.swapAB")} onPress={() => swapSupersetAB(idx)} />
+                            {block.c ? (
+                              <Btn label={t("program.removeC")} onPress={() => removeThirdFromSuperset(idx)} />
+                            ) : (
+                              <Btn label={t("program.addThird")} onPress={() => startAddThirdToSuperset(idx)} />
+                            )}
                             <Pressable onPress={() => moveBlock(idx, -1)} disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 10, padding: 6 }}>
                               <MaterialIcons name="arrow-upward" size={18} color={theme.text} />
                             </Pressable>
@@ -1110,15 +1285,33 @@ export default function ProgramScreen() {
       </Modal>
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
             <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, gap: 8 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ color: theme.text, fontSize: 16 }}>{t("program.chooseExercise")}</Text>
+                <Text style={{ color: theme.text, fontSize: 16 }}>
+                  {pickerMode === "addSupersetA"
+                    ? t("program.chooseExerciseA")
+                    : pickerMode === "addSupersetB"
+                      ? t("program.chooseExerciseSlotB")
+                      : pickerMode === "addSupersetC"
+                        ? t("program.chooseExerciseSlotC")
+                        : pickerMode === "swapSlot"
+                          ? t("program.swapExercise")
+                          : pickerMode === "addSlotC"
+                            ? t("program.addThird")
+                            : t("program.chooseExercise")}
+                </Text>
                 <Pressable
                   onPress={() => {
                     setPickerOpen(false);
                     setPendingSupersetA(null);
+                    setPendingSupersetB(null);
+                    setEditSupersetTarget(null);
                   }}
                   style={{ borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }}
                 >
@@ -1223,12 +1416,29 @@ export default function ProgramScreen() {
                   {t("program.chooseExerciseB", { name: displayNameFor(pendingSupersetA) })}
                 </Text>
               ) : null}
+
+              {pickerMode === "addSupersetC" && pendingSupersetA && pendingSupersetB ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
+                    {t("program.chooseExerciseCHint", {
+                      a: displayNameFor(pendingSupersetA),
+                      b: displayNameFor(pendingSupersetB),
+                    })}
+                  </Text>
+                  <Btn label={t("program.finishTwoWay")} onPress={finishSupersetTwoWay} tone="accent" />
+                </View>
+              ) : null}
             </View>
           </View>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={altEditorOpen} transparent animationType="slide" onRequestClose={() => setAltEditorOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 18, overflow: "hidden", maxHeight: "85%" }}>
             <View style={{ padding: 14, borderBottomColor: theme.glassBorder, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between" }}>
@@ -1314,6 +1524,7 @@ export default function ProgramScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={nameModalOpen} transparent animationType="fade" onRequestClose={() => setNameModalOpen(false)}>
@@ -1355,6 +1566,35 @@ export default function ProgramScreen() {
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Btn label={t("common.save")} onPress={submitName} tone="accent" />
               <Btn label={t("common.cancel")} onPress={() => setNameModalOpen(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={renameDayOpen} transparent animationType="fade" onRequestClose={() => setRenameDayOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
+              {t("program.renameDay")}
+            </Text>
+            <TextField
+              value={renameDayValue}
+              onChangeText={setRenameDayValue}
+              placeholder={t("program.dayNamePlaceholder")}
+              placeholderTextColor={theme.muted}
+              autoFocus
+              style={{
+                color: theme.text,
+                backgroundColor: theme.glass,
+                borderColor: theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: 14,
+                padding: 12,
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Btn label={t("common.save")} onPress={submitRenameDay} tone="accent" />
+              <Btn label={t("common.cancel")} onPress={() => setRenameDayOpen(false)} />
             </View>
           </View>
         </View>
