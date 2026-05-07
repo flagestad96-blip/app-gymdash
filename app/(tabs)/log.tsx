@@ -1019,7 +1019,9 @@ export default function Logg() {
     await setSettingAsync("adHocExercises", "").catch(() => {});
     setAdHocExercises([]);
     setActiveWorkoutId(null);
+    restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
     restTimer.setActiveWorkoutId(null); // Hide floating timer
+    restTimer.setFocusedExerciseId(null);
     setWorkoutStartedAt(null);
     setWorkoutElapsedSec(0);
     setWorkoutSets([]);
@@ -1068,7 +1070,7 @@ export default function Logg() {
     });
   }
 
-  async function addSetForExercise(exId: string, forcedIndex?: number) {
+  async function addSetForExercise(exId: string, forcedIndex?: number, opts?: { skipRestTimer?: boolean }) {
     if (!activeWorkoutId) { Alert.alert(t("log.startWorkoutAlert"), t("log.startWorkoutMsg")); return; }
 
     const input = inputs[exId] ?? { weight: "", reps: "", rpe: "" };
@@ -1176,7 +1178,9 @@ export default function Logg() {
     setUndoSet({ row, exerciseId: exId, prSetId: row.id });
     setUndoVisible(true);
 
-    if (restTimer.restEnabled) restTimer.startRestTimer(restTimer.getRestForExercise(exId));
+    if (!opts?.skipRestTimer && restTimer.restEnabled) {
+      restTimer.startRestTimer(restTimer.getRestForExercise(exId));
+    }
   }
 
   async function addSetForSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
@@ -1185,13 +1189,19 @@ export default function Logg() {
     const current = supersetAlternate ? (supersetNext[key] ?? "a") : "a";
     const currentIdx = Math.max(0, slots.indexOf(current as any));
     const exId = current === "a" ? block.a : current === "b" ? block.b : (block.c ?? block.a);
-    await addSetForExercise(exId);
+    // In an alternating superset there should be no rest between slots in the same round —
+    // only after the last slot (when nextSlot wraps back to "a") does the rest timer fire.
+    const nextIdx = (currentIdx + 1) % slots.length;
+    const isRoundEnd = !supersetAlternate || nextIdx === 0;
+    await addSetForExercise(exId, undefined, { skipRestTimer: !isRoundEnd });
     if (supersetAlternate) {
-      const nextIdx = (currentIdx + 1) % slots.length;
       const nextSlot = slots[nextIdx];
       setSupersetNext((prev) => ({ ...prev, [key]: nextSlot }));
       const nextExId = nextSlot === "a" ? block.a : nextSlot === "b" ? block.b : (block.c ?? block.a);
-      setTimeout(() => { focusExercise(nextExId, { scroll: true }); }, 50);
+      setTimeout(() => {
+        focusExercise(nextExId, { scroll: true });
+        restTimer.setFocusedExerciseId(nextExId);
+      }, 50);
     }
   }
 

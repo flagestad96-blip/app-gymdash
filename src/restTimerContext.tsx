@@ -23,6 +23,7 @@ export type RestTimerContextValue = {
   restRemaining: number;
   restRunning: boolean;
   restEndsAt: number | null;
+  restDurationSec: number; // Duration the active timer was started with (caps remaining display)
   restVibrate: boolean;
   restHaptics: boolean;
   exerciseRestOverrides: Record<string, number>;
@@ -80,6 +81,7 @@ export function RestTimerProvider({ children }: Props) {
   const [restRemaining, setRestRemaining] = useState(120);
   const [restRunning, setRestRunning] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [restDurationSec, setRestDurationSec] = useState<number>(120);
   const [restVibrate, setRestVibrateState] = useState(false);
   const [restHaptics, setRestHapticsState] = useState(true);
   const [restNotificationId, setRestNotificationId] = useState<string | null>(null);
@@ -141,14 +143,28 @@ export function RestTimerProvider({ children }: Props) {
 
         // Resume ongoing timer if still within window
         const endsAt = reAtRaw ? Number(reAtRaw) : NaN;
-        if (Number.isFinite(endsAt) && endsAt > Date.now()) {
+        const rdRaw = await getSettingAsync("restDurationSec");
+        const persistedDuration = clampInt(parseInt(rdRaw ?? "0", 10), 0, 600);
+        const fallbackDuration = clampInt(parseInt(rsRaw ?? "120", 10), 10, 600);
+        const computedRemaining = Number.isFinite(endsAt) ? Math.ceil((endsAt - Date.now()) / 1000) : NaN;
+        const validDuration = persistedDuration > 0 ? persistedDuration : fallbackDuration;
+        // Resume only if the remaining is within [1, validDuration] — guards against system clock skew.
+        if (Number.isFinite(computedRemaining) && computedRemaining > 0 && computedRemaining <= validDuration) {
           setRestEndsAt(endsAt);
+          setRestDurationSec(validDuration);
           setRestRunning(true);
-          setRestRemaining(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+          setRestRemaining(computedRemaining);
         } else {
+          // Discard a stale or skewed timer so the user never sees a runaway value.
+          if (Number.isFinite(computedRemaining) && computedRemaining > validDuration) {
+            console.warn("[RestTimerContext] discarded stale timer", { computedRemaining, validDuration });
+          }
           setRestEndsAt(null);
           setRestRunning(false);
-          setRestRemaining(clampInt(parseInt(rsRaw ?? "120", 10), 10, 600));
+          setRestDurationSec(fallbackDuration);
+          setRestRemaining(fallbackDuration);
+          setSettingAsync("restEndsAt", "").catch(() => {});
+          setSettingAsync("restDurationSec", "").catch(() => {});
         }
 
         // Load active workout ID
@@ -175,7 +191,9 @@ export function RestTimerProvider({ children }: Props) {
   useEffect(() => {
     if (!restRunning || !restEndsAt) return;
     const id = setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
+      // Cap at restDurationSec so a backwards system-clock change can never produce a runaway value.
+      const raw = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
+      const remaining = restDurationSec > 0 ? Math.min(raw, restDurationSec) : raw;
       setRestRemaining(remaining);
       if (remaining === 0 && !restDoneRef.current) {
         restDoneRef.current = true;
@@ -183,13 +201,14 @@ export function RestTimerProvider({ children }: Props) {
         setRestEndsAt(null);
         setRestNotificationId(null);
         setSettingAsync("restEndsAt", "").catch(() => {});
+        setSettingAsync("restDurationSec", "").catch(() => {});
         cancelAllRestTimerNotifications().catch(() => {});
         if (restVibrate && Platform.OS !== "web") Vibration.vibrate(300);
         fireHapticDone();
       }
     }, 500);
     return () => clearInterval(id);
-  }, [restRunning, restEndsAt, restVibrate, fireHapticDone]);
+  }, [restRunning, restEndsAt, restDurationSec, restVibrate, fireHapticDone]);
 
   // Sync restRemaining with restSeconds when not running
   useEffect(() => {
@@ -201,7 +220,8 @@ export function RestTimerProvider({ children }: Props) {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
         if (restEndsAt) {
-          const remaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
+          const raw = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
+          const remaining = restDurationSec > 0 ? Math.min(raw, restDurationSec) : raw;
           setRestRemaining(remaining);
           if (remaining === 0 && !restDoneRef.current) {
             restDoneRef.current = true;
@@ -209,6 +229,7 @@ export function RestTimerProvider({ children }: Props) {
             setRestEndsAt(null);
             setRestNotificationId(null);
             setSettingAsync("restEndsAt", "").catch(() => {});
+            setSettingAsync("restDurationSec", "").catch(() => {});
             cancelAllRestTimerNotifications().catch(() => {});
           }
         }
@@ -216,7 +237,7 @@ export function RestTimerProvider({ children }: Props) {
       appStateRef.current = nextState;
     });
     return () => sub.remove();
-  }, [restEndsAt]);
+  }, [restEndsAt, restDurationSec]);
 
   // Persist settings on change
   const setRestEnabled = useCallback((v: boolean) => {
@@ -309,20 +330,26 @@ export function RestTimerProvider({ children }: Props) {
     setRestEndsAt(null);
     restDoneRef.current = false;
     setRestRemaining(restSeconds);
+    setRestDurationSec(restSeconds);
     setSettingAsync("restEndsAt", "").catch(() => {});
+    setSettingAsync("restDurationSec", "").catch(() => {});
     cancelAllRestTimerNotifications().catch(() => {});
     setRestNotificationId(null);
   }, [restSeconds]);
 
   const startRestTimer = useCallback(async (seconds?: number) => {
     if (!restEnabled) return;
-    const duration = seconds ?? restSeconds;
-    const end = Date.now() + Math.max(0, Math.floor(duration)) * 1000;
+    const requestedDuration = seconds ?? restSeconds;
+    // Clamp duration to the same range used for restSeconds so an out-of-range value can't produce a giant timer.
+    const duration = clampInt(Math.floor(requestedDuration), 1, 600);
+    const end = Date.now() + duration * 1000;
     setRestEndsAt(end);
+    setRestDurationSec(duration);
     setRestRunning(true);
     restDoneRef.current = false;
-    setRestRemaining(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
+    setRestRemaining(duration);
     setSettingAsync("restEndsAt", String(end)).catch(() => {});
+    setSettingAsync("restDurationSec", String(duration)).catch(() => {});
     // Cancel ALL rest-timer notifications before scheduling new one
     await cancelAllRestTimerNotifications();
     const notificationId = await scheduleRestNotification(duration);
@@ -345,6 +372,7 @@ export function RestTimerProvider({ children }: Props) {
     restRemaining,
     restRunning,
     restEndsAt,
+    restDurationSec,
     restVibrate,
     restHaptics,
     exerciseRestOverrides,
