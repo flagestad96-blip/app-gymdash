@@ -197,8 +197,8 @@ export default function Logg() {
   // Rest timer state comes from useRestTimer context
   const restTimer = useRestTimer();
 
-  const [supersetAlternate, setSupersetAlternate] = useState(true);
-  const [supersetNext, setSupersetNext] = useState<Record<string, "a" | "b" | "c">>({});
+  // Note: prior `supersetAlternate` toggle and `supersetNext` map were retired with the round-card refactor.
+  // Setting still exists for backwards compatibility but the round-card always alternates within a round.
 
   const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
   const [altPickerOpen, setAltPickerOpen] = useState(false);
@@ -262,11 +262,9 @@ export default function Logg() {
       const pmRaw = await getSettingAsync("programMode");
       const pm: ProgramMode = pmRaw === "back" ? "back" : "normal";
 
-      const ssRaw = await getSettingAsync("supersetAlternate");
       const onboardingRaw = await getSettingAsync("hasSeenOnboarding");
 
       setProgramMode(pm);
-      setSupersetAlternate(ssRaw === null ? true : ssRaw === "1");
       setShowOnboarding(onboardingRaw !== "1");
 
       // Load gym data
@@ -521,8 +519,6 @@ export default function Logg() {
   }, [workoutSets]);
 
   // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
-
-  useEffect(() => { setSupersetNext({}); }, [activeDayIndex, program?.id, programMode]);
 
   // Load goal labels for exercises in current day
   useEffect(() => {
@@ -1181,27 +1177,49 @@ export default function Logg() {
     if (!opts?.skipRestTimer && restTimer.restEnabled) {
       restTimer.startRestTimer(restTimer.getRestForExercise(exId));
     }
+    return row;
   }
 
-  async function addSetForSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
-    const key = block.anchorKey;
-    const slots = block.c ? (["a", "b", "c"] as const) : (["a", "b"] as const);
-    const current = supersetAlternate ? (supersetNext[key] ?? "a") : "a";
-    const currentIdx = Math.max(0, slots.indexOf(current as any));
-    const exId = current === "a" ? block.a : current === "b" ? block.b : (block.c ?? block.a);
-    // In an alternating superset there should be no rest between slots in the same round —
-    // only after the last slot (when nextSlot wraps back to "a") does the rest timer fire.
-    const nextIdx = (currentIdx + 1) % slots.length;
-    const isRoundEnd = !supersetAlternate || nextIdx === 0;
-    await addSetForExercise(exId, undefined, { skipRestTimer: !isRoundEnd });
-    if (supersetAlternate) {
-      const nextSlot = slots[nextIdx];
-      setSupersetNext((prev) => ({ ...prev, [key]: nextSlot }));
-      const nextExId = nextSlot === "a" ? block.a : nextSlot === "b" ? block.b : (block.c ?? block.a);
-      setTimeout(() => {
-        focusExercise(nextExId, { scroll: true });
-        restTimer.setFocusedExerciseId(nextExId);
-      }, 50);
+  async function logSupersetSet(
+    block: Extract<RenderBlock, { type: "superset" }>,
+    args: { slot: "a" | "b" | "c"; exId: string; phase: "transition" | "round" | "final"; roundNum: number; totalRounds: number; isBonus: boolean },
+  ) {
+    const row = await addSetForExercise(args.exId, undefined, { skipRestTimer: true });
+    if (!row) return;
+
+    if (!restTimer.restEnabled) return;
+
+    // Determine rest seconds for the upcoming pause.
+    if (args.isBonus) {
+      // Bonus = treat as single-exercise rest for the slot.
+      restTimer.startRestTimer(restTimer.getRestForExercise(args.exId));
+      return;
+    }
+
+    if (args.phase === "transition") {
+      const seconds = restTimer.transitionRestSeconds;
+      if (seconds <= 0) {
+        // Don't start a timer if user disabled transition rest.
+        restTimer.stopRestTimer();
+        return;
+      }
+      restTimer.startRestTimer(seconds, {
+        phase: "transition",
+        phaseLabel: t("log.restPhaseTransition"),
+      });
+      return;
+    }
+
+    if (args.phase === "round" || args.phase === "final") {
+      // Use max rest across non-dropped slots in the block (per spec).
+      const slotIds: string[] = [block.a, block.b, ...(block.c ? [block.c] : [])];
+      const restCandidates = slotIds.map((id) => restTimer.getRestForExercise(id)).filter((n) => Number.isFinite(n) && n > 0);
+      const seconds = restCandidates.length > 0 ? Math.max(...restCandidates) : restTimer.getRestForExercise(args.exId);
+      const phaseLabel = args.phase === "final"
+        ? t("log.restPhaseRoundFinal")
+        : t("log.restPhaseRound", { n: String(args.roundNum + 1) });
+      restTimer.startRestTimer(seconds, { phase: "round", phaseLabel });
+      return;
     }
   }
 
@@ -1602,9 +1620,6 @@ export default function Logg() {
                 );
               }
 
-              const nextSide = supersetAlternate ? (supersetNext[block.anchorKey] ?? "a") : "a";
-              const nextLabel = nextSide === "a" ? "A" : nextSide === "b" ? "B" : "C";
-
               return (
                 <SupersetCard
                   key={block.anchorKey}
@@ -1649,12 +1664,11 @@ export default function Logg() {
                   activeGoalLabelA={goalLabels[block.a]}
                   activeGoalLabelB={goalLabels[block.b]}
                   activeGoalLabelC={block.c ? goalLabels[block.c] : undefined}
-                  nextLabel={nextLabel}
                   onLayout={(e) => {
                     anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                     anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
                   }}
-                  onAddSuperset={() => addSetForSuperset(block)}
+                  onLogRoundSet={(args) => logSupersetSet(block, args)}
                   {...cardCallbacks}
                 />
               );

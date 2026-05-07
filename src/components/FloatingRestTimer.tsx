@@ -26,6 +26,8 @@ export default function FloatingRestTimer() {
     exerciseRestOverrides,
     focusedExerciseId,
     activeWorkoutId,
+    restPhase,
+    restPhaseLabel,
     setRestEnabled,
     setRestSeconds,
     setRestVibrate,
@@ -101,6 +103,10 @@ export default function FloatingRestTimer() {
   }
 
   const displayLabel = mmss(displaySeconds);
+  const isTransition = restRunning && restPhase === "transition";
+  const isRoundRest = restRunning && restPhase === "round";
+  const phaseTint = isTransition ? theme.warn : theme.accent;
+  const activeBorder = restRunning ? phaseTint : theme.glassBorder;
 
   return (
     <>
@@ -123,7 +129,7 @@ export default function FloatingRestTimer() {
             styles.pill,
             {
               backgroundColor: theme.modalGlass,
-              borderColor: restRunning ? theme.accent : theme.glassBorder,
+              borderColor: activeBorder,
               borderWidth: restRunning ? 2 : 1,
               opacity: pressed ? 0.9 : 1,
               shadowColor: theme.shadow.md.color,
@@ -131,25 +137,46 @@ export default function FloatingRestTimer() {
               shadowRadius: theme.shadow.md.radius,
               shadowOffset: theme.shadow.md.offset,
               elevation: theme.shadow.md.elevation,
+              flexDirection: "column",
+              alignItems: "stretch",
+              gap: 0,
+              paddingVertical: restPhaseLabel ? 8 : 10,
             },
           ]}
         >
-          <MaterialIcons
-            name={restRunning ? "timer" : "timer-off"}
-            size={18}
-            color={restRunning ? theme.accent : theme.muted}
-          />
-          <Text
-            style={[
-              styles.label,
-              {
-                color: restRunning ? theme.accent : theme.text,
+          {restPhaseLabel ? (
+            <Text
+              style={{
+                color: phaseTint,
                 fontFamily: theme.mono,
-              },
-            ]}
-          >
-            {displayLabel}
-          </Text>
+                fontSize: 9,
+                textAlign: "center",
+                letterSpacing: 0.5,
+                marginBottom: 1,
+              }}
+              numberOfLines={1}
+            >
+              {restPhaseLabel.toUpperCase()}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <MaterialIcons
+              name={restRunning ? (isRoundRest ? "replay" : isTransition ? "swap-horiz" : "timer") : "timer-off"}
+              size={18}
+              color={restRunning ? phaseTint : theme.muted}
+            />
+            <Text
+              style={[
+                styles.label,
+                {
+                  color: restRunning ? phaseTint : theme.text,
+                  fontFamily: theme.mono,
+                },
+              ]}
+            >
+              {displayLabel}
+            </Text>
+          </View>
         </Pressable>
       </Animated.View> : null}
 

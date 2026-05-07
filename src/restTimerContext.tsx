@@ -16,6 +16,8 @@ function recommendedRestSeconds(tags: ExerciseTag[]) {
   return 120;
 }
 
+export type RestPhase = "normal" | "transition" | "round";
+
 export type RestTimerContextValue = {
   // State
   restEnabled: boolean;
@@ -31,6 +33,9 @@ export type RestTimerContextValue = {
   focusedExerciseId: string | null;
   activeWorkoutId: string | null;
   perSideOverrides: Record<string, boolean>;
+  transitionRestSeconds: number;
+  restPhase: RestPhase;
+  restPhaseLabel: string | null;
 
   // Computed
   restLabel: string;
@@ -43,6 +48,7 @@ export type RestTimerContextValue = {
   setRestHaptics: (v: boolean) => void;
   setFocusedExerciseId: (id: string | null) => void;
   setActiveWorkoutId: (id: string | null) => void;
+  setTransitionRestSeconds: (v: number) => void;
 
   // Preset management
   addPreset: (seconds: number) => void;
@@ -57,7 +63,7 @@ export type RestTimerContextValue = {
   isPerSide: (exId: string) => boolean;
 
   // Timer controls
-  startRestTimer: (seconds?: number) => Promise<void>;
+  startRestTimer: (seconds?: number, opts?: { phase?: RestPhase; phaseLabel?: string | null }) => Promise<void>;
   stopRestTimer: () => void;
 
   // Settings modal state
@@ -91,6 +97,9 @@ export function RestTimerProvider({ children }: Props) {
   const [activeWorkoutId, setActiveWorkoutIdState] = useState<string | null>(null);
   const [restSettingsOpen, setRestSettingsOpen] = useState(false);
   const [perSideOverrides, setPerSideOverrides] = useState<Record<string, boolean>>({});
+  const [transitionRestSeconds, setTransitionRestSecondsState] = useState(15);
+  const [restPhase, setRestPhase] = useState<RestPhase>("normal");
+  const [restPhaseLabel, setRestPhaseLabel] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const restDoneRef = useRef(false);
@@ -138,6 +147,15 @@ export function RestTimerProvider({ children }: Props) {
           if (psoRaw) {
             const parsed = JSON.parse(psoRaw);
             if (parsed && typeof parsed === "object") setPerSideOverrides(parsed);
+          }
+        } catch {}
+
+        // Load transition rest seconds (between superset slots)
+        try {
+          const trRaw = await getSettingAsync("transitionRestSeconds");
+          if (trRaw != null) {
+            const parsed = parseInt(trRaw, 10);
+            if (Number.isFinite(parsed)) setTransitionRestSecondsState(clampInt(parsed, 0, 60));
           }
         } catch {}
 
@@ -200,6 +218,8 @@ export function RestTimerProvider({ children }: Props) {
         setRestRunning(false);
         setRestEndsAt(null);
         setRestNotificationId(null);
+        setRestPhase("normal");
+        setRestPhaseLabel(null);
         setSettingAsync("restEndsAt", "").catch(() => {});
         setSettingAsync("restDurationSec", "").catch(() => {});
         cancelAllRestTimerNotifications().catch(() => {});
@@ -228,6 +248,8 @@ export function RestTimerProvider({ children }: Props) {
             setRestRunning(false);
             setRestEndsAt(null);
             setRestNotificationId(null);
+            setRestPhase("normal");
+            setRestPhaseLabel(null);
             setSettingAsync("restEndsAt", "").catch(() => {});
             setSettingAsync("restDurationSec", "").catch(() => {});
             cancelAllRestTimerNotifications().catch(() => {});
@@ -331,30 +353,43 @@ export function RestTimerProvider({ children }: Props) {
     restDoneRef.current = false;
     setRestRemaining(restSeconds);
     setRestDurationSec(restSeconds);
+    setRestPhase("normal");
+    setRestPhaseLabel(null);
     setSettingAsync("restEndsAt", "").catch(() => {});
     setSettingAsync("restDurationSec", "").catch(() => {});
     cancelAllRestTimerNotifications().catch(() => {});
     setRestNotificationId(null);
   }, [restSeconds]);
 
-  const startRestTimer = useCallback(async (seconds?: number) => {
-    if (!restEnabled) return;
-    const requestedDuration = seconds ?? restSeconds;
-    // Clamp duration to the same range used for restSeconds so an out-of-range value can't produce a giant timer.
-    const duration = clampInt(Math.floor(requestedDuration), 1, 600);
-    const end = Date.now() + duration * 1000;
-    setRestEndsAt(end);
-    setRestDurationSec(duration);
-    setRestRunning(true);
-    restDoneRef.current = false;
-    setRestRemaining(duration);
-    setSettingAsync("restEndsAt", String(end)).catch(() => {});
-    setSettingAsync("restDurationSec", String(duration)).catch(() => {});
-    // Cancel ALL rest-timer notifications before scheduling new one
-    await cancelAllRestTimerNotifications();
-    const notificationId = await scheduleRestNotification(duration);
-    setRestNotificationId(notificationId);
-  }, [restEnabled, restSeconds]);
+  const startRestTimer = useCallback(
+    async (seconds?: number, opts?: { phase?: RestPhase; phaseLabel?: string | null }) => {
+      if (!restEnabled) return;
+      const requestedDuration = seconds ?? restSeconds;
+      // Clamp duration to the same range used for restSeconds so an out-of-range value can't produce a giant timer.
+      const duration = clampInt(Math.floor(requestedDuration), 1, 600);
+      const end = Date.now() + duration * 1000;
+      setRestEndsAt(end);
+      setRestDurationSec(duration);
+      setRestRunning(true);
+      restDoneRef.current = false;
+      setRestRemaining(duration);
+      setRestPhase(opts?.phase ?? "normal");
+      setRestPhaseLabel(opts?.phaseLabel ?? null);
+      setSettingAsync("restEndsAt", String(end)).catch(() => {});
+      setSettingAsync("restDurationSec", String(duration)).catch(() => {});
+      // Cancel ALL rest-timer notifications before scheduling new one
+      await cancelAllRestTimerNotifications();
+      const notificationId = await scheduleRestNotification(duration);
+      setRestNotificationId(notificationId);
+    },
+    [restEnabled, restSeconds]
+  );
+
+  const setTransitionRestSeconds = useCallback((v: number) => {
+    const clamped = clampInt(v, 0, 60);
+    setTransitionRestSecondsState(clamped);
+    setSettingAsync("transitionRestSeconds", String(clamped)).catch(() => {});
+  }, []);
 
   // Computed values
   const restLabel = restEnabled ? mmss(restRemaining) : "OFF";
@@ -380,6 +415,9 @@ export function RestTimerProvider({ children }: Props) {
     focusedExerciseId,
     activeWorkoutId,
     perSideOverrides,
+    transitionRestSeconds,
+    restPhase,
+    restPhaseLabel,
     restLabel,
     displaySeconds,
     setRestEnabled,
@@ -388,6 +426,7 @@ export function RestTimerProvider({ children }: Props) {
     setRestHaptics,
     setFocusedExerciseId,
     setActiveWorkoutId,
+    setTransitionRestSeconds,
     addPreset,
     removePreset,
     setExerciseRest,

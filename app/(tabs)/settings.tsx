@@ -13,6 +13,7 @@ import { useNavigation } from "@react-navigation/native";
 import { useTheme, setThemeMode, getThemeMode, type ThemeMode as ThemeModeSetting } from "../../src/theme";
 import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
+import { useRestTimer } from "../../src/restTimerContext";
 import ProgramStore from "../../src/programStore";
 import { displayNameFor, resolveExerciseId } from "../../src/exerciseLibrary";
 import { exportFullBackup, importBackup, exportCsv, type ImportMode } from "../../src/backup";
@@ -137,7 +138,9 @@ export default function Settings() {
   const [restSeconds, setRestSeconds] = useState<number>(120);
   const [restVibrate, setRestVibrate] = useState<boolean>(false);
 
-  const [supersetAlternate, setSupersetAlternate] = useState<boolean>(true);
+  // Transition rest is managed by the rest timer context so updates propagate live to the log screen.
+  const restTimer = useRestTimer();
+  const transitionRestSeconds = restTimer.transitionRestSeconds;
 
   const [backupOpen, setBackupOpen] = useState<"export" | "import" | "csv" | null>(null);
   const [backupText, setBackupText] = useState("");
@@ -189,7 +192,6 @@ export default function Settings() {
     const reRaw = await getSettingAsync("restEnabled");
     const rsRaw = await getSettingAsync("restSeconds");
     const rvRaw = await getSettingAsync("restVibrate");
-    const ssRaw = await getSettingAsync("supersetAlternate");
 
     setProgramMode(pm);
     setDefaultDayIndex(day);
@@ -197,8 +199,6 @@ export default function Settings() {
     setRestEnabled(reRaw === null ? true : reRaw === "1");
     setRestSeconds(clampInt(parseInt(rsRaw ?? "120", 10), 10, 600));
     setRestVibrate(rvRaw === "1");
-
-    setSupersetAlternate(ssRaw === null ? true : ssRaw === "1");
     setThemeModeState(tm);
     setThemeMode(tm);
 
@@ -1143,20 +1143,23 @@ export default function Settings() {
         </Card>
 
         <Card title={t("settings.superset")}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={{ color: theme.text }}>{t("settings.superset.autoAlternate")}</Text>
-              <Text style={{ color: theme.muted }}>
-                {t("settings.superset.desc")}
-              </Text>
-            </View>
-            <Switch
-              value={supersetAlternate}
-              onValueChange={(v) => {
-                setSupersetAlternate(v);
-                setSettingAsync("supersetAlternate", v ? "1" : "0").catch(() => {});
-              }}
-            />
+          <View style={{ gap: 4 }}>
+            <Text style={{ color: theme.text }}>{t("settings.superset.transitionRest")}</Text>
+            <Text style={{ color: theme.muted }}>
+              {t("settings.superset.transitionRestDesc")}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {[0, 10, 15, 20, 30, 45, 60].map((sec) => (
+              <Chip
+                key={`tr_${sec}`}
+                text={sec === 0 ? t("settings.superset.transitionRestNone") : `${sec}s`}
+                active={transitionRestSeconds === sec}
+                onPress={() => {
+                  restTimer.setTransitionRestSeconds(sec);
+                }}
+              />
+            ))}
           </View>
         </Card>
 
