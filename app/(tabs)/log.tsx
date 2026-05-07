@@ -585,9 +585,9 @@ export default function Logg() {
 
   // Rest timer effects (countdown, app state, haptics) are now in restTimerContext
 
-  const fireHapticLight = useCallback(async () => {
+  const fireHapticSetConfirmed = useCallback(async () => {
     if (!restTimer.restHaptics || Platform.OS === "web") return;
-    try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+    try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
   }, [restTimer.restHaptics]);
 
   const exerciseIdsKey = useMemo(() => exerciseIds.join("|"), [exerciseIds]);
@@ -1065,7 +1065,7 @@ export default function Logg() {
     setLastAddedSetId(id);
     lastAddedAnim.stopAnimation();
     lastAddedAnim.setValue(1);
-    Animated.timing(lastAddedAnim, { toValue: 0, duration: 650, useNativeDriver: false }).start(() => {
+    Animated.timing(lastAddedAnim, { toValue: 0, duration: 1100, useNativeDriver: false }).start(() => {
       setLastAddedSetId((prev) => (prev === id ? null : prev));
     });
   }
@@ -1115,7 +1115,7 @@ export default function Logg() {
     }
     setWorkoutSets((prev) => [...prev, row]);
     flashSetRow(row.id);
-    fireHapticLight();
+    fireHapticSetConfirmed();
     Keyboard.dismiss();
 
     // Haptic feedback when target sets are completed

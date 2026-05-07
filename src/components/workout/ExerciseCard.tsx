@@ -108,7 +108,7 @@ function SetTable({ sets, lastAddedSetId, lastAddedAnim, onEditSet, onDeleteSet 
 
   const highlightBg = lastAddedAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.glass, "rgba(182, 104, 245, 0.22)"],
+    outputRange: [theme.glass, "rgba(182, 104, 245, 0.55)"],
   });
 
   return (
@@ -162,6 +162,7 @@ type ExerciseHalfProps = {
   altList: string[];
   exerciseNote: string;
   isFocused: boolean;
+  hideAddSetButton?: boolean; // Hide the per-half "Add set" button (used in supersets — shared bottom button is the canonical action)
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
@@ -200,6 +201,7 @@ function ExerciseHalf({
   altList,
   exerciseNote,
   isFocused,
+  hideAddSetButton,
   lastAddedSetId,
   lastAddedAnim,
   onSetInput,
@@ -678,7 +680,7 @@ function ExerciseHalf({
         <Btn label="+3" onPress={() => onAddSetMultiple(exId, 3)} />
       </View>
 
-      {isFocused ? (
+      {isFocused && !hideAddSetButton ? (
         <AddSetButton
           label={t("log.addSetBtn")}
           onPress={async () => {
@@ -925,6 +927,7 @@ export function SupersetCard(props: SupersetCardProps) {
           altList={props.altListA}
           exerciseNote={props.exerciseNoteA}
           isFocused={props.focusedExerciseId === props.exIdA}
+          hideAddSetButton
           lastAddedSetId={props.lastAddedSetId}
           lastAddedAnim={props.lastAddedAnim}
           onSetInput={props.onSetInput}
@@ -962,6 +965,7 @@ export function SupersetCard(props: SupersetCardProps) {
           altList={props.altListB}
           exerciseNote={props.exerciseNoteB}
           isFocused={props.focusedExerciseId === props.exIdB}
+          hideAddSetButton
           lastAddedSetId={props.lastAddedSetId}
           lastAddedAnim={props.lastAddedAnim}
           onSetInput={props.onSetInput}
@@ -1000,6 +1004,7 @@ export function SupersetCard(props: SupersetCardProps) {
             altList={props.altListC ?? []}
             exerciseNote={props.exerciseNoteC ?? ""}
             isFocused={props.focusedExerciseId === props.exIdC}
+            hideAddSetButton
             lastAddedSetId={props.lastAddedSetId}
             lastAddedAnim={props.lastAddedAnim}
             onSetInput={props.onSetInput}
@@ -1025,12 +1030,10 @@ export function SupersetCard(props: SupersetCardProps) {
         ) : null}
       </View>
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-          {t("log.nextLabel", { label: props.nextLabel })}
-        </Text>
-        <Btn label="+" onPress={props.onAddSuperset} tone="accent" />
-      </View>
+      <AddSetButton
+        label={`${t("log.addSetBtn")} (${props.nextLabel})`}
+        onPress={async () => { props.onAddSuperset(); }}
+      />
     </Pressable>
     </View>
   );
