@@ -195,6 +195,16 @@ const log: TranslationMap = {
   "log.extraExercise": "Ekstra",
   "log.extraExercises": "Ekstra \u00f8velser",
   "log.alreadyInWorkout": "Allerede i \u00f8kten",
+
+  // Sl\u00e5 sammen \u00f8velser til supersett midt i \u00f8kta
+  "log.combineSuperset": "Sl\u00e5 sammen til supersett",
+  "log.combineSupersetTitle": "Sl\u00e5 sammen med",
+  "log.combineSupersetHint": "Velg en annen \u00f8velse \u00e5 sl\u00e5 sammen med {name} som supersett kun for denne \u00f8kten.",
+  "log.combineSupersetEmpty": "Ingen andre enkelt\u00f8velser \u00e5 sl\u00e5 sammen med.",
+  "log.combineSupersetFor": "Sl\u00e5 sammen {name} med\u2026",
+  "log.splitSuperset": "Del opp supersett",
+  "log.splitSupersetConfirm": "Dele dette supersettet tilbake til separate \u00f8velser? Sett som allerede er logget beholdes.",
+  "log.sessionSupersetBadge": "Tilpasset",
 };
 
 export default log;

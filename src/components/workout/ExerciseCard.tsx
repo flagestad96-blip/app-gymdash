@@ -190,6 +190,7 @@ type ExerciseHalfProps = {
   onExerciseNoteBlur: (exId: string) => void;
   onSetGoal: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
+  onCombineSuperset?: (baseExId: string) => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -229,6 +230,7 @@ function ExerciseHalf({
   onExerciseNoteBlur,
   onSetGoal,
   onOpenPlateCalc,
+  onCombineSuperset,
   workoutId,
   exerciseIndex,
   gymId,
@@ -316,6 +318,23 @@ function ExerciseHalf({
                 style={{ opacity: exerciseNote ? 1 : 0.4 }}
               />
             </Pressable>
+            {onCombineSuperset && !prefix ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  onCombineSuperset(baseExId);
+                }}
+                hitSlop={8}
+                accessibilityLabel={t("log.combineSuperset")}
+              >
+                <MaterialIcons
+                  name="merge-type"
+                  size={16}
+                  color={theme.muted}
+                  style={{ opacity: 0.55 }}
+                />
+              </Pressable>
+            ) : null}
           </View>
         </View>
         {altList.length ? (
@@ -731,6 +750,7 @@ export type ExerciseCardCallbacks = {
   onExerciseNoteBlur: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
   onSetGoal: (exId: string) => void;
+  onCombineSuperset?: (baseExId: string) => void;
 };
 
 // ── Single exercise card ──
@@ -825,6 +845,7 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onExerciseNoteBlur={props.onExerciseNoteBlur}
         onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
+        onCombineSuperset={props.onCombineSuperset}
         workoutId={props.workoutId}
         exerciseIndex={props.exerciseIndex}
         gymId={props.gymId}
@@ -1105,6 +1126,7 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   activeGoalLabelA?: string;
   activeGoalLabelB?: string;
   activeGoalLabelC?: string;
+  onSplit?: () => void;
 };
 
 function workingCount(sets: SetRow[]) {
@@ -1366,26 +1388,54 @@ export function SupersetCard(props: SupersetCardProps) {
             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, letterSpacing: 1 }}>
               {t("log.superset").toUpperCase()}
             </Text>
+            {props.onSplit ? (
+              <View style={{
+                backgroundColor: theme.isDark ? "rgba(249, 115, 22, 0.18)" : "rgba(249, 115, 22, 0.12)",
+                borderColor: theme.warn,
+                borderWidth: 1,
+                borderRadius: 8,
+                paddingHorizontal: 6,
+                paddingVertical: 1,
+              }}>
+                <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 9 }}>
+                  {t("log.sessionSupersetBadge")}
+                </Text>
+              </View>
+            ) : null}
             <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 15 }}>
               {supersetComplete
                 ? t("log.supersetComplete")
                 : t("log.supersetRound", { n: String(currentRound), total: String(totalRounds) })}
             </Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
-            {dots.map((d, i) => (
-              <View
-                key={`dot_${i}`}
-                style={{
-                  width: d.current ? 9 : 7,
-                  height: d.current ? 9 : 7,
-                  borderRadius: 5,
-                  backgroundColor: d.filled ? theme.accent : "transparent",
-                  borderWidth: d.filled ? 0 : 1,
-                  borderColor: d.current ? theme.accent : theme.line,
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+              {dots.map((d, i) => (
+                <View
+                  key={`dot_${i}`}
+                  style={{
+                    width: d.current ? 9 : 7,
+                    height: d.current ? 9 : 7,
+                    borderRadius: 5,
+                    backgroundColor: d.filled ? theme.accent : "transparent",
+                    borderWidth: d.filled ? 0 : 1,
+                    borderColor: d.current ? theme.accent : theme.line,
+                  }}
+                />
+              ))}
+            </View>
+            {props.onSplit ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  props.onSplit?.();
                 }}
-              />
-            ))}
+                hitSlop={8}
+                accessibilityLabel={t("log.splitSuperset")}
+              >
+                <MaterialIcons name="call-split" size={18} color={theme.muted} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
 

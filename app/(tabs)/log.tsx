@@ -68,6 +68,7 @@ import { advanceWeek, getPeriodization, isDeloadWeek, deloadWeight, type Periodi
 import { saveWorkoutAsTemplate } from "../../src/templates";
 import TemplatePickerModal from "../../src/components/modals/TemplatePickerModal";
 import ExerciseAddModal from "../../src/components/modals/ExerciseAddModal";
+import CombineSupersetModal from "../../src/components/modals/CombineSupersetModal";
 import { shareWorkoutSummary } from "../../src/sharing";
 import { uid, isoDateOnly, isoNow } from "../../src/storage";
 import { epley1RM, round1 } from "../../src/metrics";
@@ -103,7 +104,10 @@ type RenderBlock =
       baseB: string;
       baseC?: string;
       anchorKey: string;
+      sessionSupersetId?: string;
     };
+
+type SessionSuperset = { id: string; baseExIds: string[] };
 
 function roundWeight(n: number) {
   return Math.round(n * 10) / 10;
@@ -187,6 +191,9 @@ export default function Logg() {
 
   const [adHocExercises, setAdHocExercises] = useState<string[]>([]);
   const [addExerciseModalOpen, setAddExerciseModalOpen] = useState(false);
+
+  const [sessionSupersets, setSessionSupersets] = useState<SessionSuperset[]>([]);
+  const [combineSourceBaseExId, setCombineSourceBaseExId] = useState<string | null>(null);
 
   const [editSetOpen, setEditSetOpen] = useState(false);
   const [editSet, setEditSet] = useState<SetRow | null>(null);
@@ -369,6 +376,23 @@ export default function Logg() {
         } catch {}
       }
 
+      // Load session-only supersets (created mid-workout by combining exercises)
+      let restoredSessionSupersets: SessionSuperset[] = [];
+      if (activeRow) {
+        try {
+          const savedSs = await getSettingAsync("sessionSupersets");
+          if (savedSs) {
+            const parsed = JSON.parse(savedSs);
+            if (Array.isArray(parsed)) {
+              restoredSessionSupersets = parsed.filter(
+                (s): s is SessionSuperset =>
+                  s && typeof s.id === "string" && Array.isArray(s.baseExIds) && s.baseExIds.length >= 2,
+              );
+            }
+          }
+        } catch {}
+      }
+
       // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
       setProgram(prog);
       setAlternatives(mergedAlts);
@@ -376,6 +400,7 @@ export default function Logg() {
       setActiveDayIndex(day);
       setSelectedAlternatives(restoredAlts);
       setAdHocExercises(restoredAdHoc);
+      setSessionSupersets(restoredSessionSupersets);
 
       // Load periodization
       try {
@@ -392,6 +417,7 @@ export default function Logg() {
       setSuggestedDayIndex(0);
       setActiveDayIndex(0);
       setPeriodization(null);
+      setSessionSupersets([]);
     }
   }, []);
 
@@ -455,8 +481,55 @@ export default function Logg() {
     for (const exId of adHocExercises) {
       blocks.push({ type: "single", exId, baseExId: exId, anchorKey: `adhoc_${exId}` });
     }
-    return blocks;
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises]);
+
+    // Apply mid-workout session-only supersets: merge matching singles into a synthesized superset
+    if (sessionSupersets.length === 0) return blocks;
+
+    const baseToSs: Record<string, string> = {};
+    const ssById: Record<string, SessionSuperset> = {};
+    for (const ss of sessionSupersets) {
+      ssById[ss.id] = ss;
+      for (const baseExId of ss.baseExIds) baseToSs[baseExId] = ss.id;
+    }
+
+    const singlesByBase: Record<string, RenderBlock & { type: "single" }> = {};
+    for (const block of blocks) {
+      if (block.type === "single") singlesByBase[block.baseExId] = block;
+    }
+
+    const result: RenderBlock[] = [];
+    const emittedSs = new Set<string>();
+    for (const block of blocks) {
+      if (block.type !== "single") { result.push(block); continue; }
+      const ssId = baseToSs[block.baseExId];
+      if (!ssId) { result.push(block); continue; }
+      if (emittedSs.has(ssId)) continue;
+      const ss = ssById[ssId];
+      const ordered = ss.baseExIds
+        .map((baseId) => singlesByBase[baseId])
+        .filter((s): s is RenderBlock & { type: "single" } => Boolean(s));
+      if (ordered.length < 2) { result.push(block); continue; }
+      emittedSs.add(ssId);
+      const [first, second, third] = ordered;
+      const anchorKey = `ss_session_${ssId}`;
+      if (third) {
+        result.push({
+          type: "superset",
+          a: first.exId, b: second.exId, c: third.exId,
+          baseA: first.baseExId, baseB: second.baseExId, baseC: third.baseExId,
+          anchorKey, sessionSupersetId: ssId,
+        });
+      } else {
+        result.push({
+          type: "superset",
+          a: first.exId, b: second.exId,
+          baseA: first.baseExId, baseB: second.baseExId,
+          anchorKey, sessionSupersetId: ssId,
+        });
+      }
+    }
+    return result;
+  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, sessionSupersets]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -479,6 +552,66 @@ export default function Logg() {
     setSettingAsync("adHocExercises", JSON.stringify(next)).catch(() => {});
     setAddExerciseModalOpen(false);
   }
+
+  // ── Mid-workout combine: list base exIds of single blocks that can be merged ──
+  const singleBaseExIds = useMemo(() => {
+    const list: string[] = [];
+    if (dayPlan) {
+      for (const b of dayPlan.blocks) {
+        if (b.type === "single") list.push(b.exId);
+      }
+    }
+    for (const exId of adHocExercises) list.push(exId);
+    return list;
+  }, [dayPlan, adHocExercises]);
+
+  const combineCandidates = useMemo(() => {
+    if (!combineSourceBaseExId) return [];
+    const inSomeSs = new Set<string>();
+    for (const ss of sessionSupersets) for (const b of ss.baseExIds) inSomeSs.add(b);
+    return singleBaseExIds
+      .filter((base) => base !== combineSourceBaseExId && !inSomeSs.has(base))
+      .map((base) => ({ baseExId: base, exId: resolveSelectedExId(base) }));
+    // resolveSelectedExId is a stable closure over alternatives/selectedAlternatives state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combineSourceBaseExId, singleBaseExIds, sessionSupersets, alternatives, selectedAlternatives, activeDayIndex]);
+
+  const persistSessionSupersets = useCallback((next: SessionSuperset[]) => {
+    setSessionSupersets(next);
+    setSettingAsync("sessionSupersets", JSON.stringify(next)).catch(() => {});
+  }, []);
+
+  const openCombineModal = useCallback((baseExId: string) => {
+    if (!activeWorkoutId) {
+      Alert.alert(t("log.startWorkoutAlert"), t("log.startWorkoutMsg"));
+      return;
+    }
+    setCombineSourceBaseExId(baseExId);
+  }, [activeWorkoutId, t]);
+
+  const handleCombinePick = useCallback((sourceBaseExId: string, targetBaseExId: string) => {
+    setCombineSourceBaseExId(null);
+    if (sourceBaseExId === targetBaseExId) return;
+    // Guard: skip if either exercise is already in a session superset
+    for (const ss of sessionSupersets) {
+      if (ss.baseExIds.includes(sourceBaseExId) || ss.baseExIds.includes(targetBaseExId)) return;
+    }
+    const id = uid("ss");
+    persistSessionSupersets([...sessionSupersets, { id, baseExIds: [sourceBaseExId, targetBaseExId] }]);
+  }, [sessionSupersets, persistSessionSupersets]);
+
+  const splitSessionSuperset = useCallback((ssId: string) => {
+    Alert.alert(t("log.splitSuperset"), t("log.splitSupersetConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("log.splitSuperset"),
+        style: "destructive",
+        onPress: () => {
+          persistSessionSupersets(sessionSupersets.filter((ss) => ss.id !== ssId));
+        },
+      },
+    ]);
+  }, [sessionSupersets, persistSessionSupersets, t]);
 
   const anchorItems = useMemo(() => {
     return renderBlocks.map((b) => {
@@ -1013,7 +1146,9 @@ export default function Logg() {
     await setSettingAsync("activeWorkoutId", "");
     await setSettingAsync("selectedAlternatives", "").catch(() => {});
     await setSettingAsync("adHocExercises", "").catch(() => {});
+    await setSettingAsync("sessionSupersets", "").catch(() => {});
     setAdHocExercises([]);
+    setSessionSupersets([]);
     setActiveWorkoutId(null);
     restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
     restTimer.setActiveWorkoutId(null); // Hide floating timer
@@ -1373,6 +1508,7 @@ export default function Logg() {
       else deleteNote(exId).catch(() => {});
     },
     onOpenPlateCalc: (exId: string) => setPlateCalcExId(exId),
+    onCombineSuperset: openCombineModal,
     onSetGoal: (exId: string) => {
       setGoalExId(exId);
       setGoalType("weight");
@@ -1401,7 +1537,7 @@ export default function Logg() {
     },
   }), [setInput, applyWeightStep, applyLastSet, addSetForExercise, addSetMultiple,
        openEditSet, deleteSet, focusExercise, restTimer, openAltPicker,
-       handleSetAlternativeAsDefault, exerciseNotes, program?.id]);
+       handleSetAlternativeAsDefault, exerciseNotes, program?.id, openCombineModal]);
 
   const activeGymEquipment = useMemo(() => {
     if (!activeGymId) return null;
@@ -1669,6 +1805,7 @@ export default function Logg() {
                     anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
                   }}
                   onLogRoundSet={(args) => logSupersetSet(block, args)}
+                  onSplit={block.sessionSupersetId ? () => splitSessionSuperset(block.sessionSupersetId!) : undefined}
                   {...cardCallbacks}
                 />
               );
@@ -1996,6 +2133,15 @@ export default function Logg() {
         onClose={() => setAddExerciseModalOpen(false)}
         onSelect={addAdHocExercise}
         existingExerciseIds={exerciseIds}
+      />
+
+      {/* Combine into Superset Modal (session-only) */}
+      <CombineSupersetModal
+        visible={combineSourceBaseExId !== null}
+        onClose={() => setCombineSourceBaseExId(null)}
+        sourceBaseExId={combineSourceBaseExId}
+        candidates={combineCandidates}
+        onPick={handleCombinePick}
       />
 
       {/* Save as Template Modal */}
