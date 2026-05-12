@@ -839,6 +839,38 @@ export default function Logg() {
     return inc > 0 ? inc : 2.5;
   }
 
+  // Running session summary for the header — surfaces missed/extra sets at a glance.
+  const sessionSummary = useMemo(() => {
+    let plannedSets = 0;
+    let doneSets = 0;
+    let extraSets = 0;
+    for (const block of renderBlocks) {
+      const exIdsInBlock = block.type === "single"
+        ? [block.exId]
+        : block.c ? [block.a, block.b, block.c] : [block.a, block.b];
+      for (const eid of exIdsInBlock) {
+        const workingSets = (setsByExercise[eid] ?? []).filter((s) => !s.is_warmup).length;
+        if (adHocSet.has(eid)) { extraSets += workingSets; continue; }
+        const tgt = getTargetFor(eid);
+        if (tgt.targetSets > 0) {
+          plannedSets += tgt.targetSets;
+          doneSets += Math.min(workingSets, tgt.targetSets);
+          extraSets += Math.max(0, workingSets - tgt.targetSets);
+        } else {
+          extraSets += workingSets;
+        }
+      }
+    }
+    let totalVolume = 0;
+    for (const s of workoutSets) {
+      if (s.is_warmup) continue;
+      const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
+      totalVolume += (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
+    }
+    return { plannedSets, doneSets, extraSets, totalVolume };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderBlocks, adHocSet, setsByExercise, workoutSets, targets, activeDayIndex, isDeload, program?.id]);
+
   function resolveSelectedExId(baseExId: string) {
     const altList = alternatives[activeDayIndex]?.[baseExId] ?? [];
     const selected = selectedAlternatives[baseExId];
@@ -1641,11 +1673,41 @@ export default function Logg() {
           ) : null}
 
           <Card title={t("log.sessionCard")} style={{ borderColor: theme.accent, backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.12)" : "rgba(124, 58, 237, 0.06)" }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
               <View>
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.duration")}</Text>
                 <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>{mmss(workoutElapsedSec)}</Text>
               </View>
+              {activeWorkoutId ? (
+                <>
+                  <View>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.summarySets")}</Text>
+                    <Text
+                      style={{
+                        color:
+                          sessionSummary.plannedSets > 0 && sessionSummary.doneSets >= sessionSummary.plannedSets
+                            ? theme.success
+                            : theme.text,
+                        fontSize: 18,
+                        fontFamily: theme.mono,
+                      }}
+                    >
+                      {sessionSummary.doneSets}
+                      {sessionSummary.plannedSets > 0 ? `/${sessionSummary.plannedSets}` : ""}
+                      {sessionSummary.extraSets > 0 ? (
+                        <Text style={{ color: theme.warn, fontSize: 12 }}>{` +${sessionSummary.extraSets}`}</Text>
+                      ) : null}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.summaryVolume")}</Text>
+                    <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>
+                      {formatWeight(wu.toDisplay(sessionSummary.totalVolume))}
+                      <Text style={{ color: theme.muted, fontSize: 12 }}>{` ${wu.unitLabel()}`}</Text>
+                    </Text>
+                  </View>
+                </>
+              ) : null}
             </View>
             {activeWorkoutId && activeGymId ? (
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>

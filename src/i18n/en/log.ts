@@ -188,6 +188,8 @@ const log: TranslationMap = {
   "log.setsComplete": "Sets complete",
   "log.bonusSet": "bonus",
   "log.setsPlannedDone": "Planned sets",
+  "log.summarySets": "Sets",
+  "log.summaryVolume": "Volume",
 
   // Ad-hoc exercises
   "log.addExercise": "Add exercise",
