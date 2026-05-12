@@ -83,7 +83,7 @@ const log: TranslationMap = {
   "log.deleteSetTitle": "Slette sett?",
   "log.deleteSetMsg": "Dette kan ikke angres.",
   "log.couldNotDelete": "Kunne ikke slette sett.",
-  "log.newHeaviest": "Ny tungeste: {weight} kg",
+  "log.newHeaviest": "Ny tyngste: {weight} kg",
   "log.newE1rm": "Ny e1RM PR: {weight} kg",
   "log.newVolume": "Ny volum PR: {weight}",
   "log.superset": "Superset",
