@@ -48,7 +48,7 @@ import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../sr
 import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
-import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, type PrMap } from "../../src/prEngine";
+import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, getSessionPRsByExercise, type PrMap } from "../../src/prEngine";
 import { getAllNotes, setNote, deleteNote } from "../../src/exerciseNotes";
 import { AchievementToast, UndoToast } from "../../src/ui/modern";
 import { listGyms, getActiveGymId, setActiveGymId as setActiveGymIdStore, getActiveGym, getGymEquipmentSet, isEquipmentAvailable } from "../../src/gymStore";
@@ -1115,8 +1115,11 @@ export default function Logg() {
       return merged;
     });
 
+    // Only list heaviest PRs that were actually set THIS workout (anchored via set_id).
+    // Without this filter, every previously-set lifetime PR shows up on every workout summary.
+    const sessionPrs = getSessionPRsByExercise(activeWorkoutId ?? "", programId);
     const prs: string[] = [];
-    for (const [exId, rec] of Object.entries(dbPrMap)) {
+    for (const [exId, rec] of Object.entries(sessionPrs)) {
       if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
     }
 

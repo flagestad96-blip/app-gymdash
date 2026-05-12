@@ -18,7 +18,7 @@ jest.mock("../exerciseLibrary", () => ({
   isPerSideExercise: (id: string) => id === "dumbbell_curl",
 }));
 
-import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise } from "../prEngine";
+import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, getSessionPRsByExercise } from "../prEngine";
 
 beforeEach(() => {
   mockGetAllSync.mockReset().mockReturnValue([]);
@@ -332,6 +332,38 @@ describe("recomputePRForExercise", () => {
   it("returns empty for empty exerciseId or programId", () => {
     expect(recomputePRForExercise("", "prog_1")).toEqual({});
     expect(recomputePRForExercise("bench_press", "")).toEqual({});
+    expect(mockGetAllSync).not.toHaveBeenCalled();
+  });
+});
+
+describe("getSessionPRsByExercise", () => {
+  it("returns only PRs whose anchor set is in the given workout", () => {
+    mockGetAllSync.mockReturnValue([
+      { exercise_id: "bench_press", type: "heaviest", value: 80, reps: 5, weight: 80, set_id: "s_session", date: "2026-05-12" },
+      { exercise_id: "bench_press", type: "e1rm", value: 93.3, reps: 5, weight: 80, set_id: "s_session", date: "2026-05-12" },
+    ]);
+
+    const result = getSessionPRsByExercise("workout_today", "prog_1");
+
+    // Verify the JOIN query was issued with workout_id filter
+    const call = mockGetAllSync.mock.calls[0] as unknown as [string, unknown[]];
+    expect(call[0]).toContain("JOIN sets s ON s.id = pr.set_id");
+    expect(call[0]).toContain("s.workout_id");
+    expect(call[1]).toEqual(["prog_1", "workout_today"]);
+
+    expect(result.bench_press?.heaviest?.value).toBe(80);
+    expect(result.bench_press?.e1rm?.value).toBe(93.3);
+  });
+
+  it("returns empty map when no PRs are anchored to the workout", () => {
+    mockGetAllSync.mockReturnValue([]);
+    const result = getSessionPRsByExercise("workout_today", "prog_1");
+    expect(result).toEqual({});
+  });
+
+  it("returns empty for missing workoutId or programId", () => {
+    expect(getSessionPRsByExercise("", "prog_1")).toEqual({});
+    expect(getSessionPRsByExercise("w_1", "")).toEqual({});
     expect(mockGetAllSync).not.toHaveBeenCalled();
   });
 });
