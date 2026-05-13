@@ -40,6 +40,7 @@ const common: TranslationMap = {
   "common.day": "Dag",
   "common.days": "Dager",
   "common.week": "Uke",
+  "common.minShort": "min",
   "common.perSide": "Per side (unilateral)",
   "common.saved": "Lagret",
   "web.storageDisabled": "Web: lagring er deaktivert ({note}).",
