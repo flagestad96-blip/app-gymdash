@@ -1271,26 +1271,36 @@ export function SupersetCard(props: SupersetCardProps) {
     return "transition";
   })();
 
-  // Build CTA label
+  // Build CTA label + subtitle. The button itself reads "+ Sett A"; any
+  // workflow hint ("Next: B", "Finishes round 3") lives in the small
+  // subtitle so the action stays unambiguous at a glance.
   const activeSlotInfo = slots.find((s) => s.key === activeSlot)!;
   const slotLabel = SLOT_LABELS[activeSlot];
-  const ctaLabel = (() => {
-    if (supersetComplete) {
-      return t("log.supersetActionBonusSet", { slot: slotLabel });
-    }
-    if (isBonusTap) {
-      return t("log.supersetActionBonusSet", { slot: slotLabel });
+  const { ctaLabel, ctaSubtitle } = (() => {
+    if (supersetComplete || isBonusTap) {
+      return {
+        ctaLabel: t("log.supersetActionBonusSet", { slot: slotLabel }),
+        ctaSubtitle: null as string | null,
+      };
     }
     if (phaseAfter === "transition") {
-      // The next slot we'll switch to
       const remainingAfterThis = remainingInRound.filter((k) => k !== activeSlot);
       const nextKey = remainingAfterThis[0] ?? activeSlot;
-      return t("log.supersetLogNext", { slot: slotLabel, next: SLOT_LABELS[nextKey] });
+      return {
+        ctaLabel: t("log.supersetLogNext", { slot: slotLabel }),
+        ctaSubtitle: t("log.supersetNextHint", { next: SLOT_LABELS[nextKey] }),
+      };
     }
     if (phaseAfter === "final") {
-      return t("log.supersetLogFinishSuperset", { slot: slotLabel });
+      return {
+        ctaLabel: t("log.supersetLogFinishSuperset", { slot: slotLabel }),
+        ctaSubtitle: null,
+      };
     }
-    return t("log.supersetLogFinishRound", { slot: slotLabel, n: String(currentRound) });
+    return {
+      ctaLabel: t("log.supersetLogFinishRound", { slot: slotLabel }),
+      ctaSubtitle: t("log.supersetFinishRoundHint", { n: String(currentRound) }),
+    };
   })();
 
   function onPrimaryCta() {
@@ -1503,6 +1513,14 @@ export function SupersetCard(props: SupersetCardProps) {
               >
                 {ctaLabel}
               </Text>
+              {ctaSubtitle ? (
+                <Text
+                  numberOfLines={1}
+                  style={{ color: "rgba(255,255,255,0.85)", fontFamily: theme.mono, fontSize: 10, textAlign: "center", marginTop: 2, letterSpacing: 0.3 }}
+                >
+                  {ctaSubtitle}
+                </Text>
+              ) : null}
             </LinearGradient>
           </Pressable>
         ) : null}

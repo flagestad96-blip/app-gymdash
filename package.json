@@ -1,7 +1,7 @@
 {
   "name": "gymdash",
   "main": "expo-router/entry",
-  "version": "0.9.5-beta",
+  "version": "0.9.7-beta",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "verify": "npm run typecheck && npm run test && npm run lint"
+    "check-version": "node scripts/check-version.js",
+    "bump-version": "node scripts/bump-version.js",
+    "verify": "npm run check-version && npm run typecheck && npm run test && npm run lint"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

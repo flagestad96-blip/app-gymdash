@@ -93,6 +93,7 @@ export default function HomeScreen() {
   const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
   const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
   const [deloadToast, setDeloadToast] = useState(false);
+  const [activeWorkout, setActiveWorkout] = useState<{ id: string; startedAt: string | null; dayLabel: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -289,7 +290,37 @@ export default function HomeScreen() {
         const gym = getActiveGym();
         setActiveGymName(gym?.name ?? null);
       } catch {}
-    }, [])
+
+      // Detect an unfinished workout so we can surface a "Resume" banner.
+      let alive = true;
+      (async () => {
+        try {
+          const activeId = await getSettingAsync("activeWorkoutId");
+          if (!alive) return;
+          if (!activeId) { setActiveWorkout(null); return; }
+          await ensureDb();
+          const db = getDb();
+          const row = db.getFirstSync<{ id: string; started_at: string | null; ended_at: string | null; day_index: number | null; day_name: string | null }>(
+            `SELECT w.id, w.started_at, w.ended_at, w.day_index, pd.name AS day_name
+             FROM workouts w
+             LEFT JOIN program_days pd ON pd.program_id = w.program_id AND pd.day_index = w.day_index
+             WHERE w.id = ? LIMIT 1`,
+            [activeId],
+          );
+          if (!alive) return;
+          if (!row || row.ended_at) { setActiveWorkout(null); return; }
+          const dayLabel = row.day_name
+            ? row.day_name
+            : Number.isFinite(row.day_index ?? NaN)
+              ? `${t("common.day")} ${(row.day_index ?? 0) + 1}`
+              : "";
+          setActiveWorkout({ id: row.id, startedAt: row.started_at, dayLabel });
+        } catch {
+          if (alive) setActiveWorkout(null);
+        }
+      })();
+      return () => { alive = false; };
+    }, [t])
   );
 
   useEffect(() => {
@@ -334,6 +365,48 @@ export default function HomeScreen() {
           subtitle={greeting}
           left={<IconButton icon="menu" onPress={openDrawer} />}
         />
+
+        {/* Resume active workout */}
+        {activeWorkout ? (
+          <Pressable
+            onPress={() => router.push("/log")}
+            accessibilityRole="button"
+            accessibilityLabel={t("home.resumeWorkout")}
+            style={({ pressed }) => ({
+              backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.16)" : "rgba(124, 58, 237, 0.10)",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: theme.accent,
+              padding: 14,
+              gap: 10,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <MaterialIcons name="play-circle-outline" size={22} color={theme.accent} />
+              <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.semibold, fontSize: 13, flex: 1 }}>
+                {t("home.workoutInProgress")}
+              </Text>
+            </View>
+            <Text style={{ color: theme.text, fontSize: 13 }}>
+              {activeWorkout.dayLabel
+                ? t("home.resumeWorkoutWithDay", { day: activeWorkout.dayLabel })
+                : t("home.resumeWorkoutBare")}
+            </Text>
+            <View
+              style={{
+                backgroundColor: theme.accent,
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: 13 }}>
+                {t("home.resumeWorkout")}
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
 
         {/* Backup Reminder */}
         {backupDaysAgo != null && !backupDismissed && (

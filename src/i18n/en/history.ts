@@ -16,6 +16,19 @@ const history: TranslationMap = {
   "history.clearFilter": "Clear filter",
   "history.minWeightTitle": "Minimum weight",
 
+  // ── Workout / set mode toggle ──
+  "history.mode.workouts": "Workouts",
+  "history.mode.sets": "Sets",
+  "history.noWorkouts": "No completed workouts yet",
+  "history.workoutDetail": "Workout",
+  "history.workoutNotFound": "Workout not found",
+  "history.noSetsInWorkout": "No sets in this workout",
+  "history.workoutRow.setsLine": "{sets} sets · {volume} {unit}",
+  "history.workoutRow.duration": "{min} min",
+  "history.detail.duration": "Duration",
+  "history.detail.sets": "Sets",
+  "history.detail.volume": "Volume",
+
   // ── Exercise Notes ──
   "exerciseNotes.placeholder": "Note for this exercise...",
   "exerciseNotes.edit": "Edit note",

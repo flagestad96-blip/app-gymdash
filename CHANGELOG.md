@@ -1,5 +1,36 @@
 # Gymdash Changelog
 
+## v0.9.7-beta — 2026-05-13
+
+### Features
+- **Log tab redesign**: Top-level list of completed workouts; tap a workout for a read-only detail view of every exercise, set, RPE, note and rest. Old set-search behaviour preserved as a secondary view.
+- **Workout detail view**: New route `app/workout/[id].tsx` with full session breakdown.
+- **End-workout button**: Sticky footer on the log screen for an unambiguous way to finish.
+- **Resume banner**: Home screen now surfaces an active workout with a "Continue workout" button.
+- **End-of-workout prompt**: When all planned sets are done, the app asks whether to finish or keep going.
+- **Three-way supersets**: Add a third exercise to any superset block in the program builder.
+- **In-place superset edit**: Swap or remove an exercise without deleting and rebuilding the block.
+- **Shared "+ Set" on supersets**: One tap adds a set to every exercise in the block.
+- **Day names**: Name each program day (e.g. "Push"); names show in calendar and log header.
+- **Per-set notes**: Quick free-text note per set with badge indicator.
+
+### Improvements
+- **Superset card layout**: Destructive actions tucked into an overflow menu; progressive actions stay flat.
+- **Calendar mark dialog**: Replaced `Alert.alert` with a Modal sporting an explicit close button.
+- **Version & patch-notes hygiene**: New `scripts/check-version.js` (wired into `npm run verify`) and `scripts/bump-version.js` keep `app.json`, `package.json`, `CHANGELOG.md` and `src/patchNotes.ts` in lockstep so future builds can't ship with stale "What's New" notes.
+
+### Bug Fixes
+- **Chip cropping**: Long category labels now ellipsize instead of being cut off.
+- **Search behind keyboard**: `ExerciseAddModal` adds bottom padding so few results stay visible above the keyboard.
+- **Stopwatch instructions overlap**: Floating rest timer no longer covers its own help text.
+- **Auto-scroll offset**: "Jump to exercise" lands the card under the TopBar instead of at the bottom of the screen.
+- **Add-exercise search**: Short queries (1–2 letters) now return results.
+
+### Catch-up patch notes
+- `src/patchNotes.ts` now carries the in-app "What's New" entries for v0.9.5-beta and v0.9.6-beta (previously only documented in this file, not surfaced in the app).
+
+---
+
 ## v0.9.6-beta — 2026-02-27
 
 ### Features

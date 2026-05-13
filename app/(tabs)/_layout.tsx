@@ -59,6 +59,7 @@ export default function TabLayout() {
         <Stack.Screen name="calendar" />
         <Stack.Screen name="history" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="workout/[id]" />
       </Stack>
     </View>
   );

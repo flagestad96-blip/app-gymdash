@@ -193,6 +193,7 @@ export default function Logg() {
   const [editWeight, setEditWeight] = useState("");
   const [editReps, setEditReps] = useState("");
   const [editRpe, setEditRpe] = useState("");
+  const [editNote, setEditNote] = useState("");
 
   // Rest timer state comes from useRestTimer context
   const restTimer = useRestTimer();
@@ -223,6 +224,13 @@ export default function Logg() {
   const scrollViewHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
   const pendingAutoScrollRef = useRef<{ cardBottom: number } | null>(null);
+  // Y-offset of the exercise-cards wrapper inside the ScrollView content.
+  // Card onLayout reports y relative to this wrapper, so we add this offset
+  // when computing the scroll target for "Jump to" / focusExercise.
+  const blocksWrapperOffsetRef = useRef(0);
+  // Track which active workout we've already shown the auto-end prompt for
+  // so we don't pester the user every time they add an extra set after.
+  const endPromptShownForRef = useRef<string | null>(null);
 
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -518,6 +526,59 @@ export default function Logg() {
     return map;
   }, [workoutSets]);
 
+  // Reset the "auto-end prompt shown" flag when a new workout starts.
+  useEffect(() => {
+    if (!activeWorkoutId) endPromptShownForRef.current = null;
+  }, [activeWorkoutId]);
+
+  // Auto-prompt: when every planned (non-ad-hoc) exercise has hit its
+  // target_sets, ask the user whether to wrap up the session. Fires once per
+  // workout, never for programs without explicit set targets, and never if
+  // the user already dismissed it in this session.
+  useEffect(() => {
+    if (!activeWorkoutId) return;
+    if (endPromptShownForRef.current === activeWorkoutId) return;
+    if (renderBlocks.length === 0) return;
+
+    let anyTargetDefined = false;
+    let allTargetsHit = true;
+    for (const block of renderBlocks) {
+      const exIds = block.type === "single"
+        ? [block.exId]
+        : [block.a, block.b, ...(block.c ? [block.c] : [])];
+      for (const eid of exIds) {
+        if (adHocSet.has(eid)) continue;
+        const tgt = getTargetFor(eid);
+        if (tgt.targetSets > 0) {
+          anyTargetDefined = true;
+          const working = (setsByExercise[eid] ?? []).filter((s) => !s.is_warmup).length;
+          if (working < tgt.targetSets) {
+            allTargetsHit = false;
+            break;
+          }
+        }
+      }
+      if (!allTargetsHit) break;
+    }
+
+    if (anyTargetDefined && allTargetsHit) {
+      endPromptShownForRef.current = activeWorkoutId;
+      // Single confirmation — the auto-prompt itself already gates the
+      // destructive action, so we don't chain another confirm dialog.
+      Alert.alert(
+        t("log.allSetsDone"),
+        t("log.endNowPrompt"),
+        [
+          { text: t("log.keepGoing"), style: "cancel" },
+          { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
+        ],
+      );
+    }
+    // We intentionally exclude `getTargetFor` and `endWorkout` from deps —
+    // both are recreated on every render and would re-fire this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setsByExercise, renderBlocks, activeWorkoutId, adHocSet]);
+
   // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
 
   // Load goal labels for exercises in current day
@@ -560,7 +621,7 @@ export default function Logg() {
     if (!activeWorkoutId) { setWorkoutSets([]); return; }
     const rows = getDb().getAllSync<SetRow>(
       `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup,
-              external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg
+              external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, notes
        FROM sets WHERE workout_id = ? ORDER BY set_index ASC, created_at ASC`,
       [activeWorkoutId]
     );
@@ -885,7 +946,11 @@ export default function Logg() {
   function scrollToAnchorKey(key: string) {
     const y = anchorPositionsRef.current[key];
     if (!Number.isFinite(y)) return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+    // Card y is relative to the blocks wrapper, so add the wrapper's own
+    // offset from the top of the ScrollView content. 16px breathing room
+    // keeps the card top just below the screen edge.
+    const absoluteY = y + blocksWrapperOffsetRef.current - 16;
+    scrollRef.current?.scrollTo({ y: Math.max(0, absoluteY), animated: true });
   }
 
   function focusExercise(exId: string, opts?: { scroll?: boolean }) {
@@ -1255,6 +1320,7 @@ export default function Logg() {
     setEditWeight(row.weight != null ? String(wu.toDisplay(row.weight)) : "");
     setEditReps(String(row.reps ?? ""));
     setEditRpe(row.rpe != null ? String(row.rpe) : "");
+    setEditNote(row.notes ?? "");
     setEditSetOpen(true);
   }
 
@@ -1268,16 +1334,20 @@ export default function Logg() {
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
     let estTotalLoadKgForCheck: number | null = null;
     try {
+      const noteToSave = editNote.trim() ? editNote.trim() : null;
       if (isBw && editSet.exercise_id) {
         const dateOnly = editSet.created_at ? editSet.created_at.slice(0, 10) : isoDateOnly();
         const bwData = await computeBodyweightLoad(editSet.exercise_id, dateOnly, weight);
         estTotalLoadKgForCheck = bwData.est_total_load_kg ?? null;
         await getDb().runAsync(
-          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
-          [weight, reps, Number.isFinite(rpe) ? rpe : null, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
+          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, notes = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
+          [weight, reps, Number.isFinite(rpe) ? rpe : null, noteToSave, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
         );
       } else {
-        await getDb().runAsync(`UPDATE sets SET weight = ?, reps = ?, rpe = ? WHERE id = ?`, [weight, reps, Number.isFinite(rpe) ? rpe : null, editSet.id]);
+        await getDb().runAsync(
+          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, notes = ? WHERE id = ?`,
+          [weight, reps, Number.isFinite(rpe) ? rpe : null, noteToSave, editSet.id],
+        );
       }
       refreshWorkoutSets();
 
@@ -1584,7 +1654,12 @@ export default function Logg() {
             </HintBanner>
           )}
 
-          <View style={{ gap: 12 }}>
+          <View
+            style={{ gap: 12 }}
+            onLayout={(e) => {
+              blocksWrapperOffsetRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             {renderBlocks.map((block, blockIdx) => {
               if (block.type === "single") {
                 const exId = block.exId;
@@ -1695,6 +1770,39 @@ export default function Logg() {
                 </Text>
               </Pressable>
             ) : null}
+
+            {/* End-of-program "Avslutt økt"-knapp — explicit way to finish
+                without scrolling back up to the session card */}
+            {activeWorkoutId ? (
+              <Pressable
+                onPress={() => {
+                  Alert.alert(t("log.confirmEnd"), t("log.confirmEndMsg"), [
+                    { text: t("common.cancel"), style: "cancel" },
+                    { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
+                  ]);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.endWorkout")}
+                style={({ pressed }) => ({
+                  marginTop: 4,
+                  borderWidth: 1,
+                  borderColor: theme.danger,
+                  borderRadius: theme.radius.xl,
+                  paddingVertical: 14,
+                  paddingHorizontal: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  backgroundColor: pressed
+                    ? (theme.isDark ? "rgba(251, 113, 133, 0.18)" : "#FEE2E2")
+                    : (theme.isDark ? "rgba(251, 113, 133, 0.08)" : "rgba(220, 38, 38, 0.05)"),
+                })}
+              >
+                <Text style={{ color: theme.danger, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+                  {t("log.endWorkout")}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1780,6 +1888,19 @@ export default function Logg() {
               <TextField value={editRpe} onChangeText={setEditRpe} placeholder="rpe" placeholderTextColor={theme.muted} keyboardType="numeric"
                 style={{ width: 80, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
             </View>
+            <TextInput
+              value={editNote}
+              onChangeText={setEditNote}
+              placeholder={t("log.setNotePlaceholder")}
+              placeholderTextColor={theme.muted}
+              multiline
+              style={{
+                color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder,
+                borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 12, paddingVertical: 10,
+                fontFamily: theme.mono, fontSize: 14, minHeight: 60, maxHeight: 120,
+                textAlignVertical: "top",
+              }}
+            />
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Btn label={t("common.save")} onPress={saveEditSet} tone="accent" />
               <Btn label={t("common.cancel")} onPress={() => setEditSetOpen(false)} />
