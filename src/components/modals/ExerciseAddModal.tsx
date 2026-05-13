@@ -94,7 +94,9 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
             data={results}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 240, flexGrow: 1 }}
             renderItem={({ item }) => {
               const alreadyIn = existingSet.has(item.id);
               return (

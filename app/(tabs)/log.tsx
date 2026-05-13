@@ -223,6 +223,10 @@ export default function Logg() {
   const scrollViewHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
   const pendingAutoScrollRef = useRef<{ cardBottom: number } | null>(null);
+  // Y-offset of the exercise-cards wrapper inside the ScrollView content.
+  // Card onLayout reports y relative to this wrapper, so we add this offset
+  // when computing the scroll target for "Jump to" / focusExercise.
+  const blocksWrapperOffsetRef = useRef(0);
 
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -885,7 +889,11 @@ export default function Logg() {
   function scrollToAnchorKey(key: string) {
     const y = anchorPositionsRef.current[key];
     if (!Number.isFinite(y)) return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+    // Card y is relative to the blocks wrapper, so add the wrapper's own
+    // offset from the top of the ScrollView content. 16px breathing room
+    // keeps the card top just below the screen edge.
+    const absoluteY = y + blocksWrapperOffsetRef.current - 16;
+    scrollRef.current?.scrollTo({ y: Math.max(0, absoluteY), animated: true });
   }
 
   function focusExercise(exId: string, opts?: { scroll?: boolean }) {
@@ -1584,7 +1592,12 @@ export default function Logg() {
             </HintBanner>
           )}
 
-          <View style={{ gap: 12 }}>
+          <View
+            style={{ gap: 12 }}
+            onLayout={(e) => {
+              blocksWrapperOffsetRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             {renderBlocks.map((block, blockIdx) => {
               if (block.type === "single") {
                 const exId = block.exId;

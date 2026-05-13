@@ -245,6 +245,8 @@ export function Chip({
       }}
     >
       <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
         style={{
           color: textColor,
           fontSize: theme.fontSize.xs,

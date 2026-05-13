@@ -183,21 +183,31 @@ export default function FloatingRestTimer() {
       {activeWorkoutId && showHint ? (
         <Pressable
           onPress={dismissHint}
+          accessibilityRole="button"
+          accessibilityLabel={t("hint.timerLongPress")}
           style={{
             position: "absolute",
-            bottom: insets.bottom + 45,
+            // Sit ABOVE the floating pill so the hint text isn't covered by it.
+            // Pill is at bottom = insets.bottom + 70 and ~44px tall, so the
+            // tooltip's bottom should clear that.
+            bottom: insets.bottom + 70 + 52,
             right: 16,
-            zIndex: 999,
-            backgroundColor: theme.glass,
-            borderColor: theme.glassBorder,
+            zIndex: 1001,
+            elevation: 12,
+            backgroundColor: theme.modalGlass,
+            borderColor: theme.accent,
             borderWidth: 1,
             borderRadius: theme.radius.md,
             paddingHorizontal: 10,
             paddingVertical: 6,
             maxWidth: 240,
+            shadowColor: theme.shadow.md.color,
+            shadowOpacity: theme.shadow.md.opacity,
+            shadowRadius: theme.shadow.md.radius,
+            shadowOffset: theme.shadow.md.offset,
           }}
         >
-          <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 15 }}>
+          <Text style={{ color: theme.text, fontSize: 11, lineHeight: 15 }}>
             {t("hint.timerLongPress")}
           </Text>
         </Pressable>
