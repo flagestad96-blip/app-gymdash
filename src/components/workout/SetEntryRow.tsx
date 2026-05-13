@@ -25,6 +25,7 @@ export type SetRow = {
   bodyweight_factor?: number | null;
   est_total_load_kg?: number | null;
   rest_seconds?: number | null;
+  notes?: string | null;
 };
 
 export type SetEntryRowProps = {
@@ -50,48 +51,70 @@ export default function SetEntryRow({ set: s, highlight, highlightBg, onEdit, on
         ? t("log.bwMissing")
         : null;
 
+  const hasNote = !!(s.notes && s.notes.trim());
+
   return (
     <Animated.View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: theme.space.sm,
+        gap: 4,
         paddingVertical: 8,
         paddingHorizontal: 10,
         borderRadius: theme.radius.md,
         borderWidth: 1,
-        borderColor: theme.glassBorder,
+        borderColor: hasNote ? theme.accent : theme.glassBorder,
         backgroundColor: highlight ? highlightBg : theme.glass,
       }}
     >
-      <Text style={{ width: 28, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-        {s.set_index + 1}
-      </Text>
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: theme.text, fontWeight: theme.fontWeight.semibold }}>
-          {formatWeight(wu.toDisplay(s.weight))}
-          {s.exercise_id && isPerSideExercise(s.exercise_id)
-            ? ` (${t("log.each")})`
-            : null}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.sm }}>
+        <Text style={{ width: 28, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+          {s.set_index + 1}
         </Text>
-        {bwInfo ? (
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-            {bwInfo}
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontWeight: theme.fontWeight.semibold }}>
+            {formatWeight(wu.toDisplay(s.weight))}
+            {s.exercise_id && isPerSideExercise(s.exercise_id)
+              ? ` (${t("log.each")})`
+              : null}
           </Text>
-        ) : null}
+          {bwInfo ? (
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+              {bwInfo}
+            </Text>
+          ) : null}
+        </View>
+        <View style={{ width: 44 }}>
+          <Text style={{ color: theme.text, fontWeight: theme.fontWeight.medium }}>{s.reps}</Text>
+          {s.rpe != null ? (
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+              @{s.rpe}
+            </Text>
+          ) : null}
+        </View>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <IconButton
+            icon={hasNote ? "note" : "note-add"}
+            onPress={() => onEdit(s)}
+            tone={hasNote ? "accent" : "normal"}
+            accessibilityLabel={t("log.setNote")}
+          />
+          <IconButton icon="edit" onPress={() => onEdit(s)} />
+          <IconButton icon="delete-outline" onPress={() => onDelete(s)} tone="danger" />
+        </View>
       </View>
-      <View style={{ width: 44 }}>
-        <Text style={{ color: theme.text, fontWeight: theme.fontWeight.medium }}>{s.reps}</Text>
-        {s.rpe != null ? (
-          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-            @{s.rpe}
-          </Text>
-        ) : null}
-      </View>
-      <View style={{ flexDirection: "row", gap: 6 }}>
-        <IconButton icon="edit" onPress={() => onEdit(s)} />
-        <IconButton icon="delete-outline" onPress={() => onDelete(s)} tone="danger" />
-      </View>
+      {hasNote ? (
+        <Text
+          style={{
+            color: theme.muted,
+            fontSize: theme.fontSize.xs,
+            fontStyle: "italic",
+            paddingLeft: 28 + theme.space.sm,
+            paddingRight: 4,
+          }}
+          numberOfLines={2}
+        >
+          {s.notes}
+        </Text>
+      ) : null}
     </Animated.View>
   );
 }

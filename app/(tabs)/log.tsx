@@ -193,6 +193,7 @@ export default function Logg() {
   const [editWeight, setEditWeight] = useState("");
   const [editReps, setEditReps] = useState("");
   const [editRpe, setEditRpe] = useState("");
+  const [editNote, setEditNote] = useState("");
 
   // Rest timer state comes from useRestTimer context
   const restTimer = useRestTimer();
@@ -623,7 +624,7 @@ export default function Logg() {
     if (!activeWorkoutId) { setWorkoutSets([]); return; }
     const rows = getDb().getAllSync<SetRow>(
       `SELECT id, workout_id, exercise_name, set_index, weight, reps, rpe, created_at, exercise_id, set_type, is_warmup,
-              external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg
+              external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, notes
        FROM sets WHERE workout_id = ? ORDER BY set_index ASC, created_at ASC`,
       [activeWorkoutId]
     );
@@ -1322,6 +1323,7 @@ export default function Logg() {
     setEditWeight(row.weight != null ? String(wu.toDisplay(row.weight)) : "");
     setEditReps(String(row.reps ?? ""));
     setEditRpe(row.rpe != null ? String(row.rpe) : "");
+    setEditNote(row.notes ?? "");
     setEditSetOpen(true);
   }
 
@@ -1335,16 +1337,20 @@ export default function Logg() {
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
     let estTotalLoadKgForCheck: number | null = null;
     try {
+      const noteToSave = editNote.trim() ? editNote.trim() : null;
       if (isBw && editSet.exercise_id) {
         const dateOnly = editSet.created_at ? editSet.created_at.slice(0, 10) : isoDateOnly();
         const bwData = await computeBodyweightLoad(editSet.exercise_id, dateOnly, weight);
         estTotalLoadKgForCheck = bwData.est_total_load_kg ?? null;
         await getDb().runAsync(
-          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
-          [weight, reps, Number.isFinite(rpe) ? rpe : null, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
+          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, notes = ?, external_load_kg = ?, bodyweight_kg_used = ?, bodyweight_factor = ?, est_total_load_kg = ? WHERE id = ?`,
+          [weight, reps, Number.isFinite(rpe) ? rpe : null, noteToSave, bwData.external_load_kg ?? 0, bwData.bodyweight_kg_used ?? null, bwData.bodyweight_factor ?? null, bwData.est_total_load_kg ?? null, editSet.id]
         );
       } else {
-        await getDb().runAsync(`UPDATE sets SET weight = ?, reps = ?, rpe = ? WHERE id = ?`, [weight, reps, Number.isFinite(rpe) ? rpe : null, editSet.id]);
+        await getDb().runAsync(
+          `UPDATE sets SET weight = ?, reps = ?, rpe = ?, notes = ? WHERE id = ?`,
+          [weight, reps, Number.isFinite(rpe) ? rpe : null, noteToSave, editSet.id],
+        );
       }
       refreshWorkoutSets();
 
@@ -1885,6 +1891,19 @@ export default function Logg() {
               <TextField value={editRpe} onChangeText={setEditRpe} placeholder="rpe" placeholderTextColor={theme.muted} keyboardType="numeric"
                 style={{ width: 80, minHeight: 48, color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17 }} />
             </View>
+            <TextInput
+              value={editNote}
+              onChangeText={setEditNote}
+              placeholder={t("log.setNotePlaceholder")}
+              placeholderTextColor={theme.muted}
+              multiline
+              style={{
+                color: theme.text, backgroundColor: theme.panel, borderColor: theme.glassBorder,
+                borderWidth: 1, borderRadius: theme.radius.md, paddingHorizontal: 12, paddingVertical: 10,
+                fontFamily: theme.mono, fontSize: 14, minHeight: 60, maxHeight: 120,
+                textAlignVertical: "top",
+              }}
+            />
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Btn label={t("common.save")} onPress={saveEditSet} tone="accent" />
               <Btn label={t("common.cancel")} onPress={() => setEditSetOpen(false)} />
