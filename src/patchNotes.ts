@@ -1,4 +1,9 @@
 // src/patchNotes.ts — Changelog / patch notes system
+//
+// The newest entry MUST match `expo.version` in app.json. The helper script
+// `scripts/check-version.js` (wired into `npm run verify`) enforces this.
+
+import Constants from "expo-constants";
 
 export type PatchNote = {
   version: string;
@@ -9,8 +14,58 @@ export type PatchNote = {
 /**
  * Changelog entries, newest first.
  * Each change uses an i18n key so notes appear in the user's language.
+ * When adding a new entry, also add matching keys in
+ * `src/i18n/en/patchNotes.ts` and `src/i18n/nb/patchNotes.ts`.
  */
 export const patchNotes: PatchNote[] = [
+  {
+    version: "0.9.7-beta",
+    date: "2026-05-13",
+    changes: [
+      { type: "improved", key: "patchNotes.0_9_7.loggTab" },
+      { type: "new", key: "patchNotes.0_9_7.workoutDetail" },
+      { type: "new", key: "patchNotes.0_9_7.endWorkoutButton" },
+      { type: "new", key: "patchNotes.0_9_7.resumeBanner" },
+      { type: "new", key: "patchNotes.0_9_7.endPrompt" },
+      { type: "new", key: "patchNotes.0_9_7.threeWaySuperset" },
+      { type: "improved", key: "patchNotes.0_9_7.supersetEdit" },
+      { type: "new", key: "patchNotes.0_9_7.sharedAddSet" },
+      { type: "improved", key: "patchNotes.0_9_7.supersetButtons" },
+      { type: "new", key: "patchNotes.0_9_7.dayNames" },
+      { type: "new", key: "patchNotes.0_9_7.setNotes" },
+      { type: "improved", key: "patchNotes.0_9_7.calendarDialog" },
+      { type: "fix", key: "patchNotes.0_9_7.chipCropping" },
+      { type: "fix", key: "patchNotes.0_9_7.searchKeyboard" },
+      { type: "fix", key: "patchNotes.0_9_7.stopwatchOverlap" },
+      { type: "fix", key: "patchNotes.0_9_7.scrollOffset" },
+      { type: "fix", key: "patchNotes.0_9_7.addExerciseSearch" },
+      { type: "improved", key: "patchNotes.0_9_7.versionHygiene" },
+    ],
+  },
+  {
+    version: "0.9.6-beta",
+    date: "2026-02-27",
+    changes: [
+      { type: "new", key: "patchNotes.0_9_6.adHocExercises" },
+      { type: "new", key: "patchNotes.0_9_6.setTracking" },
+      { type: "improved", key: "patchNotes.0_9_6.notificationToggles" },
+      { type: "fix", key: "patchNotes.0_9_6.doubleRestNotif" },
+      { type: "fix", key: "patchNotes.0_9_6.abandonedWorkout" },
+      { type: "fix", key: "patchNotes.0_9_6.staleQuery" },
+      { type: "fix", key: "patchNotes.0_9_6.duplicateAdHoc" },
+      { type: "fix", key: "patchNotes.0_9_6.flatlistOverflow" },
+    ],
+  },
+  {
+    version: "0.9.5-beta",
+    date: "2026-02-26",
+    changes: [
+      { type: "new", key: "patchNotes.0_9_5.exerciseGoals" },
+      { type: "improved", key: "patchNotes.0_9_5.drawerCleanup" },
+      { type: "fix", key: "patchNotes.0_9_5.trainingIntel" },
+      { type: "fix", key: "patchNotes.0_9_5.rpeFiltering" },
+    ],
+  },
   {
     version: "0.9.1-beta",
     date: "2026-02-05",
@@ -87,4 +142,10 @@ export const patchNotes: PatchNote[] = [
   },
 ];
 
-export const CURRENT_VERSION = patchNotes[0].version;
+/**
+ * Version actually running on the device (from app.json via expo-constants).
+ * Falls back to the newest patchNotes entry if Constants is unavailable
+ * (e.g. during unit tests). The verify script guarantees these match.
+ */
+export const CURRENT_VERSION: string =
+  (Constants?.expoConfig?.version as string | undefined) ?? patchNotes[0].version;
