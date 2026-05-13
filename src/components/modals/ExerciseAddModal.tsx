@@ -61,6 +61,10 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
             borderRadius: theme.radius.xl,
             padding: 18,
             gap: 14,
+            // The FlatList below uses flex: 1, which only works when its
+            // parent has a concrete height. Without flex/height on this
+            // wrapper the list collapses to 0px and search "doesn't work".
+            flex: 1,
             maxHeight: "85%",
             shadowColor: theme.shadow.lg.color,
             shadowOpacity: theme.shadow.lg.opacity,
