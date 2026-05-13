@@ -28,6 +28,7 @@ const history: TranslationMap = {
   "history.detail.duration": "Varighet",
   "history.detail.sets": "Sett",
   "history.detail.volume": "Volum",
+  "history.tapSetToEdit": "Trykk på et sett for å redigere eller slette",
 
   // ── Exercise Notes ──
   "exerciseNotes.placeholder": "Notat for denne øvelsen...",
