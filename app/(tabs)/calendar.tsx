@@ -1,6 +1,6 @@
 ﻿// app/(tabs)/calendar.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, Modal, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, Modal } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { ensureDb, getDb, formatDuration } from "../../src/db";
 import { useTheme } from "../../src/theme";
@@ -18,6 +18,7 @@ type WorkoutRow = {
   date: string;
   program_id?: string | null;
   day_index?: number | null;
+  day_name?: string | null;
   started_at?: string | null;
   ended_at?: string | null;
   notes?: string | null;
@@ -129,13 +130,20 @@ export default function CalendarScreen() {
   const [detailSets, setDetailSets] = useState<SetRow[]>([]);
   const [detailPRSetIds, setDetailPRSetIds] = useState<Set<string>>(new Set());
   const [prevExOrder, setPrevExOrder] = useState<string[]>([]);
+  // Modal-based replacement for the day-mark Alert.alert (had no obvious
+  // way out on iOS when the user just wanted to back out without marking).
+  const [markOptionsDate, setMarkOptionsDate] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     await ensureDb();
     const db = getDb();
 
     const w = await db.getAllAsync<WorkoutRow>(
-      `SELECT id, date, program_id, day_index, started_at, ended_at, notes FROM workouts ORDER BY date ASC`
+      `SELECT w.id, w.date, w.program_id, w.day_index, w.started_at, w.ended_at, w.notes,
+              pd.name AS day_name
+       FROM workouts w
+       LEFT JOIN program_days pd ON pd.program_id = w.program_id AND pd.day_index = w.day_index
+       ORDER BY w.date ASC`
     );
     const wList = Array.isArray(w) ? w : [];
     setWorkouts(wList);
@@ -383,16 +391,13 @@ export default function CalendarScreen() {
   const selectedSummary = selectedDate ? daySummaries[selectedDate] ?? [] : [];
 
   function showMarkOptions(date: string) {
-    const options: Array<{ text: string; onPress: () => void; style?: "cancel" | "destructive" }> = [
-      { text: t("calendar.markRest"), onPress: () => setDayMark(date, "rest") },
-      { text: t("calendar.markSkipped"), onPress: () => setDayMark(date, "skipped") },
-      { text: t("calendar.markSick"), onPress: () => setDayMark(date, "sick") },
-    ];
-    if (dayMarks[date]) {
-      options.push({ text: t("calendar.clearMark"), onPress: () => setDayMark(date, null), style: "destructive" });
-    }
-    options.push({ text: t("common.cancel"), onPress: () => {}, style: "cancel" });
-    Alert.alert(t("calendar.markDay"), t("calendar.markDayMsg"), options);
+    setMarkOptionsDate(date);
+  }
+  function chooseMark(mark: DayMark | null) {
+    const date = markOptionsDate;
+    if (!date) return;
+    setDayMark(date, mark);
+    setMarkOptionsDate(null);
   }
 
   if (!ready) {
@@ -614,7 +619,11 @@ export default function CalendarScreen() {
               {/* Workout list rows */}
               {selectedWorkouts.map((w, idx) => {
                 const setsCount = setsByWorkout[w.id] ?? 0;
-                const dayLabel = Number.isFinite(w.day_index ?? NaN) ? `${t("common.day")} ${(w.day_index ?? 0) + 1}` : "";
+                const dayLabel = w.day_name
+                  ? w.day_name
+                  : Number.isFinite(w.day_index ?? NaN)
+                    ? `${t("common.day")} ${(w.day_index ?? 0) + 1}`
+                    : "";
                 return (
                   <ListRow
                     key={w.id}
@@ -658,7 +667,11 @@ export default function CalendarScreen() {
               <View>
                 <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 18 }}>
                   {detailWorkout?.date ?? ""}
-                  {detailWorkout?.day_index != null ? ` \u2014 ${t("common.day")} ${(detailWorkout.day_index ?? 0) + 1}` : ""}
+                  {detailWorkout?.day_name
+                    ? ` \u2014 ${detailWorkout.day_name}`
+                    : detailWorkout?.day_index != null
+                      ? ` \u2014 ${t("common.day")} ${(detailWorkout.day_index ?? 0) + 1}`
+                      : ""}
                 </Text>
                 {detailWorkout?.started_at ? (
                   <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
@@ -780,6 +793,51 @@ export default function CalendarScreen() {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Day-mark picker — replaces Alert.alert so users have an obvious
+          way to back out without marking the day. */}
+      <Modal
+        visible={markOptionsDate !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMarkOptionsDate(null)}
+      >
+        <Pressable
+          onPress={() => setMarkOptionsDate(null)}
+          style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: theme.modalGlass,
+              borderColor: theme.glassBorder,
+              borderWidth: 1,
+              borderRadius: 18,
+              padding: 18,
+              gap: 10,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 16, flex: 1 }} numberOfLines={1}>
+                {t("calendar.markDay")}
+                {markOptionsDate ? ` — ${markOptionsDate}` : ""}
+              </Text>
+              <IconButton icon="close" onPress={() => setMarkOptionsDate(null)} />
+            </View>
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+              {t("calendar.markDayMsg")}
+            </Text>
+            <View style={{ gap: 8 }}>
+              <Btn label={t("calendar.markRest")} onPress={() => chooseMark("rest")} />
+              <Btn label={t("calendar.markSkipped")} onPress={() => chooseMark("skipped")} />
+              <Btn label={t("calendar.markSick")} onPress={() => chooseMark("sick")} />
+              {markOptionsDate && dayMarks[markOptionsDate] ? (
+                <Btn label={t("calendar.clearMark")} tone="danger" onPress={() => chooseMark(null)} />
+              ) : null}
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </Screen>
   );
