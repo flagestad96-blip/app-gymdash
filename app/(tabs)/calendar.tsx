@@ -141,6 +141,17 @@ export default function CalendarScreen() {
         [detailWorkout.id]
       );
       setDetailSets(Array.isArray(sets) ? sets : []);
+
+      // Refresh PR badges — recomputePRForExercise may have moved them.
+      const prRows = await getDb().getAllAsync<{ set_id: string }>(
+        `SELECT set_id FROM pr_records WHERE set_id IN (
+           SELECT id FROM sets WHERE workout_id = ?
+         )`,
+        [detailWorkout.id]
+      );
+      const prIds = new Set<string>();
+      for (const r of prRows ?? []) if (r.set_id) prIds.add(r.set_id);
+      setDetailPRSetIds(prIds);
     } catch (err) {
       console.warn("calendar reloadDetailSets failed", err);
     }
