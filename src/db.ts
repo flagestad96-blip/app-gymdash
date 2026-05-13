@@ -640,6 +640,29 @@ export async function initDb() {
             d.execSync(`ALTER TABLE program_day_exercises ADD COLUMN c_id TEXT;`);
           }
         }},
+        // 27: backfill ended_at for legacy workouts that have logged sets
+        // but never had ended_at set (workouts from before the explicit
+        // end-flow). The new history tab filters by ended_at IS NOT NULL,
+        // so without this old completed workouts would silently disappear
+        // from the Workouts list.
+        //
+        // Guard: never close the workout the user is currently resuming.
+        { version: 27, up: (d) => {
+          if (!hasColumn("workouts", "ended_at")) return;
+          d.execSync(`
+            UPDATE workouts
+            SET ended_at = (
+              SELECT MAX(s.created_at)
+              FROM sets s
+              WHERE s.workout_id = workouts.id
+            )
+            WHERE ended_at IS NULL
+              AND EXISTS (SELECT 1 FROM sets s WHERE s.workout_id = workouts.id)
+              AND id NOT IN (
+                SELECT value FROM settings WHERE key = 'activeWorkoutId' AND value <> ''
+              );
+          `);
+        }},
       ];
 
       // Run pending migrations
