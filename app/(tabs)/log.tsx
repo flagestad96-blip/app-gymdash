@@ -227,6 +227,9 @@ export default function Logg() {
   // Card onLayout reports y relative to this wrapper, so we add this offset
   // when computing the scroll target for "Jump to" / focusExercise.
   const blocksWrapperOffsetRef = useRef(0);
+  // Track which active workout we've already shown the auto-end prompt for
+  // so we don't pester the user every time they add an extra set after.
+  const endPromptShownForRef = useRef<string | null>(null);
 
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -521,6 +524,62 @@ export default function Logg() {
     }
     return map;
   }, [workoutSets]);
+
+  // Reset the "auto-end prompt shown" flag when a new workout starts.
+  useEffect(() => {
+    if (!activeWorkoutId) endPromptShownForRef.current = null;
+  }, [activeWorkoutId]);
+
+  // Auto-prompt: when every planned (non-ad-hoc) exercise has hit its
+  // target_sets, ask the user whether to wrap up the session. Fires once per
+  // workout, never for programs without explicit set targets, and never if
+  // the user already dismissed it in this session.
+  useEffect(() => {
+    if (!activeWorkoutId) return;
+    if (endPromptShownForRef.current === activeWorkoutId) return;
+    if (renderBlocks.length === 0) return;
+
+    let anyTargetDefined = false;
+    let allTargetsHit = true;
+    for (const block of renderBlocks) {
+      const exIds = block.type === "single"
+        ? [block.exId]
+        : [block.a, block.b, ...(block.c ? [block.c] : [])];
+      for (const eid of exIds) {
+        if (adHocSet.has(eid)) continue;
+        const tgt = getTargetFor(eid);
+        if (tgt.targetSets > 0) {
+          anyTargetDefined = true;
+          const working = (setsByExercise[eid] ?? []).filter((s) => !s.is_warmup).length;
+          if (working < tgt.targetSets) {
+            allTargetsHit = false;
+            break;
+          }
+        }
+      }
+      if (!allTargetsHit) break;
+    }
+
+    if (anyTargetDefined && allTargetsHit) {
+      endPromptShownForRef.current = activeWorkoutId;
+      Alert.alert(
+        t("log.allSetsDone"),
+        t("log.endNowPrompt"),
+        [
+          { text: t("log.keepGoing"), style: "cancel" },
+          { text: t("log.endWorkout"), style: "default", onPress: () => {
+            Alert.alert(t("log.confirmEnd"), t("log.confirmEndMsg"), [
+              { text: t("common.cancel"), style: "cancel" },
+              { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
+            ]);
+          } },
+        ],
+      );
+    }
+    // We intentionally exclude `getTargetFor` and `endWorkout` from deps —
+    // both are recreated on every render and would re-fire this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setsByExercise, renderBlocks, activeWorkoutId, adHocSet]);
 
   // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
 
@@ -1705,6 +1764,39 @@ export default function Logg() {
                 <MaterialIcons name="add-circle-outline" size={28} color={theme.muted} />
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 13 }}>
                   {t("log.addExercise")}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {/* End-of-program "Avslutt økt"-knapp — explicit way to finish
+                without scrolling back up to the session card */}
+            {activeWorkoutId ? (
+              <Pressable
+                onPress={() => {
+                  Alert.alert(t("log.confirmEnd"), t("log.confirmEndMsg"), [
+                    { text: t("common.cancel"), style: "cancel" },
+                    { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
+                  ]);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.endWorkout")}
+                style={({ pressed }) => ({
+                  marginTop: 4,
+                  borderWidth: 1,
+                  borderColor: theme.danger,
+                  borderRadius: theme.radius.xl,
+                  paddingVertical: 14,
+                  paddingHorizontal: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  backgroundColor: pressed
+                    ? (theme.isDark ? "rgba(251, 113, 133, 0.18)" : "#FEE2E2")
+                    : (theme.isDark ? "rgba(251, 113, 133, 0.08)" : "rgba(220, 38, 38, 0.05)"),
+                })}
+              >
+                <Text style={{ color: theme.danger, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+                  {t("log.endWorkout")}
                 </Text>
               </Pressable>
             ) : null}
