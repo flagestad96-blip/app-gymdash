@@ -72,6 +72,7 @@ import { shareWorkoutSummary } from "../../src/sharing";
 import { uid, isoDateOnly, isoNow } from "../../src/storage";
 import { epley1RM, round1 } from "../../src/metrics";
 import { formatWeight, shortLabel, parseTimeMs, clampInt } from "../../src/format";
+import { areAllPlannedSetsDone } from "../../src/workoutCompletion";
 
 type WorkoutRow = {
   id: string;
@@ -535,33 +536,27 @@ export default function Logg() {
   // target_sets, ask the user whether to wrap up the session. Fires once per
   // workout, never for programs without explicit set targets, and never if
   // the user already dismissed it in this session.
+  //
+  // The completion check itself lives in src/workoutCompletion.ts — pure
+  // function with full Jest coverage of the edge cases (warmup-only sets,
+  // ad-hoc exercises, partial superset slots, 3-way supersets, etc.).
   useEffect(() => {
     if (!activeWorkoutId) return;
     if (endPromptShownForRef.current === activeWorkoutId) return;
     if (renderBlocks.length === 0) return;
 
-    let anyTargetDefined = false;
-    let allTargetsHit = true;
-    for (const block of renderBlocks) {
-      const exIds = block.type === "single"
-        ? [block.exId]
-        : [block.a, block.b, ...(block.c ? [block.c] : [])];
-      for (const eid of exIds) {
-        if (adHocSet.has(eid)) continue;
-        const tgt = getTargetFor(eid);
-        if (tgt.targetSets > 0) {
-          anyTargetDefined = true;
-          const working = (setsByExercise[eid] ?? []).filter((s) => !s.is_warmup).length;
-          if (working < tgt.targetSets) {
-            allTargetsHit = false;
-            break;
-          }
-        }
-      }
-      if (!allTargetsHit) break;
-    }
+    const done = areAllPlannedSetsDone({
+      blocks: renderBlocks.map((b) =>
+        b.type === "single"
+          ? { type: "single", exId: b.exId }
+          : { type: "superset", a: b.a, b: b.b, c: b.c },
+      ),
+      setsByExercise,
+      adHocSet,
+      getTarget: (exId) => ({ targetSets: getTargetFor(exId).targetSets }),
+    });
 
-    if (anyTargetDefined && allTargetsHit) {
+    if (done) {
       endPromptShownForRef.current = activeWorkoutId;
       // Single confirmation — the auto-prompt itself already gates the
       // destructive action, so we don't chain another confirm dialog.
