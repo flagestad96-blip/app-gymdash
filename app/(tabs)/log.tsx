@@ -563,17 +563,14 @@ export default function Logg() {
 
     if (anyTargetDefined && allTargetsHit) {
       endPromptShownForRef.current = activeWorkoutId;
+      // Single confirmation — the auto-prompt itself already gates the
+      // destructive action, so we don't chain another confirm dialog.
       Alert.alert(
         t("log.allSetsDone"),
         t("log.endNowPrompt"),
         [
           { text: t("log.keepGoing"), style: "cancel" },
-          { text: t("log.endWorkout"), style: "default", onPress: () => {
-            Alert.alert(t("log.confirmEnd"), t("log.confirmEndMsg"), [
-              { text: t("common.cancel"), style: "cancel" },
-              { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
-            ]);
-          } },
+          { text: t("log.endWorkout"), style: "destructive", onPress: endWorkout },
         ],
       );
     }

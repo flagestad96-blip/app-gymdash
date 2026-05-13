@@ -483,7 +483,7 @@ LIMIT ?`;
                             {item.workoutDate}
                           </Text>
                           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                            {item.setCount} {t("common.workouts").toLowerCase() /* generic count */}
+                            {item.setCount} {t("common.sets").toLowerCase()}
                           </Text>
                         </View>
                         <Text style={{ color: theme.muted, fontSize: 14 }}>
