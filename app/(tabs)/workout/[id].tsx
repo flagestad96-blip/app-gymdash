@@ -1,6 +1,11 @@
-// app/(tabs)/workout/[id].tsx — Read-only detail view of a completed workout
+// app/(tabs)/workout/[id].tsx — Detail view of a completed workout
+//
+// Lists every set grouped by exercise with full metadata (weight, reps,
+// RPE, rest, notes). Each set row is tappable to open EditSetModal so the
+// user can correct a typo or delete a set after the fact. PR records are
+// re-computed by EditSetModal on save/delete.
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, FlatList } from "react-native";
+import { View, Text, FlatList, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ensureDb, getDb } from "../../../src/db";
 import { useTheme } from "../../../src/theme";
@@ -10,6 +15,8 @@ import { displayNameFor } from "../../../src/exerciseLibrary";
 import { useWeightUnit } from "../../../src/units";
 import { formatWeight } from "../../../src/format";
 import { SkeletonCard } from "../../../src/components/Skeleton";
+import EditSetModal from "../../../src/components/workout/EditSetModal";
+import type { SetRow } from "../../../src/components/workout/SetEntryRow";
 
 type WorkoutRow = {
   id: string;
@@ -20,20 +27,6 @@ type WorkoutRow = {
   program_id: string | null;
   notes: string | null;
   day_name: string | null;
-};
-
-type SetRow = {
-  id: string;
-  exercise_id: string | null;
-  exercise_name: string;
-  set_index: number;
-  weight: number;
-  reps: number;
-  rpe: number | null;
-  is_warmup: number | null;
-  notes: string | null;
-  rest_seconds: number | null;
-  created_at: string;
 };
 
 type ExerciseGroup = {
@@ -61,6 +54,7 @@ export default function WorkoutDetailScreen() {
   const [ready, setReady] = useState(false);
   const [workout, setWorkout] = useState<WorkoutRow | null>(null);
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
+  const [editing, setEditing] = useState<SetRow | null>(null);
 
   const load = useCallback(async () => {
     if (!workoutId) {
@@ -81,8 +75,9 @@ export default function WorkoutDetailScreen() {
     setWorkout(w ?? null);
 
     const sets = db.getAllSync<SetRow>(
-      `SELECT id, exercise_id, exercise_name, set_index, weight, reps, rpe,
-              is_warmup, notes, rest_seconds, created_at
+      `SELECT id, workout_id, exercise_id, exercise_name, set_index, weight, reps, rpe,
+              is_warmup, notes, rest_seconds, created_at,
+              external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg, set_type
        FROM sets
        WHERE workout_id = ?
        ORDER BY created_at ASC, set_index ASC`,
@@ -94,7 +89,7 @@ export default function WorkoutDetailScreen() {
       const key = s.exercise_id ?? `name:${s.exercise_name}`;
       if (!map.has(key)) {
         map.set(key, {
-          exerciseId: s.exercise_id,
+          exerciseId: s.exercise_id ?? null,
           displayName: s.exercise_id ? displayNameFor(s.exercise_id) : s.exercise_name,
           sets: [],
         });
@@ -105,9 +100,7 @@ export default function WorkoutDetailScreen() {
     setReady(true);
   }, [workoutId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   if (!ready) {
     return (
@@ -185,10 +178,7 @@ export default function WorkoutDetailScreen() {
                 label={t("history.detail.duration")}
                 value={duration != null ? `${duration} ${t("common.minShort")}` : "—"}
               />
-              <Stat
-                label={t("history.detail.sets")}
-                value={`${workingSets}`}
-              />
+              <Stat label={t("history.detail.sets")} value={`${workingSets}`} />
               <Stat
                 label={t("history.detail.volume")}
                 value={`${formatWeight(wu.toDisplay(totalVolumeKg))} ${wu.unitLabel()}`}
@@ -199,6 +189,9 @@ export default function WorkoutDetailScreen() {
                 {workout.notes}
               </Text>
             ) : null}
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, marginTop: 4, opacity: 0.8 }}>
+              {t("history.tapSetToEdit")}
+            </Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -217,7 +210,15 @@ export default function WorkoutDetailScreen() {
             </Text>
             <View style={{ gap: 4 }}>
               {item.sets.map((s, idx) => (
-                <SetLine key={s.id} index={idx + 1} set={s} wu={wu} theme={theme} t={t} />
+                <SetLine
+                  key={s.id}
+                  index={idx + 1}
+                  set={s}
+                  onPress={() => setEditing(s)}
+                  theme={theme}
+                  wu={wu}
+                  t={t}
+                />
               ))}
             </View>
           </View>
@@ -227,6 +228,14 @@ export default function WorkoutDetailScreen() {
             {t("history.noSetsInWorkout")}
           </Text>
         }
+      />
+
+      <EditSetModal
+        visible={editing !== null}
+        set={editing}
+        programId={workout.program_id}
+        onClose={() => setEditing(null)}
+        onChanged={() => { void load(); }}
       />
     </Screen>
   );
@@ -249,19 +258,32 @@ function Stat({ label, value }: { label: string; value: string }) {
 function SetLine({
   index,
   set,
+  onPress,
   wu,
   theme,
   t,
 }: {
   index: number;
   set: SetRow;
+  onPress: () => void;
   wu: ReturnType<typeof useWeightUnit>;
   theme: ReturnType<typeof useTheme>;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const isWarmup = !!set.is_warmup;
   return (
-    <View style={{ gap: 2 }}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={t("log.editSet")}
+      style={({ pressed }) => ({
+        gap: 2,
+        paddingVertical: 4,
+        paddingHorizontal: 6,
+        borderRadius: theme.radius.sm,
+        backgroundColor: pressed ? (theme.isDark ? "rgba(182, 104, 245, 0.08)" : "rgba(124, 58, 237, 0.05)") : "transparent",
+      })}
+    >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, minWidth: 24 }}>
           {isWarmup ? "W" : `#${index}`}
@@ -284,6 +306,6 @@ function SetLine({
           {set.notes}
         </Text>
       ) : null}
-    </View>
+    </Pressable>
   );
 }

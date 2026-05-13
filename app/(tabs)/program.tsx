@@ -1333,6 +1333,31 @@ export default function ProgramScreen() {
             </View>
 
             <View style={{ padding: 14, gap: 10 }}>
+              {/* "Save as 2-way" must appear ABOVE the exercise FlatList.
+                  Earlier it sat below the list, which on most screens
+                  pushed it off-screen and made the (optional) C slot
+                  feel mandatory. */}
+              {pickerMode === "addSupersetC" && pendingSupersetA && pendingSupersetB ? (
+                <View
+                  style={{
+                    borderColor: theme.accent,
+                    borderWidth: 1,
+                    borderRadius: 14,
+                    padding: 12,
+                    gap: 8,
+                    backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.10)" : "rgba(124, 58, 237, 0.06)",
+                  }}
+                >
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                    {t("program.chooseExerciseCHint", {
+                      a: displayNameFor(pendingSupersetA),
+                      b: displayNameFor(pendingSupersetB),
+                    })}
+                  </Text>
+                  <Btn label={t("program.finishTwoWay")} onPress={finishSupersetTwoWay} tone="accent" />
+                </View>
+              ) : null}
+
               <TextField
                 value={pickerQuery}
                 onChangeText={setPickerQuery}
@@ -1415,18 +1440,6 @@ export default function ProgramScreen() {
                 <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
                   {t("program.chooseExerciseB", { name: displayNameFor(pendingSupersetA) })}
                 </Text>
-              ) : null}
-
-              {pickerMode === "addSupersetC" && pendingSupersetA && pendingSupersetB ? (
-                <View style={{ gap: 8 }}>
-                  <Text style={{ color: theme.muted, fontFamily: theme.mono }}>
-                    {t("program.chooseExerciseCHint", {
-                      a: displayNameFor(pendingSupersetA),
-                      b: displayNameFor(pendingSupersetB),
-                    })}
-                  </Text>
-                  <Btn label={t("program.finishTwoWay")} onPress={finishSupersetTwoWay} tone="accent" />
-                </View>
               ) : null}
             </View>
           </View>

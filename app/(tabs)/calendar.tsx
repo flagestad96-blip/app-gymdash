@@ -9,6 +9,8 @@ import { Screen, TopBar, IconButton, Card, ListRow, Btn } from "../../src/ui";
 import { displayNameFor, tagsFor, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { SkeletonCard } from "../../src/components/Skeleton";
+import EditSetModal from "../../src/components/workout/EditSetModal";
+import type { SetRow as CanonicalSetRow } from "../../src/components/workout/SetEntryRow";
 import { useWeightUnit } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
 import { epley1RM } from "../../src/metrics";
@@ -24,17 +26,9 @@ type WorkoutRow = {
   notes?: string | null;
 };
 
-type SetRow = {
-  id: string;
-  exercise_id: string;
-  exercise_name: string;
-  set_index: number;
-  weight: number;
-  reps: number;
-  rpe?: number | null;
-  created_at?: string | null;
-  notes?: string | null;
-};
+// Alias to the canonical row used by EditSetModal — keeps types consistent
+// across log, history and calendar detail views.
+type SetRow = CanonicalSetRow;
 
 type DayMark = "rest" | "skipped" | "sick";
 
@@ -133,6 +127,24 @@ export default function CalendarScreen() {
   // Modal-based replacement for the day-mark Alert.alert (had no obvious
   // way out on iOS when the user just wanted to back out without marking).
   const [markOptionsDate, setMarkOptionsDate] = useState<string | null>(null);
+  // Set tapped in the detail modal for edit/delete.
+  const [editingSet, setEditingSet] = useState<SetRow | null>(null);
+
+  const reloadDetailSets = useCallback(async () => {
+    if (!detailWorkout) return;
+    try {
+      const sets = await getDb().getAllAsync<SetRow>(
+        `SELECT id, workout_id, exercise_id, exercise_name, set_index, weight, reps, rpe,
+                created_at, notes, set_type, is_warmup, rest_seconds,
+                external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg
+         FROM sets WHERE workout_id = ? ORDER BY created_at ASC, set_index ASC`,
+        [detailWorkout.id]
+      );
+      setDetailSets(Array.isArray(sets) ? sets : []);
+    } catch (err) {
+      console.warn("calendar reloadDetailSets failed", err);
+    }
+  }, [detailWorkout]);
 
   const loadData = useCallback(async () => {
     await ensureDb();
@@ -263,7 +275,9 @@ export default function CalendarScreen() {
     setDetailWorkout(w);
     try {
       const sets = await getDb().getAllAsync<SetRow>(
-        `SELECT id, exercise_id, exercise_name, set_index, weight, reps, rpe, created_at, notes
+        `SELECT id, workout_id, exercise_id, exercise_name, set_index, weight, reps, rpe,
+                created_at, notes, set_type, is_warmup, rest_seconds,
+                external_load_kg, bodyweight_kg_used, bodyweight_factor, est_total_load_kg
          FROM sets WHERE workout_id = ? ORDER BY created_at ASC, set_index ASC`,
         [w.id]
       );
@@ -706,6 +720,13 @@ export default function CalendarScreen() {
                 </Text>
               ) : null}
 
+              {/* Edit hint */}
+              {exerciseGroups.length > 0 ? (
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, textAlign: "center", opacity: 0.8 }}>
+                  {t("history.tapSetToEdit")}
+                </Text>
+              ) : null}
+
               {/* Exercise groups */}
               {exerciseGroups.map((group) => {
                 const orderChanged = group.prevOrderNum !== null && group.prevOrderNum !== group.orderNum;
@@ -743,11 +764,19 @@ export default function CalendarScreen() {
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, width: 50 }}></Text>
                   </View>
 
-                  {/* Individual sets */}
+                  {/* Individual sets — tap to edit */}
                   {group.sets.map((s, sIdx) => {
                     const isPR = detailPRSetIds.has(s.id);
                     return (
-                      <View key={s.id}>
+                      <Pressable
+                        key={s.id}
+                        onPress={() => setEditingSet(s)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("log.editSet")}
+                        style={({ pressed }) => ({
+                          opacity: pressed ? 0.7 : 1,
+                        })}
+                      >
                         <View
                           style={{
                             flexDirection: "row",
@@ -780,7 +809,7 @@ export default function CalendarScreen() {
                             {s.notes}
                           </Text>
                         ) : null}
-                      </View>
+                      </Pressable>
                     );
                   })}
                 </View>
@@ -839,6 +868,14 @@ export default function CalendarScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <EditSetModal
+        visible={editingSet !== null}
+        set={editingSet}
+        programId={detailWorkout?.program_id ?? null}
+        onClose={() => setEditingSet(null)}
+        onChanged={() => { void reloadDetailSets(); }}
+      />
     </Screen>
   );
 }
