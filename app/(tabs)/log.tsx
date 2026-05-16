@@ -673,9 +673,39 @@ export default function Logg() {
       const last: Record<string, LastSetInfo> = {};
       const db = getDb();
 
+      // ── Diagnostics (only fires once per dep-change; not in production hot path).
+      // Helps identify why prefill is empty for some exercises. Read these logs
+      // from Metro / adb logcat when investigating reports of "appen husker ikke
+      // forrige vekt for øvelsen jeg trener sjelden".
+      if (__DEV__) {
+        try {
+          const orphan = db.getFirstSync<{ c: number }>(
+            `SELECT COUNT(*) as c FROM sets WHERE exercise_id IS NULL OR exercise_id = ''`,
+          );
+          const phForCurrent = exerciseIds.map(() => "?").join(",");
+          const mismatch = db.getFirstSync<{ c: number }>(
+            `SELECT COUNT(DISTINCT exercise_id) as c FROM sets
+             WHERE exercise_id IS NOT NULL AND exercise_id <> ''
+               AND exercise_id NOT IN (${phForCurrent})`,
+            exerciseIds,
+          );
+          console.warn("[gymdash] lastSet diagnostics", {
+            day: activeDayIndex,
+            exerciseIds,
+            orphanSets: orphan?.c ?? 0,
+            distinctOtherExerciseIds: mismatch?.c ?? 0,
+            activeGymId,
+            programId: program?.id ?? null,
+          });
+        } catch (err) {
+          console.warn("[gymdash] lastSet diagnostics query failed", err);
+        }
+      }
+
       // Per-exercise lookup: a single LIMIT across all exercises drops history
       // for ad-hoc exercises whose last log is older than the program rotation.
       for (const exId of exerciseIds) {
+        let found = false;
         if (activeGymId) {
           const gymRow = db.getFirstSync<SetRow>(
             `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at
@@ -688,6 +718,7 @@ export default function Logg() {
           );
           if (gymRow) {
             last[exId] = { weight: gymRow.weight, reps: gymRow.reps, rpe: gymRow.rpe ?? null, created_at: gymRow.created_at, workout_id: gymRow.workout_id };
+            found = true;
             continue;
           }
           const fallback = db.getFirstSync<SetRow>(
@@ -699,6 +730,7 @@ export default function Logg() {
           );
           if (fallback) {
             last[exId] = { weight: fallback.weight, reps: fallback.reps, rpe: fallback.rpe ?? null, created_at: fallback.created_at, workout_id: fallback.workout_id, fromOtherGym: true };
+            found = true;
           }
         } else {
           const row = db.getFirstSync<SetRow>(
@@ -710,13 +742,40 @@ export default function Logg() {
           );
           if (row) {
             last[exId] = { weight: row.weight, reps: row.reps, rpe: row.rpe ?? null, created_at: row.created_at, workout_id: row.workout_id };
+            found = true;
+          }
+        }
+
+        // Diagnostic: for each exercise that ended up without a prefill,
+        // log what the DB actually has under both id and name so we can
+        // figure out whether it's NULL-id legacy data, a renamed custom
+        // exercise, or genuinely a never-trained exercise.
+        if (!found && __DEV__) {
+          try {
+            const name = displayNameFor(exId);
+            const byName = db.getFirstSync<{ c: number; min_created: string | null; max_created: string | null }>(
+              `SELECT COUNT(*) as c, MIN(created_at) as min_created, MAX(created_at) as max_created
+               FROM sets WHERE lower(exercise_name) = lower(?)`,
+              [name],
+            );
+            console.warn("[gymdash] no lastSet for exercise", {
+              exId,
+              name,
+              activeGymId,
+              programId: program?.id ?? null,
+              setsMatchingNameAnyId: byName?.c ?? 0,
+              oldest: byName?.min_created ?? null,
+              newest: byName?.max_created ?? null,
+            });
+          } catch (err) {
+            console.warn("[gymdash] no-lastSet diagnostics failed", err);
           }
         }
       }
 
       setLastSets(last);
     } catch { setLastSets({}); }
-  }, [ready, exerciseIdsKey, exerciseIds, program?.id, activeGymId]);
+  }, [ready, exerciseIdsKey, exerciseIds, program?.id, activeGymId, activeDayIndex]);
 
   function buildCoachHint(exId: string) {
     const last = lastSets[exId];
