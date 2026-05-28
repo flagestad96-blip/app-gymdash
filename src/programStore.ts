@@ -808,34 +808,65 @@ export async function getNextWorkoutPreview(
   return { dayName: day.name, exercises };
 }
 
-/** Get estimated workout duration for a specific day based on last 3 completed workouts */
+// ── Workout duration estimate ─────────────────────────────────────────────
+//
+// Median (not mean) so a single forgotten-to-end session can't drag the
+// estimate up to «3h 47m» and ruin every future estimate. Also drops
+// implausible sessions (<5 min, >3h) before computing — those rows are
+// almost certainly bad data (forgot-to-end, mis-tap, etc).
+//
+// Exported separately so the math can be unit-tested without spinning up
+// a SQLite mock.
+
+const DURATION_MIN_PLAUSIBLE_MIN = 5;
+const DURATION_MAX_PLAUSIBLE_MIN = 3 * 60;
+const DURATION_MIN_SAMPLE_SIZE = 2;
+
+export function estimateDurationFromSessions(
+  sessions: Array<{ started_at: string | null; ended_at: string | null }>,
+): string | null {
+  const minutes: number[] = [];
+  for (const r of sessions) {
+    if (!r.started_at || !r.ended_at) continue;
+    const start = new Date(r.started_at).getTime();
+    const end = new Date(r.ended_at).getTime();
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
+    const m = (end - start) / 60000;
+    if (m < DURATION_MIN_PLAUSIBLE_MIN || m > DURATION_MAX_PLAUSIBLE_MIN) continue;
+    minutes.push(m);
+  }
+  if (minutes.length < DURATION_MIN_SAMPLE_SIZE) return null;
+
+  minutes.sort((a, b) => a - b);
+  const mid = Math.floor(minutes.length / 2);
+  const medianMin =
+    minutes.length % 2 === 0 ? (minutes[mid - 1] + minutes[mid]) / 2 : minutes[mid];
+  const rounded = Math.round(medianMin);
+
+  if (rounded < 1) return "< 1 min";
+  if (rounded < 60) return `${rounded} min`;
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+/**
+ * Get estimated workout duration for a specific day. Samples up to 10
+ * most recent completed sessions and uses median (see
+ * `estimateDurationFromSessions` for the math).
+ */
 export async function getEstimatedDuration(programId: string, dayIndex: number): Promise<string | null> {
   if (!programId) return null;
   await ensureDb();
   const rows = await getDb().getAllAsync<{ started_at: string; ended_at: string }>(
     `SELECT started_at, ended_at FROM workouts
      WHERE program_id = ? AND day_index = ? AND ended_at IS NOT NULL
-     ORDER BY date DESC LIMIT 3`,
+       AND started_at IS NOT NULL
+     ORDER BY date DESC LIMIT 10`,
     [programId, dayIndex]
   );
   if (!rows || rows.length === 0) return null;
-  let totalMin = 0;
-  let validCount = 0;
-  for (const r of rows) {
-    const start = new Date(r.started_at).getTime();
-    const end = new Date(r.ended_at).getTime();
-    if (!isNaN(start) && !isNaN(end) && end > start) {
-      totalMin += (end - start) / 60000;
-      validCount++;
-    }
-  }
-  if (validCount === 0) return null;
-  const avgMin = Math.round(totalMin / validCount);
-  if (avgMin < 1) return "< 1 min";
-  if (avgMin < 60) return `${avgMin} min`;
-  const hours = Math.floor(avgMin / 60);
-  const mins = avgMin % 60;
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  return estimateDurationFromSessions(rows);
 }
 
 const ProgramStore = {
