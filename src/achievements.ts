@@ -43,6 +43,13 @@ export type Achievement = {
   createdAt: string;
 };
 
+/** An achievement decorated with the current user's unlock/progress status. */
+export type AchievementWithStatus = Achievement & {
+  unlocked: boolean;
+  unlockedAt?: string;
+  progress?: number;
+};
+
 export type UserAchievement = {
   id: string;
   achievementId: string;
