@@ -7,12 +7,13 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text, View, InteractionManager } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useFonts } from "@expo-google-fonts/inter";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { initDb, getSettingAsync } from "../src/db";
-import { ThemeProvider, useTheme, setThemeMode, type ThemeMode } from "../src/theme";
+import { ThemeProvider, useTheme } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
 import { AppBackground } from "../src/components/AppBackground";
 import GymdashLogo from "../src/components/GymdashLogo";
@@ -23,41 +24,54 @@ import { RestTimerProvider } from "../src/restTimerContext";
 import FloatingRestTimer from "../src/components/FloatingRestTimer";
 import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
 
+type DrawerIcon = keyof typeof MaterialIcons.glyphMap;
 type DrawerItem = {
   label: string;
   path: string;
+  icon: DrawerIcon;
+};
+type DrawerGroup = {
+  title: string;
+  items: DrawerItem[];
 };
 
 function DrawerRow({
   label,
+  icon,
   active,
   onPress,
 }: {
   label: string;
+  icon: DrawerIcon;
   active: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const activeBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.08)";
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
       style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: theme.space.md,
         borderColor: active ? theme.accent : "transparent",
-        borderWidth: active ? 1 : 0,
+        borderWidth: 1,
         borderRadius: theme.radius.lg,
-        paddingVertical: 14,
-        paddingHorizontal: 18,
-        backgroundColor: active ? activeBg : "transparent",
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        backgroundColor: active ? theme.accent + "26" : "transparent",
         opacity: pressed ? 0.7 : 1,
       })}
     >
+      <MaterialIcons name={icon} size={20} color={active ? theme.accent : theme.muted} />
       <Text
         style={{
           color: active ? theme.accent : theme.text,
-          fontSize: theme.fontSize.sm,
-          fontFamily: active ? theme.fontFamily.bold : theme.fontFamily.medium,
-          letterSpacing: 0.3,
+          fontSize: theme.fontSize.md,
+          fontFamily: active ? theme.fontFamily.semibold : theme.fontFamily.medium,
+          letterSpacing: 0.2,
         }}
       >
         {label}
@@ -75,16 +89,29 @@ function CustomDrawerContent(props: any) {
   const version =
     Constants.expoConfig?.version ?? (Constants as unknown as { manifest?: { version?: string } })?.manifest?.version ?? "dev";
 
-  const items: DrawerItem[] = [
-    { label: t("nav.home"), path: "/" },
-    { label: t("nav.log"), path: "/log" },
-    { label: t("nav.program"), path: "/program" },
-    { label: t("nav.analysis"), path: "/analysis" },
-    { label: t("nav.achievements"), path: "/achievements" },
-    { label: t("nav.body"), path: "/body" },
-    { label: t("nav.calendar"), path: "/calendar" },
-    { label: t("nav.history"), path: "/history" },
-    { label: t("nav.settings"), path: "/settings" },
+  const groups: DrawerGroup[] = [
+    {
+      title: t("nav.group.train"),
+      items: [
+        { label: t("nav.home"), path: "/", icon: "home" },
+        { label: t("nav.log"), path: "/log", icon: "fitness-center" },
+        { label: t("nav.program"), path: "/program", icon: "list-alt" },
+      ],
+    },
+    {
+      title: t("nav.group.insight"),
+      items: [
+        { label: t("nav.analysis"), path: "/analysis", icon: "insights" },
+        { label: t("nav.calendar"), path: "/calendar", icon: "calendar-today" },
+        { label: t("nav.history"), path: "/history", icon: "history" },
+        { label: t("nav.body"), path: "/body", icon: "monitor-weight" },
+        { label: t("nav.achievements"), path: "/achievements", icon: "emoji-events" },
+      ],
+    },
+    {
+      title: t("nav.group.app"),
+      items: [{ label: t("nav.settings"), path: "/settings", icon: "settings" }],
+    },
   ];
 
   function isActive(path: string) {
@@ -102,26 +129,44 @@ function CustomDrawerContent(props: any) {
       {...props}
       contentContainerStyle={{ flexGrow: 1, padding: theme.space.xl, backgroundColor: "transparent" }}
     >
-      <View style={{ gap: 6 }}>
-        <GymdashLogo size={48} variant="mark" />
-        <Text style={{ color: theme.text, fontSize: theme.fontSize.xl, fontFamily: theme.fontFamily.semibold }}>
-          Gymdash
-        </Text>
-        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-          v{version}
-        </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.sm, marginBottom: theme.space.xl }}>
+        <GymdashLogo size={44} variant="mark" />
+        <View style={{ gap: 2 }}>
+          <Text style={{ color: theme.text, fontSize: theme.fontSize.xl, fontFamily: theme.fontFamily.semibold }}>
+            Gymdash
+          </Text>
+          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+            v{version}
+          </Text>
+        </View>
       </View>
 
-      <View style={{ flex: 1 }} />
-
-      <View style={{ gap: theme.space.sm, marginTop: theme.space.xl, marginBottom: theme.space.xl }}>
-        {items.map((item) => (
-          <DrawerRow
-            key={item.label}
-            label={item.label}
-            active={isActive(item.path)}
-            onPress={() => navigate(item.path)}
-          />
+      <View style={{ gap: theme.space.lg }}>
+        {groups.map((group) => (
+          <View key={group.title} style={{ gap: theme.space.xs }}>
+            <Text
+              style={{
+                color: theme.muted,
+                fontFamily: theme.mono,
+                fontSize: theme.fontSize.xs,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                marginBottom: 2,
+                paddingHorizontal: 14,
+              }}
+            >
+              {group.title}
+            </Text>
+            {group.items.map((item) => (
+              <DrawerRow
+                key={item.path}
+                label={item.label}
+                icon={item.icon}
+                active={isActive(item.path)}
+                onPress={() => navigate(item.path)}
+              />
+            ))}
+          </View>
         ))}
       </View>
     </DrawerContentScrollView>
@@ -178,10 +223,6 @@ function RootLayoutInner() {
         await loadLocale();
         await loadWeightUnit();
         await ProgramStore.ensurePrograms();
-        const modeRaw = await getSettingAsync("themeMode");
-        const mode: ThemeMode =
-          modeRaw === "light" || modeRaw === "dark" || modeRaw === "system" ? modeRaw : "system";
-        setThemeMode(mode);
       } catch {
       } finally {
         if (alive) setAppReady(true);
@@ -236,7 +277,7 @@ function RootLayoutInner() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <RestTimerProvider>
-          <StatusBar style={theme.isDark ? "light" : "dark"} backgroundColor="transparent" translucent />
+          <StatusBar style="light" backgroundColor="transparent" translucent />
           <View style={{ flex: 1, backgroundColor: theme.bg }}>
             <AppBackground />
             {appReady ? (
@@ -244,7 +285,7 @@ function RootLayoutInner() {
                 drawerContent={(props) => <CustomDrawerContent {...props} />}
                 screenOptions={{
                   headerShown: false,
-                  drawerStyle: { backgroundColor: theme.isDark ? "rgba(13, 11, 26, 0.92)" : "rgba(248, 245, 255, 0.92)" },
+                  drawerStyle: { backgroundColor: "rgba(8, 10, 18, 0.94)" },
                   sceneStyle: { backgroundColor: "transparent" },
                 }}
               >

@@ -12,6 +12,9 @@ const common: TranslationMap = {
   "nav.history": "History",
   "nav.settings": "Settings",
   "nav.backup": "Backup / Import",
+  "nav.group.train": "Training",
+  "nav.group.insight": "Insights",
+  "nav.group.app": "App",
 
   // ── Common / Shared ──
   "common.save": "Save",
