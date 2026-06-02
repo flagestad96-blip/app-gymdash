@@ -14,7 +14,7 @@ import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
 
-const WATERMARK = "UI v2";
+const WATERMARK = "AURORA";
 
 export function Screen({
   children,
@@ -25,7 +25,6 @@ export function Screen({
   style?: ViewStyle | ViewStyle[];
   edges?: Edge[];
 }) {
-  const theme = useTheme();
   return (
     <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: "transparent" }, style]}>
       {children}
@@ -229,8 +228,8 @@ export function Chip({
   const theme = useTheme();
   const isAccent = tone === "accent" || active;
   const borderColor = tone === "danger" ? theme.danger : isAccent ? theme.accent : theme.glassBorder;
-  const accentBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)";
-  const dangerBg = theme.isDark ? "rgba(251, 113, 133, 0.18)" : "#FEE2E2";
+  const accentBg = theme.accent + "26"; // ~0.15 alpha accent tint
+  const dangerBg = theme.danger + "26";
   const bg = tone === "danger" ? dangerBg : isAccent ? accentBg : theme.glass;
   const textColor = tone === "danger" ? theme.danger : isAccent ? theme.accent : theme.text;
   const body = (
@@ -477,7 +476,7 @@ export function SegButton({
         borderRadius: theme.radius.md,
         borderWidth: 1,
         borderColor: active ? theme.accent : theme.glassBorder,
-        backgroundColor: active ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
+        backgroundColor: active ? theme.accent + "26" : theme.glass,
         alignItems: "center",
         justifyContent: "center",
         opacity: pressed ? 0.85 : 1,

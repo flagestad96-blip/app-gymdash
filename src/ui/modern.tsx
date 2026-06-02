@@ -149,9 +149,7 @@ export function GlassCard({
   };
 
   const defaultGradientColors = gradient
-    ? theme.isDark
-      ? ["rgba(90, 40, 160, 0.18)", "transparent", "rgba(249, 115, 22, 0.08)"]
-      : ["rgba(124, 58, 237, 0.10)", "transparent", "rgba(249, 115, 22, 0.06)"]
+    ? [theme.aurora.blue + "22", "transparent", theme.aurora.pink + "16"]
     : undefined;
 
   const colors = gradientColors || defaultGradientColors;
@@ -161,8 +159,8 @@ export function GlassCard({
       style={[
         styles.glassCard,
         {
-          backgroundColor: blur ? theme.glass : theme.panel,
-          borderColor: gradient ? theme.accentGradient[0] + "40" : theme.glassBorder,
+          backgroundColor: blur ? theme.glass : theme.panel2,
+          borderColor: gradient ? theme.glassBorderStrong : theme.glassBorder,
           borderRadius: theme.radius.xl,
           overflow: "hidden",
         },
@@ -170,14 +168,29 @@ export function GlassCard({
         style,
       ]}
     >
+      {/* Frosted vertical sheen (intensity-driven white fill) */}
+      <LinearGradient
+        colors={[`rgba(255, 255, 255, ${theme.glassFillA.toFixed(3)})`, `rgba(255, 255, 255, ${theme.glassFillB.toFixed(3)})`]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Optional accent tint */}
       {colors && (
         <LinearGradient
           colors={colors as [string, string, ...string[]]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={StyleSheet.absoluteFill}
+          pointerEvents="none"
         />
       )}
+      {/* Top edge highlight — gives the frosted glass a lit rim */}
+      <View
+        pointerEvents="none"
+        style={{ position: "absolute", top: 0, left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: theme.glassHighlight }}
+      />
       {children}
     </View>
   );
@@ -512,13 +525,6 @@ export function AchievementToast({
   const onDismissRef = React.useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
-  const tierColors = {
-    common: theme.muted,
-    rare: theme.accent,
-    epic: "#9C27B0",
-    legendary: "#FFD700",
-  };
-
   useEffect(() => {
     if (visible) {
       // Slide in
@@ -766,7 +772,6 @@ const styles = StyleSheet.create({
   gradientButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontFamily: "Manrope_600SemiBold",
   },
   glassCard: {
     borderWidth: 1,

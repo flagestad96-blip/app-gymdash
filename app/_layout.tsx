@@ -7,7 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text, View, InteractionManager } from "react-native";
-import { useFonts, Manrope_400Regular, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
+import { useFonts } from "@expo-google-fonts/inter";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
@@ -137,11 +137,6 @@ export default function RootLayout() {
     Inter_700Bold,
     InstrumentSerif_400Regular,
     JetBrainsMono_500Medium,
-    // Manrope kept until the last hardcoded ref in modern.tsx is migrated
-    Manrope_400Regular,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
   });
 
   if (!fontsLoaded) return null;
