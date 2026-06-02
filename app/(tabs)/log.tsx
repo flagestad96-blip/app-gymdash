@@ -1013,7 +1013,8 @@ export default function Logg() {
       focusExercise(primary);
       restTimer.setFocusedExerciseId(primary);
     }
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    // Intentionally do NOT scroll — switching exercises should keep the
+    // viewport stable so the user stays oriented on the set inputs.
   }
 
   function goToBlockByAnchorKey(key: string) {
