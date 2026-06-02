@@ -18,6 +18,7 @@ import { SkeletonCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
 import { useWeightUnit, unitLabel } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
+import { addDays, parseLocalDate, weekStartKey, monthKey, fmtRest } from "../../src/analysisHelpers";
 import { epley1RM } from "../../src/metrics";
 import { parseTimeMs } from "../../src/format";
 import { generateExerciseInsight } from "../../src/analysisInsights";
@@ -70,40 +71,6 @@ function daysBack(range: RangeKey) {
   if (range === "week") return 7;
   if (range === "month") return 30;
   return 365;
-}
-
-function pad2(n: number) {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function addDays(d: Date, n: number) {
-  const next = new Date(d);
-  next.setDate(next.getDate() + n);
-  return next;
-}
-
-function parseLocalDate(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function weekStartKey(d: Date) {
-  const day = d.getDay();
-  const diff = (day + 6) % 7;
-  const start = addDays(d, -diff);
-  return isoDateOnly(start);
-}
-
-function monthKey(d: Date) {
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth() + 1);
-  return `${y}-${m}`;
-}
-
-function fmtRest(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function weightForSet(row: RowSet): number | null {
