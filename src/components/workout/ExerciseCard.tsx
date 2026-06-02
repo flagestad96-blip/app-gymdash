@@ -11,8 +11,9 @@ import { TextField, Btn } from "../../ui";
 import { formatWeight } from "../../format";
 import { displayNameFor, getExercise, isPerSideExercise, type Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
-import SetEntryRow from "./SetEntryRow";
 import type { SetRow } from "./SetEntryRow";
+import AddSetButton from "./AddSetButton";
+import SetTable from "./SetTable";
 import { SLOT_COLORS, SLOT_LABELS, workingCount, type SupersetSlotKey, type SupersetLogPhase } from "./superset";
 export type { SupersetSlotKey, SupersetLogPhase };
 import type { ExerciseTarget } from "../../progressionStore";
@@ -33,120 +34,6 @@ export type LastSetInfo = {
   fromOtherGym?: boolean;
 };
 
-function AddSetButton({
-  label,
-  onPress,
-}: {
-  label: string;
-  onPress: () => Promise<void> | void;
-}) {
-  const t = useTheme();
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const runPressAnim = () => {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.96, duration: 90, useNativeDriver: true }),
-      Animated.timing(scale, { toValue: 1, duration: 140, useNativeDriver: true }),
-    ]).start();
-  };
-
-  return (
-    <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
-      <Pressable
-        onPress={async () => {
-          runPressAnim();
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          try { await onPress(); } catch {}
-        }}
-        style={({ pressed }) => ({
-          opacity: pressed ? 0.92 : 1,
-        })}
-      >
-        <LinearGradient
-          colors={t.accentGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            height: 52,
-            borderRadius: t.radius.lg,
-            alignItems: "center",
-            justifyContent: "center",
-            shadowColor: t.shadow.glow.color,
-            shadowOpacity: t.shadow.glow.opacity,
-            shadowRadius: t.shadow.glow.radius,
-            shadowOffset: t.shadow.glow.offset,
-            elevation: 4,
-          }}
-        >
-          <Text style={{ color: "#FFFFFF", fontWeight: t.fontWeight.semibold, fontSize: t.fontSize.sm }}>{label}</Text>
-        </LinearGradient>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-// ── Set table header + rows ──
-
-type SetTableProps = {
-  sets: SetRow[];
-  lastAddedSetId: string | null;
-  lastAddedAnim: Animated.Value;
-  onEditSet: (row: SetRow) => void;
-  onDeleteSet: (row: SetRow) => void;
-};
-
-function SetTable({ sets, lastAddedSetId, lastAddedAnim, onEditSet, onDeleteSet }: SetTableProps) {
-  const theme = useTheme();
-  const { t } = useI18n();
-  const wu = useWeightUnit();
-
-  if (sets.length === 0) {
-    return (
-      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
-        {t("log.noSetsYet")}
-      </Text>
-    );
-  }
-
-  const highlightBg = lastAddedAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [theme.glass, theme.aurora.violet + "8C"],
-  });
-
-  return (
-    <View style={{ gap: theme.space.xs }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: theme.space.sm,
-          paddingVertical: 6,
-          paddingHorizontal: 10,
-          borderRadius: theme.radius.md,
-          backgroundColor: theme.isDark ? "rgba(25, 15, 50, 0.5)" : "rgba(243, 237, 255, 0.6)",
-          borderWidth: 1,
-          borderColor: theme.glassBorder,
-        }}
-      >
-        <Text style={{ width: 28, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>#</Text>
-        <Text style={{ flex: 1, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{wu.unitLabel()}</Text>
-        <Text style={{ width: 44, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{t("common.reps").toUpperCase()}</Text>
-        <Text style={{ width: 48, color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>{t("log.type").toUpperCase()}</Text>
-        <View style={{ width: 70 }} />
-      </View>
-      {sets.map((s) => (
-        <SetEntryRow
-          key={s.id}
-          set={s}
-          highlight={s.id === lastAddedSetId}
-          highlightBg={highlightBg}
-          onEdit={onEditSet}
-          onDelete={onDeleteSet}
-        />
-      ))}
-    </View>
-  );
-}
 
 // ── Single exercise half (used for both single cards and each side of superset) ──
 
