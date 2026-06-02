@@ -12,10 +12,10 @@ export type FallbackColors = {
 
 /** Dark-theme fallback colors — used when ThemeProvider may have crashed */
 export const DARK_FALLBACK_COLORS: FallbackColors = {
-  bg: "#0D0B1A",
-  text: "#F5F0FF",
-  muted: "#A89CC8",
-  accent: "#B668F5",
+  bg: "#05070f",
+  text: "#f3f5ff",
+  muted: "rgba(243, 245, 255, 0.72)",
+  accent: "#c084fc",
 };
 
 type Props = {
