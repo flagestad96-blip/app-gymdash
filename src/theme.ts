@@ -13,9 +13,8 @@
 // deprecated no-ops so existing call sites compile while we migrate the
 // Settings personalization UI to palette + intensity.
 //
-// NOTE: fontFamily still points at Manrope for now. The Inter / Instrument
-// Serif / JetBrains Mono swap happens in the dedicated font step once those
-// packages are installed and loaded in app/_layout.tsx.
+// Type system: Inter (body), Instrument Serif (display), JetBrains Mono
+// (numerics) — loaded in app/_layout.tsx.
 
 import React from "react";
 import { type TextStyle } from "react-native";
@@ -157,15 +156,15 @@ export function glassTokensFor(intensity: number) {
 // ── Token plumbing ───────────────────────────────────────────────────────────
 
 const TOKENS = {
-  // Fonts still Manrope until the Inter/Serif/Mono swap step.
+  // Aurora type system: Inter (body), Instrument Serif (display), JetBrains Mono (numerics).
   fontFamily: {
-    regular: "Manrope_400Regular",
-    medium: "Manrope_500Medium",
-    semibold: "Manrope_600SemiBold",
-    bold: "Manrope_700Bold",
-    serif: "Manrope_700Bold",
+    regular: "Inter_400Regular",
+    medium: "Inter_500Medium",
+    semibold: "Inter_600SemiBold",
+    bold: "Inter_700Bold",
+    serif: "InstrumentSerif_400Regular",
   },
-  mono: "monospace",
+  mono: "JetBrainsMono_500Medium",
   fontSize: { xs: 11, sm: 13, md: 15, lg: 18, xl: 22, xxl: 28 },
   fontWeight: { regular: "400", medium: "500", semibold: "600", bold: "700" } as const,
   lineHeight: { sm: 20, md: 24, lg: 36 },
