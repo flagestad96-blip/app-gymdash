@@ -5,6 +5,24 @@
 > Goal: Refaktorer hele appen til en profesjonell treningsapp **og** gi designet en
 > skikkelig overhaling — uten å miste funksjonalitet.
 
+## STATUS (2026-06-02)
+
+**Done & verified (verify green throughout, expo export bundles clean):**
+- Aurora dark-only design system, fonts, animated bg, frosted glass, palette + glass-intensity (Settings).
+- Tidy grouped drawer nav. Log: one-exercise pager + large RestOverlay between sets.
+- All screens reskinned; all 15 Gym-dash notes triaged/fixed (most already worked).
+- Release prep: v0.10.0-beta (vc 11) + changelog + patch notes.
+
+**Code-architecture refactor — pure-logic layer done (11 new tested modules, tests 120→156, 2 bug fixes):**
+`asyncUtils`, `streak` (+off-by-one fix), `weekRange`, `analysisHelpers`, `programImport`,
+`programExercises`, `calendarHelpers`, `components/workout/superset`, `components/workout/RestOverlay`,
+`components/settings/WeightUnitCard` + `GymLocationsCard`.
+
+**Remaining:**
+- Deeper component-body splitting of log/analysis/program/settings/ExerciseCard (sub-components/hooks) — higher-risk, no user-facing effect, NOT launch-blocking.
+- USER-only: on-device test (no emulator here) + EAS build (`npx eas build -p android --profile preview`).
+- Branch not pushed yet.
+
 ## Locked decisions (avklart med Marius 2026-06-02)
 
 | Spørsmål | Valg |
