@@ -203,6 +203,7 @@ export default function Logg() {
   // Setting still exists for backwards compatibility but the round-card always alternates within a round.
 
   const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
+  const [currentBlockIndex, setCurrentBlockIndex] = useState(0); // single-exercise pager
   const [altPickerOpen, setAltPickerOpen] = useState(false);
   const [altPickerBase, setAltPickerBase] = useState<string | null>(null);
 
@@ -1014,6 +1015,32 @@ export default function Logg() {
     if (key) scrollToAnchorKey(key);
   }
 
+  // ── Single-exercise pager: show one block (exercise/superset) at a time ──
+  useEffect(() => {
+    setCurrentBlockIndex(0);
+  }, [activeDayIndex]);
+  useEffect(() => {
+    setCurrentBlockIndex((i) => Math.max(0, Math.min(i, Math.max(0, renderBlocks.length - 1))));
+  }, [renderBlocks.length]);
+
+  function goToBlock(index: number) {
+    if (renderBlocks.length === 0) return;
+    const clamped = Math.max(0, Math.min(index, renderBlocks.length - 1));
+    setCurrentBlockIndex(clamped);
+    const b = renderBlocks[clamped];
+    if (b) {
+      const primary = b.type === "single" ? b.exId : b.a;
+      focusExercise(primary);
+      restTimer.setFocusedExerciseId(primary);
+    }
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }
+
+  function goToBlockByAnchorKey(key: string) {
+    const idx = blockAnchorKeys.indexOf(key);
+    if (idx >= 0) goToBlock(idx);
+  }
+
   async function startWorkout() {
     if (activeWorkoutId) return;
     const id = uid("workout");
@@ -1692,7 +1719,12 @@ export default function Logg() {
           <Card title={t("log.jumpTo")}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {anchorItems.map((item) => (
-                <Chip key={item.key} text={shortLabel(item.label)} onPress={() => scrollToAnchorKey(item.key)} />
+                <Chip
+                  key={item.key}
+                  text={shortLabel(item.label)}
+                  active={blockAnchorKeys[currentBlockIndex] === item.key}
+                  onPress={() => goToBlockByAnchorKey(item.key)}
+                />
               ))}
             </ScrollView>
           </Card>
@@ -1714,7 +1746,25 @@ export default function Logg() {
               blocksWrapperOffsetRef.current = e.nativeEvent.layout.y;
             }}
           >
-            {renderBlocks.map((block, blockIdx) => {
+            {renderBlocks.length > 1 ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <IconButton icon="chevron-left" onPress={() => goToBlock(currentBlockIndex - 1)} disabled={currentBlockIndex <= 0} />
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text numberOfLines={1} style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.md }}>
+                    {anchorItems[currentBlockIndex]?.label ?? ""}
+                  </Text>
+                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+                    {t("log.exerciseProgress", { i: currentBlockIndex + 1, n: renderBlocks.length })}
+                  </Text>
+                </View>
+                <IconButton icon="chevron-right" onPress={() => goToBlock(currentBlockIndex + 1)} disabled={currentBlockIndex >= renderBlocks.length - 1} />
+              </View>
+            ) : null}
+
+            {(() => {
+              const block = renderBlocks[currentBlockIndex];
+              if (!block) return null;
+              const blockIdx = currentBlockIndex;
               if (block.type === "single") {
                 const exId = block.exId;
                 return (
@@ -1801,7 +1851,7 @@ export default function Logg() {
                   {...cardCallbacks}
                 />
               );
-            })}
+            })()}
 
             {activeWorkoutId ? (
               <Pressable

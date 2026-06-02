@@ -22,6 +22,7 @@ import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
 import FloatingRestTimer from "../src/components/FloatingRestTimer";
+import RestOverlay from "../src/components/workout/RestOverlay";
 import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
 
 type DrawerIcon = keyof typeof MaterialIcons.glyphMap;
@@ -201,6 +202,7 @@ export default function RootLayout() {
 
 function RootLayoutInner() {
   const theme = useTheme();
+  const pathname = usePathname();
   const MIN_DURATION_MS = 1400;
   const HARD_TIMEOUT_MS = 6000;
   const [appReady, setAppReady] = useState(false);
@@ -293,6 +295,7 @@ function RootLayoutInner() {
               </Drawer>
             ) : null}
             {appReady ? <FloatingRestTimer /> : null}
+            {appReady && pathname === "/log" ? <RestOverlay /> : null}
             {showSplash && !appReady ? (
               <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
                 <SplashScreen fadeOut={fadeOut} onFadeOutEnd={() => setShowSplash(false)} />
