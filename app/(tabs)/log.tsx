@@ -1655,7 +1655,7 @@ export default function Logg() {
             </View>
           ) : null}
 
-          <Card title={t("log.sessionCard")} style={{ borderColor: theme.accent, backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.12)" : "rgba(124, 58, 237, 0.06)" }}>
+          <Card title={t("log.sessionCard")} style={{ borderColor: theme.accent, backgroundColor: theme.accent + "1F" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <View>
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.duration")}</Text>
@@ -2114,9 +2114,7 @@ export default function Logg() {
                       borderRadius: theme.radius.lg,
                       borderWidth: 1,
                       borderColor: goalType === gt ? theme.accent : theme.glassBorder,
-                      backgroundColor: goalType === gt
-                        ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
-                        : theme.glass,
+                      backgroundColor: goalType === gt ? theme.accent + "26" : theme.glass,
                     }}
                   >
                     <Text style={{ color: goalType === gt ? theme.accent : theme.text, fontFamily: theme.fontFamily.medium, fontSize: 13 }}>
@@ -2340,7 +2338,7 @@ export default function Logg() {
                 borderWidth: 1,
                 borderColor: theme.accent,
                 borderRadius: theme.radius.lg,
-                backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.1)" : "rgba(124, 58, 237, 0.06)",
+                backgroundColor: theme.accent + "1A",
                 padding: 12,
                 gap: 4,
               }}>

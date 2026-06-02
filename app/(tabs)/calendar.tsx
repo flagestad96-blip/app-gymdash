@@ -794,7 +794,7 @@ export default function CalendarScreen() {
                             gap: 6,
                             paddingHorizontal: 4,
                             paddingVertical: 4,
-                            backgroundColor: isPR ? (theme.isDark ? "rgba(182,104,245,0.12)" : "rgba(124,58,237,0.08)") : "transparent",
+                            backgroundColor: isPR ? theme.accent + "1F" : "transparent",
                             borderRadius: 6,
                             alignItems: "center",
                           }}
