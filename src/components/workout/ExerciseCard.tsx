@@ -13,19 +13,10 @@ import { displayNameFor, getExercise, isPerSideExercise, type Equipment } from "
 import BackImpactDot from "../BackImpactDot";
 import SetEntryRow from "./SetEntryRow";
 import type { SetRow } from "./SetEntryRow";
+import { SLOT_COLORS, SLOT_LABELS, workingCount, type SupersetSlotKey, type SupersetLogPhase } from "./superset";
+export type { SupersetSlotKey, SupersetLogPhase };
 import type { ExerciseTarget } from "../../progressionStore";
 import { getRecentSessions, type ExerciseSession } from "../../exerciseHistory";
-
-export type SupersetSlotKey = "a" | "b" | "c";
-export type SupersetLogPhase = "transition" | "round" | "final";
-
-const SLOT_COLORS: Record<SupersetSlotKey, string> = {
-  a: "#B668F5", // accent purple
-  b: "#F59E0B", // orange
-  c: "#EC4899", // pink
-};
-
-const SLOT_LABELS: Record<SupersetSlotKey, string> = { a: "A", b: "B", c: "C" };
 
 export type InputState = {
   weight: string;
@@ -1107,9 +1098,6 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   activeGoalLabelC?: string;
 };
 
-function workingCount(sets: SetRow[]) {
-  return sets.filter((s) => !s.is_warmup).length;
-}
 
 export function SupersetCard(props: SupersetCardProps) {
   const theme = useTheme();
