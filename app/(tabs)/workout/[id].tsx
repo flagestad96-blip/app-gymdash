@@ -281,7 +281,7 @@ function SetLine({
         paddingVertical: 4,
         paddingHorizontal: 6,
         borderRadius: theme.radius.sm,
-        backgroundColor: pressed ? (theme.isDark ? "rgba(182, 104, 245, 0.08)" : "rgba(124, 58, 237, 0.05)") : "transparent",
+        backgroundColor: pressed ? theme.accent + "14" : "transparent",
       })}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

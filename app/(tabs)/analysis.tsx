@@ -1167,7 +1167,7 @@ export default function Analysis() {
                 borderRadius: theme.radius.lg,
                 padding: 14,
                 backgroundColor: comparisonMode
-                  ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                  ? theme.accent + "26"
                   : theme.glass,
                 width: 52,
                 alignItems: "center",
@@ -1686,7 +1686,7 @@ export default function Analysis() {
                           borderRadius: theme.radius.lg,
                           borderWidth: 1,
                           borderColor: active ? theme.accent : theme.glassBorder,
-                          backgroundColor: active ? (theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)") : theme.glass,
+                          backgroundColor: active ? theme.accent + "2E" : theme.glass,
                           marginBottom: 8,
                         }}
                       >
@@ -1730,7 +1730,7 @@ export default function Analysis() {
                       borderWidth: 1,
                       borderColor: goalType === gt ? theme.accent : theme.glassBorder,
                       backgroundColor: goalType === gt
-                        ? (theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)")
+                        ? theme.accent + "26"
                         : theme.glass,
                     }}
                   >

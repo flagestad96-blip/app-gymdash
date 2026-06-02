@@ -112,9 +112,9 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
                     borderWidth: 1,
                     borderColor: alreadyIn ? theme.accent : theme.glassBorder,
                     backgroundColor: pressed && !alreadyIn
-                      ? (theme.isDark ? "rgba(182, 104, 245, 0.12)" : "rgba(124, 58, 237, 0.06)")
+                      ? theme.accent + "1F"
                       : alreadyIn
-                        ? (theme.isDark ? "rgba(182, 104, 245, 0.08)" : "rgba(124, 58, 237, 0.04)")
+                        ? theme.accent + "14"
                         : theme.glass,
                     marginBottom: 6,
                     gap: 3,

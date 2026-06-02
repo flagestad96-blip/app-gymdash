@@ -123,7 +123,7 @@ export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId
   const targetKg = Number.isFinite(displayVal) ? wu.toKg(displayVal) : 0;
   const result = calculatePlates(targetKg, barKg, gymPlates ?? undefined);
 
-  const activeBg = theme.isDark ? "rgba(182, 104, 245, 0.18)" : "rgba(124, 58, 237, 0.12)";
+  const activeBg = theme.accent + "2E";
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

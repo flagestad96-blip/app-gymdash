@@ -373,7 +373,7 @@ LIMIT ?`;
                         borderWidth: 1,
                         borderColor: theme.glassBorder,
                         backgroundColor: pressed
-                          ? (theme.isDark ? "rgba(182, 104, 245, 0.10)" : "rgba(124, 58, 237, 0.06)")
+                          ? theme.accent + "1A"
                           : theme.glass,
                         gap: 6,
                       })}
