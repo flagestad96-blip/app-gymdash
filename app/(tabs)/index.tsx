@@ -21,6 +21,7 @@ import TrainingStatusCard from "../../src/components/TrainingStatusCard";
 import { computeTrainingStatus, type TrainingStatusResult } from "../../src/trainingStatus";
 import { toggleManualDeload } from "../../src/periodization";
 import { computeStreak } from "../../src/streak";
+import { mondayOf, previousMondayOf } from "../../src/weekRange";
 
 const BACKUP_REMINDER_DAYS = 14;
 
@@ -40,22 +41,6 @@ type PrRow = {
   value: number;
   date: string;
 };
-
-function getMonday(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const mon = new Date(d.setDate(diff));
-  return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
-}
-
-function getPrevMonday(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1) - 7;
-  const mon = new Date(d.setDate(diff));
-  return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
-}
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -102,7 +87,7 @@ export default function HomeScreen() {
       if (!alive) return;
       const db = getDb();
       const today = isoDateOnly();
-      const monday = getMonday();
+      const monday = mondayOf();
 
       // Today's workout
       try {
@@ -158,7 +143,7 @@ export default function HomeScreen() {
           return total + row.vol * multiplier;
         }, 0);
 
-        const prevMonday = getPrevMonday();
+        const prevMonday = previousMondayOf();
         const prevWeekRows = db.getAllSync<{ exercise_id: string | null; vol: number }>(
           `SELECT s.exercise_id, COALESCE(SUM(s.weight * s.reps), 0) as vol
            FROM workouts w LEFT JOIN sets s ON s.workout_id = w.id
