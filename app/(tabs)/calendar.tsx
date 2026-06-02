@@ -57,7 +57,7 @@ let _calendarTabInitialized = false;
 
 export default function CalendarScreen() {
   const theme = useTheme();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const wu = useWeightUnit();
   const navigation = useNavigation();
   const openDrawer = useCallback(() => {
@@ -80,6 +80,7 @@ export default function CalendarScreen() {
 
   // Day summary data: exercises + best set per exercise for each workout
   const [daySummaries, setDaySummaries] = useState<Record<string, Array<{ exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }>>>({});
+  const [volumeByDate, setVolumeByDate] = useState<Record<string, number>>({});
 
   // Detail modal state
   const [detailWorkout, setDetailWorkout] = useState<WorkoutRow | null>(null);
@@ -153,6 +154,7 @@ export default function CalendarScreen() {
 
       const typeMap: Record<string, WorkoutType> = {};
       const summaryMap: Record<string, Array<{ exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }>> = {};
+      const volMap: Record<string, number> = {};
 
       // Group workouts by date for summary
       const workoutsByDateLocal: Record<string, WorkoutRow[]> = {};
@@ -165,6 +167,7 @@ export default function CalendarScreen() {
         // Merge all sets for the date for classification
         const allExIds: string[] = [];
         const exBest = new Map<string, { weight: number; reps: number; e1rm: number }>();
+        let dayVolume = 0;
 
         for (const wo of dateWorkouts) {
           const sets = byWorkout.get(wo.id) ?? [];
@@ -176,8 +179,11 @@ export default function CalendarScreen() {
             if (!prev || e1rm > prev.e1rm) {
               exBest.set(key, { weight: s.weight, reps: s.reps, e1rm });
             }
+            const mult = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
+            dayVolume += (s.weight ?? 0) * (s.reps ?? 0) * mult;
           }
         }
+        volMap[date] = Math.round(dayVolume);
 
         const uniqueIds = [...new Set(allExIds)];
         typeMap[date] = classifyWorkout(uniqueIds);
@@ -199,6 +205,7 @@ export default function CalendarScreen() {
 
       setWorkoutTypeByDate(typeMap);
       setDaySummaries(summaryMap);
+      setVolumeByDate(volMap);
     } catch {}
 
     // Load day marks
@@ -373,6 +380,35 @@ export default function CalendarScreen() {
     return map;
   }, [workouts]);
 
+  const todayIso = useMemo(() => isoDateOnly(new Date()), []);
+
+  // At-a-glance stats for the currently shown month.
+  const monthStats = useMemo(() => {
+    const prefix = `${monthKey}-`;
+    const trainingDays = new Set<string>();
+    let workoutCount = 0;
+    for (const w of workouts) {
+      if (w.date.startsWith(prefix)) {
+        workoutCount += 1;
+        trainingDays.add(w.date);
+      }
+    }
+    let volume = 0;
+    for (const [date, v] of Object.entries(volumeByDate)) {
+      if (date.startsWith(prefix)) volume += v;
+    }
+    let restDays = 0;
+    for (const date of Object.keys(dayMarks)) {
+      if (date.startsWith(prefix)) restDays += 1;
+    }
+    return { workouts: workoutCount, trainingDays: trainingDays.size, volume, restDays };
+  }, [workouts, volumeByDate, dayMarks, monthKey]);
+
+  const monthTitle = useMemo(() => {
+    const s = monthDate.toLocaleDateString(locale === "nb" ? "no-NO" : "en-US", { month: "long", year: "numeric" });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }, [monthDate, locale]);
+
   const selectedWorkouts = selectedDate ? workoutsByDate[selectedDate] ?? [] : [];
   const selectedMark = selectedDate ? dayMarks[selectedDate] ?? null : null;
   const selectedSummary = selectedDate ? daySummaries[selectedDate] ?? [] : [];
@@ -402,93 +438,127 @@ export default function CalendarScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 80 }}>
-        <TopBar title={t("calendar.title")} subtitle={monthKey} left={<IconButton icon="menu" onPress={openDrawer} />} />
+        <TopBar title={t("calendar.title")} subtitle={monthTitle} left={<IconButton icon="menu" onPress={openDrawer} />} />
 
-        <Card title={t("calendar.month")}>
+        {/* Month navigation + at-a-glance stats */}
+        <Card>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <BtnSmall label="‹" onPress={() => setMonthOffset((v) => v - 1)} />
-            <Text style={{ color: theme.text, fontFamily: theme.mono }}>{monthKey}</Text>
-            <BtnSmall label="›" onPress={() => setMonthOffset((v) => v + 1)} />
+            <IconButton icon="chevron-left" onPress={() => setMonthOffset((v) => v - 1)} />
+            <View style={{ alignItems: "center", gap: 2 }}>
+              <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.lg }}>
+                {monthTitle}
+              </Text>
+              {monthOffset !== 0 ? (
+                <Pressable onPress={() => setMonthOffset(0)} hitSlop={10}>
+                  <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: theme.fontSize.xs }}>
+                    {t("calendar.today")}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <IconButton icon="chevron-right" onPress={() => setMonthOffset((v) => v + 1)} />
           </View>
 
-          {/* Legend */}
-          <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
-            {(["push", "pull", "legs", "other"] as WorkoutType[]).map((wt) => (
-              <View key={wt} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: WORKOUT_TYPE_COLORS[wt] }} />
-                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-                  {t(`calendar.type.${wt}`)}
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            {[
+              { label: t("common.workouts"), value: String(monthStats.workouts) },
+              { label: t("calendar.trainingDays"), value: String(monthStats.trainingDays) },
+              { label: t("common.volume"), value: wu.formatWeight(monthStats.volume) },
+            ].map((s) => (
+              <View
+                key={s.label}
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.glass,
+                  borderWidth: 1,
+                  borderColor: theme.glassBorder,
+                  borderRadius: theme.radius.md,
+                  paddingVertical: 10,
+                  paddingHorizontal: 4,
+                  alignItems: "center",
+                  gap: 2,
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.bold, fontSize: theme.fontSize.lg }} numberOfLines={1}>
+                  {s.value}
+                </Text>
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 9, textAlign: "center" }} numberOfLines={1}>
+                  {s.label}
                 </Text>
               </View>
             ))}
           </View>
         </Card>
 
-        <Card title={t("calendar.days")}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Card>
+          <View style={{ flexDirection: "row", marginBottom: 4 }}>
             {[t("calendar.dayAbbr.mon"), t("calendar.dayAbbr.tue"), t("calendar.dayAbbr.wed"), t("calendar.dayAbbr.thu"), t("calendar.dayAbbr.fri"), t("calendar.dayAbbr.sat"), t("calendar.dayAbbr.sun")].map((d, i) => (
-              <Text key={`${d}_${i}`} style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, width: 28, textAlign: "center" }}>
+              <Text key={`${d}_${i}`} style={{ flex: 1, color: theme.muted, fontFamily: theme.mono, fontSize: 11, textAlign: "center" }}>
                 {d}
               </Text>
             ))}
           </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
             {days.map((cell, idx) => {
-              const hasWorkout = cell.date ? (workoutsByDate[cell.date]?.length ?? 0) > 0 : false;
-              const isSelected = cell.date && cell.date === selectedDate;
+              const count = cell.date ? (workoutsByDate[cell.date]?.length ?? 0) : 0;
+              const hasWorkout = count > 0;
+              const isSelected = !!cell.date && cell.date === selectedDate;
+              const isToday = !!cell.date && cell.date === todayIso;
               const wType = cell.date ? workoutTypeByDate[cell.date] : undefined;
               const mark = cell.date ? dayMarks[cell.date] : undefined;
+              const typeColor = wType ? WORKOUT_TYPE_COLORS[wType] : theme.accent;
               return (
                 <Pressable
                   key={`${cell.label}_${idx}`}
                   onPress={() => cell.date && setSelectedDate(cell.date)}
                   onLongPress={() => cell.date && showMarkOptions(cell.date)}
-                  style={{
-                    width: "14.28%",
-                    paddingVertical: 8,
-                    alignItems: "center",
-                  }}
+                  disabled={!cell.date}
+                  style={{ width: "14.28%", aspectRatio: 1, padding: 2 }}
                 >
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: isSelected ? theme.accent : theme.glassBorder,
-                      backgroundColor: hasWorkout ? theme.panel2 : "transparent",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
-                      {cell.label}
-                    </Text>
-                  </View>
-                  {hasWorkout ? (
+                  {cell.date ? (
                     <View
                       style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 999,
-                        backgroundColor: wType ? WORKOUT_TYPE_COLORS[wType] : theme.accent,
-                        marginTop: 4,
+                        flex: 1,
+                        borderRadius: 10,
+                        borderWidth: isSelected ? 2 : 1,
+                        borderColor: isSelected ? theme.accent : isToday ? theme.accent + "99" : theme.glassBorder,
+                        backgroundColor: hasWorkout ? typeColor + "2E" : mark ? DAY_MARK_COLORS[mark] + "1A" : theme.glass,
+                        padding: 5,
+                        justifyContent: "space-between",
                       }}
-                    />
-                  ) : mark ? (
-                    <Text style={{
-                      color: DAY_MARK_COLORS[mark],
-                      fontFamily: theme.mono,
-                      fontSize: 10,
-                      marginTop: 3,
-                      lineHeight: 12,
-                    }}>
-                      {DAY_MARK_LABELS[mark].icon}
-                    </Text>
+                    >
+                      <Text style={{ color: isToday ? theme.accent : theme.text, fontFamily: theme.mono, fontSize: 12, fontWeight: isToday ? "700" : "400" }}>
+                        {cell.label}
+                      </Text>
+                      {hasWorkout ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                          <View style={{ height: 4, flex: 1, borderRadius: 2, backgroundColor: typeColor }} />
+                          {count > 1 ? (
+                            <Text style={{ color: typeColor, fontFamily: theme.mono, fontSize: 9 }}>{count}</Text>
+                          ) : null}
+                        </View>
+                      ) : mark ? (
+                        <Text style={{ color: DAY_MARK_COLORS[mark], fontFamily: theme.mono, fontSize: 11, fontWeight: "700", alignSelf: "flex-end" }}>
+                          {DAY_MARK_LABELS[mark].icon}
+                        </Text>
+                      ) : null}
+                    </View>
                   ) : null}
                 </Pressable>
               );
             })}
+          </View>
+
+          {/* Legend */}
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 12, justifyContent: "center" }}>
+            {(["push", "pull", "legs", "other"] as WorkoutType[]).map((wt) => (
+              <View key={wt} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: WORKOUT_TYPE_COLORS[wt] }} />
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+                  {t(`calendar.type.${wt}`)}
+                </Text>
+              </View>
+            ))}
           </View>
         </Card>
 
@@ -862,26 +932,3 @@ function StatChip({ label, value, theme }: { label: string; value: string; theme
   );
 }
 
-function BtnSmall({ label, onPress }: { label: string; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={theme.hitSlop.sm}
-      style={{
-        minWidth: 44,
-        minHeight: 44,
-        alignItems: "center",
-        justifyContent: "center",
-        borderColor: theme.glassBorder,
-        borderWidth: 1,
-        borderRadius: theme.radius.md,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        backgroundColor: theme.panel2,
-      }}
-    >
-      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: theme.textSize.md }}>{label}</Text>
-    </Pressable>
-  );
-}
