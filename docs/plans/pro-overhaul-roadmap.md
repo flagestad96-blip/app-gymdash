@@ -13,13 +13,16 @@
 - All screens reskinned; all 15 Gym-dash notes triaged/fixed (most already worked).
 - Release prep: v0.10.0-beta (vc 11) + changelog + patch notes.
 
-**Code-architecture refactor — pure-logic layer done (11 new tested modules, tests 120→156, 2 bug fixes):**
-`asyncUtils`, `streak` (+off-by-one fix), `weekRange`, `analysisHelpers`, `programImport`,
-`programExercises`, `calendarHelpers`, `components/workout/superset`, `components/workout/RestOverlay`,
-`components/settings/WeightUnitCard` + `GymLocationsCard`.
+**Code-architecture refactor — safe layer complete (16 new tested modules/components, tests 120→166, 2 bug fixes):**
+Pure logic: `asyncUtils`, `streak` (+off-by-one fix), `weekRange`, `analysisHelpers`, `programImport`,
+`programExercises`, `calendarHelpers`, `historyHelpers`, `bodyMetrics`, `components/workout/superset`.
+Sub-components: `workout/RestOverlay`, `workout/AddSetButton`, `workout/SetTable`,
+`settings/WeightUnitCard` + `GymLocationsCard`, `achievements/AchievementCard` + `AchievementDetailModal`.
+Every screen's pure logic now lives in a tested module. File reductions: ExerciseCard 1550→~1310,
+achievements 708→450, settings −70.
 
 **Remaining:**
-- Deeper component-body splitting of log/analysis/program/settings/ExerciseCard (sub-components/hooks) — higher-risk, no user-facing effect, NOT launch-blocking.
+- Deeper splitting of the *integrated* component bodies (stateful inline modals in log/program, data-loading hooks) — higher-risk, no user-facing effect, NOT launch-blocking.
 - USER-only: on-device test (no emulator here) + EAS build (`npx eas build -p android --profile preview`).
 - Branch not pushed yet.
 
