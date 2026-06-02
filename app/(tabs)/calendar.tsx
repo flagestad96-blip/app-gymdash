@@ -6,7 +6,8 @@ import { ensureDb, getDb, formatDuration } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, IconButton, Card, ListRow, Btn } from "../../src/ui";
-import { displayNameFor, tagsFor, isPerSideExercise } from "../../src/exerciseLibrary";
+import { displayNameFor, isPerSideExercise } from "../../src/exerciseLibrary";
+import { classifyWorkout, daysInMonth, startOfMonth, formatTime, type WorkoutType } from "../../src/calendarHelpers";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import EditSetModal from "../../src/components/workout/EditSetModal";
@@ -32,8 +33,6 @@ type SetRow = CanonicalSetRow;
 
 type DayMark = "rest" | "skipped" | "sick";
 
-type WorkoutType = "push" | "pull" | "legs" | "other";
-
 const WORKOUT_TYPE_COLORS: Record<WorkoutType, string> = {
   push: "#F97316",
   pull: "#A78BFA",
@@ -55,43 +54,6 @@ const DAY_MARK_COLORS: Record<DayMark, string> = {
 
 // Module-level flag - persists across component remounts (tab switches)
 let _calendarTabInitialized = false;
-
-function classifyWorkout(exerciseIds: string[]): WorkoutType {
-  let push = 0, pull = 0, legs = 0;
-  for (const id of exerciseIds) {
-    const tags = tagsFor(id);
-    for (const tag of tags) {
-      if (tag === "chest" || tag === "shoulders" || tag === "triceps") push++;
-      else if (tag === "back" || tag === "biceps" || tag === "forearms") pull++;
-      else if (tag === "quads" || tag === "hamstrings" || tag === "glutes" || tag === "calves") legs++;
-    }
-  }
-  const total = push + pull + legs;
-  if (total === 0) return "other";
-  // Must have >60% of tagged exercises in one category to classify
-  if (push / total > 0.6) return "push";
-  if (pull / total > 0.6) return "pull";
-  if (legs / total > 0.6) return "legs";
-  return "other";
-}
-
-function daysInMonth(year: number, monthIndex: number) {
-  return new Date(year, monthIndex + 1, 0).getDate();
-}
-
-function startOfMonth(year: number, monthIndex: number) {
-  return new Date(year, monthIndex, 1);
-}
-
-function formatTime(isoStr: string | null | undefined): string {
-  if (!isoStr) return "";
-  try {
-    const d = new Date(isoStr);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  } catch {
-    return "";
-  }
-}
 
 export default function CalendarScreen() {
   const theme = useTheme();
