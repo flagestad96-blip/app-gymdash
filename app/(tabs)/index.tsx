@@ -373,7 +373,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={t("home.resumeWorkout")}
             style={({ pressed }) => ({
-              backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.16)" : "rgba(124, 58, 237, 0.10)",
+              backgroundColor: theme.accent + "29",
               borderRadius: 16,
               borderWidth: 1,
               borderColor: theme.accent,
@@ -411,7 +411,7 @@ export default function HomeScreen() {
         {/* Backup Reminder */}
         {backupDaysAgo != null && !backupDismissed && (
           <View style={{
-            backgroundColor: theme.isDark ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.08)",
+            backgroundColor: theme.warn + "1F",
             borderRadius: 16,
             borderWidth: 1,
             borderColor: theme.warn,
@@ -687,7 +687,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <View style={{
-                    backgroundColor: theme.isDark ? "rgba(182,104,245,0.15)" : "rgba(124,58,237,0.10)",
+                    backgroundColor: theme.accent + "26",
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     paddingVertical: 4,
@@ -755,9 +755,7 @@ function StatBadge({ label, value, theme, accent, accentColor }: { label: string
     <View style={{
       flex: 1,
       minWidth: 80,
-      backgroundColor: highlighted
-        ? (theme.isDark ? `${color}26` : `${color}1A`)
-        : theme.glass,
+      backgroundColor: highlighted ? `${color}26` : theme.glass,
       borderRadius: 12,
       paddingHorizontal: 12,
       paddingVertical: 8,
