@@ -1,5 +1,20 @@
 # Gymdash Changelog
 
+## v0.10.0-beta — 2026-06-02
+
+### Aurora redesign (dark-only)
+- **New design system**: deep aurora-night background with animated orbs, white frosted glass cards, Inter / Instrument Serif / JetBrains Mono type.
+- **Personalization**: accent palette (Aurora / Violet / Emerald / Sunset) + glass-intensity in Settings, replacing the old light/dark picker (app is now dark-only).
+- **Tidier navigation**: drawer grouped into Training / Insights / App with an icon per item.
+
+### Log
+- **One exercise at a time**: a focus-mode pager (prev/next + position + jump-to strip) instead of one long scroll.
+- **Large between-sets rest timer**: a full-screen rest overlay with countdown ring + −15s / Skip / +30s.
+
+### Fixes
+- Category chip text no longer vertically cropped.
+- Palette-derived accent tints across all screens (palette switching repaints the whole app).
+
 ## v0.9.7-beta — 2026-05-13
 
 ### Features
