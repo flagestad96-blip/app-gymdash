@@ -20,6 +20,7 @@ import { getActiveGym } from "../../src/gymStore";
 import TrainingStatusCard from "../../src/components/TrainingStatusCard";
 import { computeTrainingStatus, type TrainingStatusResult } from "../../src/trainingStatus";
 import { toggleManualDeload } from "../../src/periodization";
+import { computeStreak } from "../../src/streak";
 
 const BACKUP_REMINDER_DAYS = 14;
 
@@ -199,22 +200,7 @@ export default function HomeScreen() {
         const dates = db.getAllSync<{ date: string }>(
           `SELECT DISTINCT date FROM workouts ORDER BY date DESC LIMIT 365`
         );
-        let count = 0;
-        const now = new Date();
-        for (let i = 0; i < (dates?.length ?? 0); i++) {
-          const check = new Date(now);
-          check.setDate(check.getDate() - i);
-          const checkStr = `${check.getFullYear()}-${String(check.getMonth() + 1).padStart(2, "0")}-${String(check.getDate()).padStart(2, "0")}`;
-          if (dates?.some((d) => d.date === checkStr)) {
-            count++;
-          } else if (i === 0) {
-            // Today might not have a workout yet — still count streak from yesterday
-            continue;
-          } else {
-            break;
-          }
-        }
-        setStreak(count);
+        setStreak(computeStreak((dates ?? []).map((d) => d.date), new Date()));
       } catch {}
 
       // Recent PRs
