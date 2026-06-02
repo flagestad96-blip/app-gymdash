@@ -1345,7 +1345,7 @@ export default function ProgramScreen() {
                     borderRadius: 14,
                     padding: 12,
                     gap: 8,
-                    backgroundColor: theme.isDark ? "rgba(182, 104, 245, 0.10)" : "rgba(124, 58, 237, 0.06)",
+                    backgroundColor: theme.accent + "1A",
                   }}
                 >
                   <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
