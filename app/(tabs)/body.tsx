@@ -13,6 +13,7 @@ import { SuccessToast } from "../../src/ui/modern";
 import LineChart from "../../src/components/charts/LineChart";
 import { isoDateOnly } from "../../src/storage";
 import { round1 } from "../../src/metrics";
+import { computeBmi, computeWeightTrend } from "../../src/bodyMetrics";
 
 // Module-level flag - persists across component remounts (tab switches)
 let _bodyTabInitialized = false;
@@ -75,43 +76,11 @@ export default function BodyScreen() {
   const parsedWeightInput = Number(weightInput);
 
   const bmiValue = useMemo(() => {
-    const hCm = parsedHeight;
-    if (!Number.isFinite(hCm) || hCm <= 0) return null;
     const w = Number.isFinite(parsedWeightInput) ? wu.toKg(parsedWeightInput) : latestMetric?.weight_kg;
-    if (!Number.isFinite(w ?? NaN)) return null;
-    const hM = hCm / 100;
-    return round1((w as number) / (hM * hM));
+    return computeBmi(w, parsedHeight);
   }, [parsedHeight, parsedWeightInput, latestMetric, wu]);
 
-  const weightTrend = useMemo(() => {
-    if (metrics.length < 2) return null;
-    const sorted = [...metrics].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    const rawLabels = sorted.map((m) => m.date.slice(5));
-    const rawValues = sorted.map((m) => m.weight_kg);
-
-    // 7-day rolling average
-    const smoothed: number[] = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const [cy, cm, cd] = sorted[i].date.split("-").map(Number);
-      const cutoff = new Date(cy, cm - 1, cd);
-      cutoff.setDate(cutoff.getDate() - 7);
-      const cutoffIso = isoDateOnly(cutoff);
-      const window = sorted.filter((m) => m.date > cutoffIso && m.date <= sorted[i].date);
-      const avg = window.reduce((sum, m) => sum + m.weight_kg, 0) / window.length;
-      smoothed.push(round1(avg));
-    }
-
-    // Phase tag: compare smoothed avg of last 7 entries vs first 7 entries (or fewer)
-    const n = Math.min(7, Math.floor(smoothed.length / 2));
-    const recentAvg = smoothed.slice(-n).reduce((a, b) => a + b, 0) / n;
-    const earlyAvg = smoothed.slice(0, n).reduce((a, b) => a + b, 0) / n;
-    const delta = recentAvg - earlyAvg;
-    let phase: "bulk" | "cut" | "maintenance" = "maintenance";
-    if (delta > 0.5) phase = "bulk";
-    else if (delta < -0.5) phase = "cut";
-
-    return { rawLabels, rawValues, smoothed, phase };
-  }, [metrics]);
+  const weightTrend = useMemo(() => computeWeightTrend(metrics), [metrics]);
 
   async function saveMetric() {
     const w = Number(weightInput);
