@@ -10,7 +10,8 @@ import {
   Modal,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useTheme, setThemeMode, getThemeMode, type ThemeMode as ThemeModeSetting } from "../../src/theme";
+import { useTheme, setPalette, getPalette, getPaletteColors, setGlassIntensity, getGlassIntensity, PALETTE_LIST, type Palette } from "../../src/theme";
+import { LinearGradient } from "expo-linear-gradient";
 import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import { useRestTimer } from "../../src/restTimerContext";
@@ -123,7 +124,8 @@ export default function Settings() {
 
   const [programMode, setProgramMode] = useState<ProgramMode>("normal");
   const [defaultDayIndex, setDefaultDayIndex] = useState<number>(0);
-  const [themeMode, setThemeModeState] = useState<ThemeModeSetting>("system");
+  const [palette, setPaletteState] = useState<Palette>(getPalette());
+  const [glassIntensity, setGlassIntensityState] = useState(getGlassIntensity());
   const [workoutLocked, setWorkoutLocked] = useState(false);
   const [lockedDayLabel, setLockedDayLabel] = useState<string | null>(null);
 
@@ -182,10 +184,6 @@ export default function Settings() {
     const pmRaw = await getSettingAsync("programMode");
     const pm: ProgramMode = pmRaw === "back" ? "back" : "normal";
 
-    const tmRaw = await getSettingAsync("themeMode");
-    const tm: ThemeModeSetting =
-      tmRaw === "light" || tmRaw === "dark" || tmRaw === "system" ? tmRaw : getThemeMode();
-
     const ddiRaw = await getSettingAsync("defaultDayIndex");
     const day = clampInt(parseInt(ddiRaw ?? "0", 10), 0, 4);
 
@@ -199,8 +197,8 @@ export default function Settings() {
     setRestEnabled(reRaw === null ? true : reRaw === "1");
     setRestSeconds(clampInt(parseInt(rsRaw ?? "120", 10), 10, 600));
     setRestVibrate(rvRaw === "1");
-    setThemeModeState(tm);
-    setThemeMode(tm);
+    setPaletteState(getPalette());
+    setGlassIntensityState(getGlassIntensity());
 
     const activeWorkoutId = await getSettingAsync("activeWorkoutId");
     if (activeWorkoutId) {
@@ -1032,20 +1030,61 @@ export default function Settings() {
           </Text>
         </Card>
 
-        <Card title={t("settings.theme")}>
+        <Card title={t("settings.appearance")}>
           <Text style={{ color: theme.muted, marginBottom: 8 }}>
-            {t("settings.theme.desc")}
+            {t("settings.palette.desc")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-            {(["system", "light", "dark"] as ThemeModeSetting[]).map((mode) => (
+            {PALETTE_LIST.map((p) => {
+              const colors = getPaletteColors(p);
+              const isActive = palette === p;
+              return (
+                <Pressable
+                  key={`pal_${p}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  onPress={() => {
+                    setPaletteState(p);
+                    setPalette(p);
+                    setSettingAsync("palette", p).catch(() => {});
+                  }}
+                  style={{
+                    alignItems: "center",
+                    gap: 6,
+                    padding: 8,
+                    borderRadius: theme.radius.lg,
+                    borderWidth: 1,
+                    borderColor: isActive ? theme.accent : theme.glassBorder,
+                    backgroundColor: isActive ? theme.accent + "26" : theme.glass,
+                  }}
+                >
+                  <LinearGradient
+                    colors={[colors.blue, colors.violet, colors.pink]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ width: 48, height: 48, borderRadius: theme.radius.md }}
+                  />
+                  <Text style={{ color: isActive ? theme.accent : theme.text, fontFamily: theme.fontFamily.medium, fontSize: theme.fontSize.xs }}>
+                    {t(`settings.palette.${p}`)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={{ color: theme.muted, marginTop: 14, marginBottom: 8 }}>
+            {t("settings.glass.desc")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+            {([["low", 40], ["medium", 65], ["high", 90]] as const).map(([k, v]) => (
               <Chip
-                key={`theme_${mode}`}
-                text={t(`settings.theme.${mode}`)}
-                active={themeMode === mode}
+                key={`glass_${k}`}
+                text={t(`settings.glass.${k}`)}
+                active={glassIntensity === v}
                 onPress={() => {
-                  setThemeModeState(mode);
-                  setThemeMode(mode);
-                  setSettingAsync("themeMode", mode).catch(() => {});
+                  setGlassIntensityState(v);
+                  setGlassIntensity(v);
+                  setSettingAsync("glassIntensity", String(v)).catch(() => {});
                 }}
               />
             ))}

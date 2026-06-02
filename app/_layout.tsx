@@ -13,7 +13,7 @@ import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } f
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { initDb, getSettingAsync } from "../src/db";
-import { ThemeProvider, useTheme } from "../src/theme";
+import { ThemeProvider, useTheme, setPalette, setGlassIntensity, PALETTE_LIST } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
 import { AppBackground } from "../src/components/AppBackground";
 import GymdashLogo from "../src/components/GymdashLogo";
@@ -225,6 +225,12 @@ function RootLayoutInner() {
         await loadLocale();
         await loadWeightUnit();
         await ProgramStore.ensurePrograms();
+        // Apply saved appearance (palette + glass intensity) before splash hides.
+        const palRaw = await getSettingAsync("palette");
+        if (palRaw && (PALETTE_LIST as string[]).includes(palRaw)) setPalette(palRaw as (typeof PALETTE_LIST)[number]);
+        const giRaw = await getSettingAsync("glassIntensity");
+        const gi = parseInt(giRaw ?? "", 10);
+        if (Number.isFinite(gi)) setGlassIntensity(gi);
       } catch {
       } finally {
         if (alive) setAppReady(true);
