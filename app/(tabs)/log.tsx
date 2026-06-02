@@ -1666,7 +1666,9 @@ export default function Logg() {
                 </View>
               )}
             </View>
-            <Text style={{ color: theme.muted }}>{t("log.sessionHint")}</Text>
+            {!activeWorkoutId ? (
+              <Text style={{ color: theme.muted }}>{t("log.sessionHint")}</Text>
+            ) : null}
             {activeWorkoutId ? (
               <TextInput
                 value={workoutNotes}
@@ -1686,29 +1688,35 @@ export default function Logg() {
             ) : null}
           </Card>
 
-          <Card title={t("log.dayCard")}>
-            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-              {t("log.nextSuggestion", { n: suggestedDayIndex + 1 })}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              {(program?.days ?? []).map((_, i) => (
-                <Chip key={`day_${i}`} text={t("log.dayLabel", { n: i + 1 })} active={activeDayIndex === i} onPress={() => selectDayIndex(i)} />
-              ))}
-            </View>
-          </Card>
+          {/* Day picker — only when setting up (the day is locked mid-workout). */}
+          {!activeWorkoutId ? (
+            <Card title={t("log.dayCard")}>
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                {t("log.nextSuggestion", { n: suggestedDayIndex + 1 })}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                {(program?.days ?? []).map((_, i) => (
+                  <Chip key={`day_${i}`} text={t("log.dayLabel", { n: i + 1 })} active={activeDayIndex === i} onPress={() => selectDayIndex(i)} />
+                ))}
+              </View>
+            </Card>
+          ) : null}
 
-          <Card title={t("log.jumpTo")}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {anchorItems.map((item) => (
-                <Chip
-                  key={item.key}
-                  text={shortLabel(item.label)}
-                  active={blockAnchorKeys[currentBlockIndex] === item.key}
-                  onPress={() => goToBlockByAnchorKey(item.key)}
-                />
-              ))}
-            </ScrollView>
-          </Card>
+          {/* Exercise switcher — only relevant with more than one block. */}
+          {renderBlocks.length > 1 ? (
+            <Card title={t("log.jumpTo")}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {anchorItems.map((item) => (
+                  <Chip
+                    key={item.key}
+                    text={shortLabel(item.label)}
+                    active={blockAnchorKeys[currentBlockIndex] === item.key}
+                    onPress={() => goToBlockByAnchorKey(item.key)}
+                  />
+                ))}
+              </ScrollView>
+            </Card>
+          ) : null}
 
           {!activeWorkoutId && (
             <HintBanner hintKey="log_first_set" icon="play-circle-outline">
