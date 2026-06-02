@@ -194,6 +194,8 @@ const log: TranslationMap = {
   "log.setsComplete": "Sets complete",
   "log.bonusSet": "bonus",
   "log.setsPlannedDone": "Planned sets",
+  "log.summarySets": "Sets",
+  "log.summaryVolume": "Volume",
 
   // Ad-hoc exercises
   "log.addExercise": "Add exercise",
@@ -201,6 +203,16 @@ const log: TranslationMap = {
   "log.extraExercise": "Extra",
   "log.extraExercises": "Extra exercises",
   "log.alreadyInWorkout": "Already in workout",
+
+  // Mid-workout combine into superset
+  "log.combineSuperset": "Combine into superset",
+  "log.combineSupersetTitle": "Combine with",
+  "log.combineSupersetHint": "Pick another exercise to pair with {name} as a superset for this workout only.",
+  "log.combineSupersetEmpty": "No other single exercises available to combine.",
+  "log.combineSupersetFor": "Combine {name} with…",
+  "log.splitSuperset": "Split superset",
+  "log.splitSupersetConfirm": "Split this superset back into separate exercises? Sets already logged will be kept.",
+  "log.sessionSupersetBadge": "Custom",
 };
 
 export default log;

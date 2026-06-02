@@ -42,6 +42,37 @@ export function loadPrRecords(programId: string, exerciseIds: string[]): PrMap {
   }
 }
 
+// ── Session-scoped PR records (only PRs anchored to sets in this workout) ─
+
+export function getSessionPRsByExercise(workoutId: string, programId: string): PrMap {
+  if (!workoutId || !programId) return {};
+  try {
+    const rows = getDb().getAllSync<{
+      exercise_id: string; type: string; value: number;
+      reps?: number | null; weight?: number | null; set_id?: string | null; date?: string | null;
+    }>(
+      `SELECT pr.exercise_id, pr.type, pr.value, pr.reps, pr.weight, pr.set_id, pr.date
+       FROM pr_records pr
+       JOIN sets s ON s.id = pr.set_id
+       WHERE pr.program_id = ? AND s.workout_id = ?
+         AND pr.type IN ('heaviest', 'e1rm')`,
+      [programId, workoutId]
+    );
+    const map: PrMap = {};
+    for (const r of rows ?? []) {
+      const eid = String(r.exercise_id);
+      if (!map[eid]) map[eid] = {};
+      map[eid][r.type as PrType] = {
+        value: r.value, date: r.date ?? null, reps: r.reps ?? null,
+        weight: r.weight ?? null, setId: r.set_id ?? null,
+      };
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 // ── Per-set PR check (heaviest + e1RM) ─────────────────────────────────────
 
 export type CheckSetPRsParams = {

@@ -40,7 +40,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Logg: egendefinerte hvile-presets — legg til/fjern via "+" chip, long-press for å slette.
 - Logg: øvelsesbytte persisteres under navigasjon (lagres i settings, gjenopprettes i samme render-batch som program/dag, ryddes ved økt-slutt).
 - Logg: neste-dag forslag per program + dag-override.
-- Logg: PR-banner ved nye pers (tungeste/e1RM/volum). Første sett = baseline (ingen banner). PR-sjekk leser direkte fra DB (ikke React state) for å unngå stale data.
+- Logg: PR-banner ved nye pers (tyngste/e1RM/volum). Første sett = baseline (ingen banner). PR-sjekk leser direkte fra DB (ikke React state) for å unngå stale data.
 - Logg: +3 quick add, notater per sett og per økt.
 - Logg: superset auto-fokus til neste øvelse etter set.
 - Logg: «Bytt øvelse»-knapp med alternative-picker under trening.
