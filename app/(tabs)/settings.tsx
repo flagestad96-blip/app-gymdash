@@ -12,6 +12,8 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { useTheme, setPalette, getPalette, getPaletteColors, setGlassIntensity, getGlassIntensity, PALETTE_LIST, type Palette } from "../../src/theme";
 import { LinearGradient } from "expo-linear-gradient";
+import WeightUnitCard from "../../src/components/settings/WeightUnitCard";
+import GymLocationsCard from "../../src/components/settings/GymLocationsCard";
 import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import { useRestTimer } from "../../src/restTimerContext";
@@ -32,7 +34,6 @@ import { SkeletonCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNotes";
-import { useWeightUnit, type WeightUnit } from "../../src/units";
 import { uid, isoDateOnly } from "../../src/storage";
 import { clampInt } from "../../src/format";
 import { listGyms, createGym, updateGym, deleteGym, type GymLocation } from "../../src/gymStore";
@@ -44,75 +45,6 @@ type ExerciseHistoryRow = {
   exercise_id: string;
   setCount: number;
   lastDate: string | null;
-}
-
-function WeightUnitCard() {
-  const theme = useTheme();
-  const { t } = useI18n();
-  const { unit, setUnit } = useWeightUnit();
-  return (
-    <Card title={t("settings.weightUnit")}>
-      <Text style={{ color: theme.muted, marginBottom: 8 }}>
-        {t("settings.weightUnit.desc")}
-      </Text>
-      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-        {(["kg", "lbs"] as WeightUnit[]).map((u) => (
-          <Chip
-            key={`wu_${u}`}
-            text={t(`settings.weightUnit.${u}`)}
-            active={unit === u}
-            onPress={() => setUnit(u)}
-          />
-        ))}
-      </View>
-    </Card>
-  );
-}
-
-function GymLocationsCard({
-  gyms,
-  onManage,
-}: {
-  gyms: GymLocation[];
-  onManage: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useI18n();
-
-  return (
-    <Card title={t("settings.gymLocations")}>
-      <Text style={{ color: theme.muted, marginBottom: 8 }}>
-        {t("settings.gymLocations.desc")}
-      </Text>
-      {gyms.length === 0 ? (
-        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, marginBottom: 8 }}>
-          {t("settings.gymLocations.empty")}
-        </Text>
-      ) : (
-        <View style={{ gap: 6, marginBottom: 8 }}>
-          {gyms.map((gym) => (
-            <View
-              key={gym.id}
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-            >
-              <View
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  backgroundColor: gym.color ?? theme.accent,
-                }}
-              />
-              <Text style={{ color: theme.text, fontSize: theme.fontSize.sm }}>
-                {gym.name}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
-      <Btn label={t("settings.gymLocations.manage")} onPress={onManage} />
-    </Card>
-  );
 }
 
 export default function Settings() {
