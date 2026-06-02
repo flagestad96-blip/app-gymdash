@@ -19,12 +19,11 @@ import { Screen, TopBar, Chip, IconButton, TextField, Btn } from "../../src/ui";
 import { displayNameFor, searchExercises } from "../../src/exerciseLibrary";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import { useWeightUnit } from "../../src/units";
-import { isoDateOnly } from "../../src/storage";
+import { periodCutoffIso, durationMinutes, type TimePeriod } from "../../src/historyHelpers";
 import { formatWeight } from "../../src/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type TimePeriod = "week" | "month" | "3mo" | "all";
 type Mode = "workouts" | "sets";
 
 type WorkoutRow = {
@@ -64,23 +63,6 @@ type SectionItem =
 
 const PERIOD_ORDER: TimePeriod[] = ["all", "week", "month", "3mo"];
 const PAGE_SIZE = 500;
-
-function periodCutoffIso(period: TimePeriod): string | null {
-  if (period === "all") return null;
-  const d = new Date();
-  if (period === "week") d.setDate(d.getDate() - 7);
-  else if (period === "month") d.setDate(d.getDate() - 30);
-  else if (period === "3mo") d.setDate(d.getDate() - 90);
-  return isoDateOnly(d);
-}
-
-function durationMinutes(startIso: string | null, endIso: string | null): number | null {
-  if (!startIso || !endIso) return null;
-  const start = new Date(startIso).getTime();
-  const end = new Date(endIso).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
-  return Math.round((end - start) / 60000);
-}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
