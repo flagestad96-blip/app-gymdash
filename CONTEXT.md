@@ -3,21 +3,19 @@
 ## Mål
 Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 
-## Design spec (UI v3 — Glassmorphism)
-- Palette: purple/orange glassmorphism. Dark: deep purple-black (#0D0B1A), Light: warm purple (#F8F5FF).
-- Accent: purple (#B668F5 dark / #7C3AED light) med orange (#F97316) som sekundær.
-- Glass cards: semi-transparent purple-tinted (`rgba(160,120,220,0.18)` light / `rgba(80,50,140,0.28)` dark), border i glassBorder.
-- AppBackground: gradient orbs (purple, orange, pink) bak transparent navigation containers.
+## Design spec (UI v4 — Aurora, dark-only)
+- **Dark-only.** Ingen lys modus. Personalisering: palette (aurora/violet/emerald/sunset) + glass-intensitet (0–100, default 65), begge i Settings, persistert + anvendt ved oppstart.
+- Bakgrunn: deep near-black (#05070f) med animerte aurora-orbs (SVG radial-gradient, blå/violet/cyan/pink fra `theme.aurora`) bak transparente navigation containers.
+- Glass: hvit-basert frostet glass drevet av `glassIntensity` (blur 8–32, fill α 0.04–0.14, stroke α 0.12–0.34). GlassCard = frostet sheen + top edge highlight + valgfri accent-tint.
+- Accent: palette-violet (`theme.accent`), gradient [blue→violet], success=cyan, warn #f59e0b, danger #fb7185. Bruk `theme.accent + hexAlpha` for tints (IKKE hardkodede rgba).
 - VIKTIG: Ingen `elevation` på glass-elementer (Android rendrer hvit bakgrunn bak transparente views).
-- Typografi: Manrope font family (400/500/600/700). H1 28 semibold, body 15, caption 11 mono.
-- Spacing scale: 6/10/14/18/24/32 (xs—xxl).
-- Card: radius 22, 1px glassBorder, padding 18. Ingen elevation.
+- Typografi: Inter (400/500/600/700) body, Instrument Serif display, JetBrains Mono numerikk. H1 28 semibold, body 15, caption 11 mono.
+- Spacing scale: 6/10/14/18/24/32 (xs—xxl). Card: radius 22, 1px glassBorder, padding 18, ingen elevation.
 - Modern UI components: GradientButton, GlassCard, ProgressRing, StatPill, AnimatedNumber (src/ui/modern.tsx).
-- TopBar: tydelig tittel/subtittel, lineHeight med 1.3x multiplier.
-- Buttons: GradientButton (primary), outline, ghost. Haptic feedback.
-- Dark/light mode via ThemeProvider + useTheme() hook.
-- Navigation containers (Drawer sceneStyle, Stack contentStyle) har transparent bakgrunn.
-- Logo: stilisert dumbbell med purple→orange gradient, glass-card bakgrunn, upward arrow accent (GymdashLogo.tsx).
+- Theme API: `useTheme()`/`theme` proxy; `setPalette/getPalette`, `setGlassIntensity/getGlassIntensity`, `PALETTE_LIST`, `getPaletteColors`. `setThemeMode/getThemeMode/ThemeMode` er deprecated no-op shims (dark-only); `theme.isDark` er alltid true.
+- Navigasjon: Drawer med grupperte seksjoner (Trening/Innsikt/App) + ikon per rad, aurora active-state.
+- Logg: én øvelse om gangen (pager m/ prev/next + «hopp til»-strip) + stor hvile-overlay mellom sett (RestOverlay, root-rendret, gated til /log).
+- Logo: stilisert dumbbell, glass-card bakgrunn, upward arrow accent (GymdashLogo.tsx).
 
 ## Nåværende funksjonalitet
 - Hjem: dashboard med daglig oppsummering, ukentlig statistikk, streak, siste PRs, quick actions.
@@ -249,6 +247,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-06-02: Aurora-overhaling (branch redesign/pro-overhaul) — dark-only designsystem (theme.ts), Inter/Instrument Serif/JetBrains Mono fonter, animert aurora-bakgrunn, frostet GlassCard, gruppert drawer m/ ikoner. Logg: én-øvelse-pager + stor RestOverlay mellom sett. Settings: palette + glass-intensitet (erstatter tema-velger). Palette-literal-opprydding på alle skjermer. Bekreftet eksisterende: per-set notes, per-dag reprange, 3-veis superset, edit superset in place, navngi dager, resume-banner, kalender exit-knapp, auto-end-prompt. Smoke-test: expo export OK. Se docs/plans/pro-overhaul-roadmap.md.
 - 2026-02-25: Training Intelligence — bug-fix runde: 7 stille catch{} erstattet med console.warn, sessionsInWindow-felt lagt til TrainingStatusResult, warmup-filtrering i sesjonstellingsqueries.
 - 2026-02-25: Analyse — fikset feil fallthrough i analysisInsights.ts: flat e1RM + flat RPE returnerte nå plateau (ikke strongStableRpe), ny i18n-nøkkel analysis.insight.plateau.
 - 2026-02-25: Analyse — insightInputs.sessionCount teller sessions i 28-dagers vindu (ikke full historikk).

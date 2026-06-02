@@ -250,8 +250,7 @@ export function Chip({
           color: textColor,
           fontSize: theme.fontSize.xs,
           fontFamily: theme.fontFamily.medium,
-          lineHeight: 16,
-          includeFontPadding: false,
+          lineHeight: 18,
           textAlignVertical: "center",
         }}
       >
