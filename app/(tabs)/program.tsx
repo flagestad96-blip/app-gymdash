@@ -17,7 +17,8 @@ import {
 import BackImpactDot from "../../src/components/BackImpactDot";
 import ProgramStore, { getEstimatedDuration } from "../../src/programStore";
 import type { Program, ProgramBlock, ProgramDay } from "../../src/programStore";
-import ProgressionStore, { defaultTargetForExercise, type DayExerciseRef, type TargetsByDay } from "../../src/progressionStore";
+import ProgressionStore, { defaultTargetForExercise, type TargetsByDay } from "../../src/progressionStore";
+import { collectDayExercisePairs } from "../../src/programExercises";
 import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, toggleManualDeload, type Periodization } from "../../src/periodization";
 import { shareFile, saveBackupFile } from "../../src/fileSystem";
 import { getShareableProgramJson } from "../../src/sharing";
@@ -49,36 +50,6 @@ type AltContext = {
 
 type AlternativesMap = Record<number, Record<string, string[]>>;
 
-
-function collectDayExercisePairs(program: Program, alts: AlternativesMap): DayExerciseRef[] {
-  const seen = new Set<string>();
-  const pairs: DayExerciseRef[] = [];
-  const add = (dayIndex: number, exerciseId: string) => {
-    if (!exerciseId) return;
-    const key = `${dayIndex}:${exerciseId}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    pairs.push({ dayIndex, exerciseId });
-  };
-  for (let di = 0; di < program.days.length; di += 1) {
-    const day = program.days[di];
-    const map = alts[di] ?? {};
-    for (const block of day.blocks) {
-      if (block.type === "single") {
-        add(di, block.exId);
-        for (const alt of map[block.exId] ?? []) add(di, alt);
-      } else {
-        add(di, block.a);
-        add(di, block.b);
-        if (block.c) add(di, block.c);
-        for (const alt of map[block.a] ?? []) add(di, alt);
-        for (const alt of map[block.b] ?? []) add(di, alt);
-        if (block.c) for (const alt of map[block.c] ?? []) add(di, alt);
-      }
-    }
-  }
-  return pairs;
-}
 
 // Module-level flag - persists across component remounts (tab switches)
 let _programTabInitialized = false;
