@@ -110,6 +110,7 @@ export default function ProgramScreen() {
   const [previewDuration, setPreviewDuration] = useState<string | null>(null);
 
   const [importExportOpen, setImportExportOpen] = useState<"export" | "import" | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const [exportText, setExportText] = useState("");
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
@@ -791,12 +792,6 @@ export default function ProgramScreen() {
           subtitle={headerStatus}
           left={<IconButton icon="menu" onPress={openDrawer} />}
         />
-        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-          <Chip text={headerStatus} />
-          <Chip text={`${t("program.activeDay")}: ${activeDayIndex + 1}`} />
-          <Chip text={`${t("program.programLabel")}: ${activeProgram.name}`} active />
-        </View>
-
         {workoutLocked ? (
           <Card style={{ borderColor: theme.warn }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono }}>
@@ -845,41 +840,9 @@ export default function ProgramScreen() {
             })}
           </View>
 
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
             <Btn label={t("program.newProgram")} onPress={() => openNameModal("new")} tone="accent" />
-            <Btn label={t("program.duplicate")} onPress={() => openNameModal("duplicate")} />
-            <Btn label={t("program.rename")} onPress={() => openNameModal("rename")} />
-            <Btn label={t("common.delete")} onPress={deleteActiveProgram} tone="danger" />
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <Btn label={t("program.periodization")} onPress={openPeriodization} />
-            <Btn
-              label={periodConfig?.manualDeload ? t("program.endDeload") : t("program.deloadWeek")}
-              tone={periodConfig?.manualDeload ? "danger" : undefined}
-              onPress={async () => {
-                if (!activeProgramId) return;
-                try {
-                  await toggleManualDeload(activeProgramId);
-                  const updated = await getPeriodization(activeProgramId);
-                  setPeriodConfig(updated);
-                } catch {}
-              }}
-            />
-          </View>
-
-          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 10 }}>{t("program.shareDesc")}</Text>
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-            <Btn label={t("program.copyText")} onPress={openExport} />
-            <Btn label={t("program.shareFile")} onPress={handleShareExport} />
-            <Btn
-              label={t("program.import")}
-              onPress={() => {
-                setImportText("");
-                setImportError(null);
-                setImportExportOpen("import");
-              }}
-            />
+            <Btn label={`${t("program.manage")}  ⋯`} onPress={() => setManageOpen(true)} />
           </View>
         </Card>
 
@@ -893,7 +856,6 @@ export default function ProgramScreen() {
           <View style={{ gap: 10, marginTop: 8 }}>
             {activeProgram.days.map((day, idx) => {
               const isActive = idx === activeDayIndex;
-              const altMap = alternatives[idx] ?? {};
               return (
                 <Pressable
                   key={day.id}
@@ -939,74 +901,89 @@ export default function ProgramScreen() {
                     </View>
                   </View>
 
-                  <View style={{ gap: 6 }}>
-                    {day.blocks.length === 0 ? (
-                      <Text style={{ color: theme.muted }}>{t("program.noExercises")}</Text>
-                    ) : (
-                      day.blocks.map((block, bi) => {
-                        if (block.type === "single") {
-                          const altList = altMap[block.exId] ?? [];
-                          return (
-                            <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.exId)}</Text>
-                                <BackImpactDot exerciseId={block.exId} />
-                              </View>
-                              {altList.length ? (
-                                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                                  Alt: {altList.map((id) => displayNameFor(id)).join(", ")}
-                                </Text>
-                              ) : null}
-                            </View>
-                          );
-                        }
-                        const altA = altMap[block.a] ?? [];
-                        const altB = altMap[block.b] ?? [];
-                        const altC = block.c ? (altMap[block.c] ?? []) : [];
-                        return (
-                          <View key={`${day.id}_${bi}`} style={{ gap: 2 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                              <Text style={{ color: theme.text }}>{"\u2022"} {displayNameFor(block.a)}</Text>
-                              <BackImpactDot exerciseId={block.a} />
-                            </View>
-                            {altA.length ? (
-                              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                                Alt: {altA.map((id) => displayNameFor(id)).join(", ")}
-                              </Text>
-                            ) : null}
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                              <Text style={{ color: theme.text }}>  + {displayNameFor(block.b)}</Text>
-                              <BackImpactDot exerciseId={block.b} />
-                            </View>
-                            {altB.length ? (
-                              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                                Alt: {altB.map((id) => displayNameFor(id)).join(", ")}
-                              </Text>
-                            ) : null}
-                            {block.c ? (
-                              <>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                  <Text style={{ color: theme.text }}>  + {displayNameFor(block.c)}</Text>
-                                  <BackImpactDot exerciseId={block.c} />
-                                </View>
-                                {altC.length ? (
-                                  <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                                    Alt: {altC.map((id) => displayNameFor(id)).join(", ")}
-                                  </Text>
-                                ) : null}
-                              </>
-                            ) : null}
-                          </View>
-                        );
-                      })
-                    )}
-                  </View>
+                  {day.blocks.length === 0 ? (
+                    <Text style={{ color: theme.muted, fontSize: 13 }}>{t("program.noExercises")}</Text>
+                  ) : (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                        {t("program.exercisesCount", { n: day.blocks.length })}
+                      </Text>
+                      <Text style={{ color: theme.muted, fontSize: 13, flex: 1 }} numberOfLines={1} ellipsizeMode="tail">
+                        {day.blocks
+                          .map((block) =>
+                            block.type === "single"
+                              ? displayNameFor(block.exId)
+                              : `${displayNameFor(block.a)}+${displayNameFor(block.b)}${block.c ? `+${displayNameFor(block.c)}` : ""}`,
+                          )
+                          .join(", ")}
+                      </Text>
+                    </View>
+                  )}
                 </Pressable>
               );
             })}
           </View>
         </Card>
       </ScrollView>
+
+      {/* Manage program modal (bottom sheet) */}
+      <Modal visible={manageOpen} transparent animationType="slide" onRequestClose={() => setManageOpen(false)}>
+        <Pressable onPress={() => setManageOpen(false)} style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "flex-end" }}>
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: theme.modalGlass,
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              borderWidth: 1,
+              borderColor: theme.glassBorder,
+              padding: 18,
+              gap: 12,
+              maxHeight: "85%",
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 18 }} numberOfLines={1}>
+                  {activeProgram.name}
+                </Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>{t("program.manageDesc")}</Text>
+              </View>
+              <IconButton icon="close" onPress={() => setManageOpen(false)} />
+            </View>
+            <ScrollView contentContainerStyle={{ gap: 8 }}>
+              <Btn label={t("program.rename")} onPress={() => { setManageOpen(false); openNameModal("rename"); }} />
+              <Btn label={t("program.duplicate")} onPress={() => { setManageOpen(false); openNameModal("duplicate"); }} />
+              <Btn label={t("program.periodization")} onPress={() => { setManageOpen(false); openPeriodization(); }} />
+              <Btn
+                label={periodConfig?.manualDeload ? t("program.endDeload") : t("program.deloadWeek")}
+                tone={periodConfig?.manualDeload ? "danger" : undefined}
+                onPress={async () => {
+                  setManageOpen(false);
+                  if (!activeProgramId) return;
+                  try {
+                    await toggleManualDeload(activeProgramId);
+                    const updated = await getPeriodization(activeProgramId);
+                    setPeriodConfig(updated);
+                  } catch {}
+                }}
+              />
+              <Btn label={t("program.copyText")} onPress={() => { setManageOpen(false); openExport(); }} />
+              <Btn label={t("program.shareFile")} onPress={() => { setManageOpen(false); handleShareExport(); }} />
+              <Btn
+                label={t("program.import")}
+                onPress={() => {
+                  setManageOpen(false);
+                  setImportText("");
+                  setImportError(null);
+                  setImportExportOpen("import");
+                }}
+              />
+              <Btn label={t("common.delete")} tone="danger" onPress={() => { setManageOpen(false); deleteActiveProgram(); }} />
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Day Preview Modal */}
       <Modal visible={previewDayIdx != null} transparent animationType="fade" onRequestClose={() => setPreviewDayIdx(null)}>
