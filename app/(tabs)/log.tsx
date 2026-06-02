@@ -73,6 +73,7 @@ import { uid, isoDateOnly, isoNow } from "../../src/storage";
 import { epley1RM, round1 } from "../../src/metrics";
 import { formatWeight, shortLabel, parseTimeMs, clampInt } from "../../src/format";
 import { areAllPlannedSetsDone } from "../../src/workoutCompletion";
+import { withTimeout } from "../../src/asyncUtils";
 
 type WorkoutRow = {
   id: string;
@@ -105,27 +106,6 @@ type RenderBlock =
       baseC?: string;
       anchorKey: string;
     };
-
-function roundWeight(n: number) {
-  return Math.round(n * 10) / 10;
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => {
-      resolve(null);
-    }, ms);
-  });
-  try {
-    const result = await Promise.race([promise, timeout]);
-    return result as T | null;
-  } catch (err) {
-    return null;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 // Module-level flag - persists across component remounts (tab switches)
 let _logTabInitialized = false;
