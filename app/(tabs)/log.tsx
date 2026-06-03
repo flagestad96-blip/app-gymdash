@@ -1342,8 +1342,15 @@ export default function Logg() {
       const tgt = getTargetFor(exId);
       const workingSets = (setsByExercise[exId] ?? []).filter((s) => !s.is_warmup).length + (row.is_warmup ? 0 : 1);
       const exerciseDone = !row.is_warmup && tgt.targetSets > 0 && workingSets >= tgt.targetSets;
-      restTimer.setNextUpLabel(exerciseDone ? nextBlockLabelAfter(exId) : null);
-      restTimer.startRestTimer(restTimer.getRestForExercise(exId));
+      const nextUp = exerciseDone ? nextBlockLabelAfter(exId) : null;
+      restTimer.setNextUpLabel(nextUp);
+      // Finishing the workout's final exercise needs no rest — there's nothing to rest for.
+      const workoutDone = exerciseDone && nextUp === null;
+      if (!workoutDone) {
+        restTimer.startRestTimer(restTimer.getRestForExercise(exId));
+      } else {
+        restTimer.stopRestTimer();
+      }
     }
     return row;
   }
