@@ -56,29 +56,32 @@ npm run verify
 # 4. Commit versjonsbumpen
 git add -A && git commit -m "release: vX.Y.Z-beta"
 
-# 5. Bygg + last opp automatisk til Play (alpha-sporet)
-npm run build:android
+# 5. Bygg + last opp + sett «Hva er nytt» automatisk (alpha-sporet)
+npm run release:android
 ```
 
-Steg 5 bygger en `.aab` på EAS-serverne og kjører **EAS Submit automatisk**
-(`--auto-submit`) til `alpha`-sporet med `releaseStatus: completed`. Testerne i
-det lukkede sporet får oppdateringen så snart Google har prosessert den (vanligvis
-minutter til noen timer).
+Steg 5 (`release:android`) gjør tre ting: bygger en `.aab` på EAS-serverne,
+kjører **EAS Submit** (`--auto-submit`) til `alpha`-sporet med
+`releaseStatus: completed`, og kjører deretter `scripts/set-release-notes.js`.
+Testerne får oppdateringen så snart Google har prosessert den (minutter–timer).
 
-### ⚠️ «Hva er nytt» må settes manuelt i Play Console
+### «Hva er nytt» (release notes) — automatisert
 
-**EAS Submit setter IKKE Play sin «Hva er nytt»-tekst** — den laster kun opp
-`.aab`-en. Når feltet er tomt, gjenbruker Google **forrige releases** tekst, så
-nye versjoner viser gamle notater til du retter det.
+**EAS Submit setter ikke Play sin «Hva er nytt»-tekst** — den laster kun opp
+`.aab`-en. Derfor gjør `scripts/set-release-notes.js` det via **Play Developer
+API**: leser nyeste entry i `src/patchNotes.ts`, slår opp tekstene i
+`src/i18n/{en,nb}/patchNotes.ts`, og setter «Hva er nytt» på alpha-utgivelsen
+(maks 500 tegn per språk). Gjenbruker tjenestekonto-nøkkelen.
 
-> Dette er IKKE appens interne `patchNotes.ts` (den er korrekt) — det er
-> Play Store-listingen, en separat ting.
+```bash
+node scripts/set-release-notes.js --dry-run   # forhåndsvis teksten, ingen publisering
+node scripts/set-release-notes.js             # sett notatene på siste alpha-utgivelse
+```
 
-Sett den manuelt hver release:
-**Play Console → Test og publiser → Lukket testing «alpha» → Administrer
-utgivelsen → «Hva er nytt i denne utgaven»** (per språk nb + en, maks 500 tegn).
-Kilde til teksten: nyeste entry i `src/patchNotes.ts` (selve tekstene ligger i
-`src/i18n/{en,nb}/patchNotes.ts`).
+> Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`.
+> Listingen har foreløpig kun `en-US`, så butikk-notatene blir engelske. Vil du ha
+> norske, legg til norsk som listing-språk i Play — scriptet plukker det opp
+> automatisk (det setter notater for alle `en*`/`no*`-språk listingen har).
 
 ### Hvis en build allerede er bygd uten auto-submit
 

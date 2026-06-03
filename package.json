@@ -16,7 +16,9 @@
     "bump-version": "node scripts/bump-version.js",
     "verify": "npm run check-version && npm run typecheck && npm run test && npm run lint",
     "build:android": "eas build --platform android --profile production --auto-submit",
-    "submit:android": "eas submit --platform android --profile production --latest"
+    "submit:android": "eas submit --platform android --profile production --latest",
+    "set-release-notes": "node scripts/set-release-notes.js",
+    "release:android": "npm run build:android && npm run set-release-notes"
   },
   "dependencies": {
     "@expo-google-fonts/instrument-serif": "^0.4.1",
@@ -61,6 +63,7 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
+    "@googleapis/androidpublisher": "^36.0.0",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",

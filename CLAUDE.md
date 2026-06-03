@@ -49,16 +49,15 @@ Appen publiseres til Play via **EAS Build + EAS Submit (auto-submit)**. Full gui
 1. `npm run bump-version <patch|minor|major>` (bumper app.json/package.json + patchNotes-placeholder)
 2. Fyll inn ekte patch notes i `src/patchNotes.ts` + i18n (`src/i18n/{en,nb}/patchNotes.ts`) + `## vX.Y.Z` i `CHANGELOG.md`
 3. `npm run verify`
-4. **Sett «Hva er nytt» i Play Console manuelt** (se gotcha)
-5. `npm run build:android` → bygger + auto-submitter til alpha. Testerne får auto-oppdatering når Google er ferdig å prosessere (minutter–timer).
+4. `npm run release:android` → bygger + auto-submitter til alpha **og** setter «Hva er nytt» automatisk. Testerne får auto-oppdatering når Google er ferdig å prosessere (minutter–timer).
 
-**⚠️ Gotcha — Play «Hva er nytt» (release notes):**
-EAS Submit laster KUN opp `.aab`-en — den setter **ikke** Play sin «Hva er nytt»-tekst. Når feltet er tomt, gjenbruker Google **forrige releases** tekst (derfor viste v0.10.0-beta gamle v0.9.0-notater). Dette er IKKE det samme som appens interne `patchNotes.ts` (som er korrekt) — det er Play Store-listingen.
-→ **Sett release notes manuelt hver release:** Play Console → Test og publiser → Lukket testing «alpha» → *Administrer utgivelsen* → «Hva er nytt i denne utgaven» (per språk nb/en, maks 500 tegn). Kilde: nyeste entry i `patchNotes.ts` (tekstene ligger i i18n-filene).
+**Play «Hva er nytt» (release notes) — automatisert:**
+EAS Submit setter ikke release notes selv. Det gjør `scripts/set-release-notes.js` (kjøres av `npm run release:android`): leser nyeste `patchNotes.ts`-entry + i18n-tekstene og setter «Hva er nytt» via **Play Developer API** (gjenbruker tjenestekonto-nøkkelen). Forhåndsvis uten å publisere: `node scripts/set-release-notes.js --dry-run`.
+NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. Listingen har foreløpig **kun `en-US`**, så butikk-notatene blir engelske (norsk tekst genereres, men brukes først når du legger til norsk som listing-språk i Play).
 
 **Sjekkliste til neste økt:**
 - `versionCode` MÅ økes hver release, ellers avviser Play (duplikat).
-- Play «Hva er nytt» settes manuelt — auto-submit gjør det ikke.
+- Play «Hva er nytt» settes automatisk av `release:android` (`set-release-notes.js` via Play API). Store-listingen er `en-US` only — legg til norsk listing-språk i Play hvis du vil ha norske notater.
 - **Produksjon** (åpen for alle): krever fortsatt 12 testere i 14 dager (har 2). Bytt `track` til `production` i eas.json når innvilget.
 - **Tag-push-workflow** (`.eas/workflows/release-android.yml`): for at den skal trigge må branchen + workflow-fila pushes til GitHub, og `serviceAccountKeyPath` fjernes fra `eas.json` (serverne bruker EAS-lagret nøkkel, ikke lokal fil).
 - 🔐 Vurder å rullere Play-tjenestekontonøkkelen i Google Cloud (den lå i en chat-logg under oppsettet).
