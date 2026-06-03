@@ -5,7 +5,7 @@
 // pill) and gated to the Log screen by the parent.
 
 import React from "react";
-import { View, Text, Pressable, StyleSheet, Dimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, Dimensions, TextInput, KeyboardAvoidingView, Platform } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme";
@@ -64,67 +64,106 @@ export default function RestOverlay() {
   };
 
   return (
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        { backgroundColor: "rgba(4, 5, 12, 0.92)", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 24 },
-      ]}
-    >
-      <Text
-        style={{
-          color: theme.muted,
-          fontFamily: theme.mono,
-          fontSize: theme.fontSize.sm,
-          letterSpacing: 3,
-          textTransform: "uppercase",
-          marginBottom: theme.space.lg,
-        }}
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(4, 5, 12, 0.92)", zIndex: 10000 }]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {rt.restPhaseLabel ?? t("log.rest")}
-      </Text>
-
-      <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-        <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
-          <Circle cx={size / 2} cy={size / 2} r={r} stroke={theme.glassBorder} strokeWidth={stroke} fill="none" />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={theme.accent}
-            strokeWidth={stroke}
-            fill="none"
-            strokeDasharray={`${circ} ${circ}`}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-          />
-        </Svg>
-        <View style={{ position: "absolute", alignItems: "center" }}>
-          <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 60, fontVariant: ["tabular-nums"] }}>
-            {mmss(rt.restRemaining)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: "row", gap: theme.space.md, marginTop: theme.space.xxl, alignItems: "center" }}>
-        <RoundButton label="−15s" onPress={() => adjust(-15)} />
-        <Pressable
-          onPress={skip}
-          accessibilityRole="button"
-          accessibilityLabel={t("log.skipRest")}
-          style={({ pressed }) => ({
-            paddingHorizontal: 32,
-            paddingVertical: 16,
-            borderRadius: theme.radius.pill,
-            backgroundColor: theme.accent,
-            opacity: pressed ? 0.85 : 1,
-          })}
+        <Text
+          style={{
+            color: theme.muted,
+            fontFamily: theme.mono,
+            fontSize: theme.fontSize.sm,
+            letterSpacing: 3,
+            textTransform: "uppercase",
+            marginBottom: theme.space.lg,
+          }}
         >
-          <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.lg }}>
-            {t("log.skipRest")}
-          </Text>
-        </Pressable>
-        <RoundButton label="+30s" onPress={() => adjust(30)} />
-      </View>
+          {rt.restPhaseLabel ?? t("log.rest")}
+        </Text>
+
+        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+          <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
+            <Circle cx={size / 2} cy={size / 2} r={r} stroke={theme.glassBorder} strokeWidth={stroke} fill="none" />
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              stroke={theme.accent}
+              strokeWidth={stroke}
+              fill="none"
+              strokeDasharray={`${circ} ${circ}`}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+            />
+          </Svg>
+          <View style={{ position: "absolute", alignItems: "center" }}>
+            <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 60, fontVariant: ["tabular-nums"] }}>
+              {mmss(rt.restRemaining)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: theme.space.md, marginTop: theme.space.xxl, alignItems: "center" }}>
+          <RoundButton label="−15s" onPress={() => adjust(-15)} />
+          <Pressable
+            onPress={skip}
+            accessibilityRole="button"
+            accessibilityLabel={t("log.skipRest")}
+            style={({ pressed }) => ({
+              paddingHorizontal: 32,
+              paddingVertical: 16,
+              borderRadius: theme.radius.pill,
+              backgroundColor: theme.accent,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.lg }}>
+              {t("log.skipRest")}
+            </Text>
+          </Pressable>
+          <RoundButton label="+30s" onPress={() => adjust(30)} />
+        </View>
+
+        {/* Quick note for the set you just finished — captured before time runs out. */}
+        {rt.lastSet && rt.restPhase !== "transition" ? (
+          <View style={{ width: "100%", maxWidth: 360, marginTop: theme.space.xxl }}>
+            <Text
+              style={{
+                color: theme.muted,
+                fontFamily: theme.mono,
+                fontSize: theme.fontSize.xs,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                marginBottom: theme.space.xs,
+              }}
+            >
+              {t("log.setNote")}
+            </Text>
+            <TextInput
+              value={rt.lastSet.note}
+              onChangeText={rt.updateLastSetNote}
+              placeholder={t("log.setNotePlaceholder")}
+              placeholderTextColor={theme.muted}
+              multiline
+              style={{
+                color: theme.text,
+                backgroundColor: theme.glass,
+                borderColor: theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: theme.radius.md,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontFamily: theme.mono,
+                fontSize: 14,
+                minHeight: 48,
+                maxHeight: 100,
+                textAlignVertical: "top",
+              }}
+            />
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </View>
   );
 }

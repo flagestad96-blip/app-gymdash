@@ -91,13 +91,7 @@ export default function SetEntryRow({ set: s, highlight, highlightBg, onEdit, on
           ) : null}
         </View>
         <View style={{ flexDirection: "row", gap: 6 }}>
-          <IconButton
-            icon={hasNote ? "note" : "note-add"}
-            onPress={() => onEdit(s)}
-            tone={hasNote ? "accent" : "normal"}
-            accessibilityLabel={t("log.setNote")}
-          />
-          <IconButton icon="edit" onPress={() => onEdit(s)} />
+          <IconButton icon="edit" onPress={() => onEdit(s)} accessibilityLabel={t("log.editSet")} />
           <IconButton icon="delete-outline" onPress={() => onDelete(s)} tone="danger" />
         </View>
       </View>

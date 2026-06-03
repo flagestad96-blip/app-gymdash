@@ -798,6 +798,13 @@ export async function deleteBodyMetric(date: string): Promise<void> {
   await database.runAsync(`DELETE FROM body_metrics WHERE date = ?`, [date]);
 }
 
+/** Update just the note of a logged set (used by the rest overlay's quick note box). */
+export async function updateSetNote(setId: string, note: string): Promise<void> {
+  await ensureDb();
+  const database = getDb();
+  await database.runAsync(`UPDATE sets SET notes = ? WHERE id = ?`, [note.trim() ? note : null, setId]);
+}
+
 export async function listBodyMetrics(limit?: number): Promise<BodyMetricRow[]> {
   await ensureDb();
   const database = getDb();

@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { Platform, Vibration, AppState } from "react-native";
 import * as Haptics from "expo-haptics";
-import { getSettingAsync, setSettingAsync } from "./db";
+import { getSettingAsync, setSettingAsync, updateSetNote } from "./db";
 import { tagsFor, isPerSideExercise, type ExerciseTag } from "./exerciseLibrary";
 import {
   scheduleRestNotification,
@@ -69,6 +69,12 @@ export type RestTimerContextValue = {
   // Settings modal state
   restSettingsOpen: boolean;
   setRestSettingsOpen: (v: boolean) => void;
+
+  // Last logged set — lets the rest overlay attach a quick note to the set you
+  // just finished, while the timer runs.
+  lastSet: { id: string; note: string } | null;
+  setLastSet: (v: { id: string; note: string } | null) => void;
+  updateLastSetNote: (note: string) => void;
 };
 
 const RestTimerContext = createContext<RestTimerContextValue | null>(null);
@@ -96,6 +102,7 @@ export function RestTimerProvider({ children }: Props) {
   const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
   const [activeWorkoutId, setActiveWorkoutIdState] = useState<string | null>(null);
   const [restSettingsOpen, setRestSettingsOpen] = useState(false);
+  const [lastSet, setLastSet] = useState<{ id: string; note: string } | null>(null);
   const [perSideOverrides, setPerSideOverrides] = useState<Record<string, boolean>>({});
   const [transitionRestSeconds, setTransitionRestSecondsState] = useState(15);
   const [restPhase, setRestPhase] = useState<RestPhase>("normal");
@@ -104,6 +111,17 @@ export function RestTimerProvider({ children }: Props) {
 
   const restDoneRef = useRef(false);
   const appStateRef = useRef(AppState.currentState);
+  const lastSetRef = useRef(lastSet);
+  useEffect(() => { lastSetRef.current = lastSet; }, [lastSet]);
+
+  // Update the note on the most-recently-logged set (rest overlay quick note).
+  // Persists on every change so nothing is lost if the timer runs out mid-typing.
+  const updateLastSetNote = useCallback((note: string) => {
+    const cur = lastSetRef.current;
+    if (!cur) return;
+    setLastSet({ id: cur.id, note });
+    updateSetNote(cur.id, note).catch(() => {});
+  }, []);
 
   // Load settings on mount
   useEffect(() => {
@@ -437,6 +455,9 @@ export function RestTimerProvider({ children }: Props) {
     stopRestTimer,
     restSettingsOpen,
     setRestSettingsOpen,
+    lastSet,
+    setLastSet,
+    updateLastSetNote,
   };
 
   // Don't render children until settings are loaded

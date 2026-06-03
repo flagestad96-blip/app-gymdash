@@ -618,6 +618,24 @@ export default function Logg() {
 
   // Rest timer effects (countdown, app state, haptics) are now in restTimerContext
 
+  // Mirror the rest-overlay quick note back into the local set list so the note
+  // shows on the set row right away (the DB write itself happens in the context).
+  useEffect(() => {
+    const ls = restTimer.lastSet;
+    if (!ls) return;
+    setWorkoutSets((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        if (s.id === ls.id && (s.notes ?? "") !== ls.note) {
+          changed = true;
+          return { ...s, notes: ls.note };
+        }
+        return s;
+      });
+      return changed ? next : prev;
+    });
+  }, [restTimer.lastSet]);
+
   const fireHapticSetConfirmed = useCallback(async () => {
     if (!restTimer.restHaptics || Platform.OS === "web") return;
     try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
@@ -1143,8 +1161,9 @@ export default function Logg() {
     setAdHocExercises([]);
     setActiveWorkoutId(null);
     restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
-    restTimer.setActiveWorkoutId(null); // Hide floating timer
+    restTimer.setActiveWorkoutId(null);
     restTimer.setFocusedExerciseId(null);
+    restTimer.setLastSet(null);
     setWorkoutStartedAt(null);
     setWorkoutElapsedSec(0);
     setWorkoutSets([]);
@@ -1300,6 +1319,8 @@ export default function Logg() {
 
     setUndoSet({ row, exerciseId: exId, prSetId: row.id });
     setUndoVisible(true);
+
+    restTimer.setLastSet({ id: row.id, note: "" });
 
     if (!opts?.skipRestTimer && restTimer.restEnabled) {
       restTimer.startRestTimer(restTimer.getRestForExercise(exId));
@@ -2002,7 +2023,7 @@ export default function Logg() {
         </Pressable>
       </Modal>
 
-      {/* Rest Settings Modal is now rendered by FloatingRestTimer in _layout.tsx */}
+      {/* Rest Settings Modal is rendered by RestSettingsHost in _layout.tsx */}
 
       {/* Plate Calculator Modal */}
       <PlateCalcModal

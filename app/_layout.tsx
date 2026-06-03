@@ -21,7 +21,7 @@ import ProgramStore from "../src/programStore";
 import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
-import FloatingRestTimer from "../src/components/FloatingRestTimer";
+import RestSettingsHost from "../src/components/RestSettingsHost";
 import RestOverlay from "../src/components/workout/RestOverlay";
 import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
 
@@ -300,7 +300,7 @@ function RootLayoutInner() {
                 <Drawer.Screen name="(tabs)" />
               </Drawer>
             ) : null}
-            {appReady ? <FloatingRestTimer /> : null}
+            {appReady ? <RestSettingsHost /> : null}
             {appReady && pathname === "/log" ? <RestOverlay /> : null}
             {showSplash && !appReady ? (
               <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>

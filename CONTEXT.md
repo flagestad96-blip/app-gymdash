@@ -162,8 +162,9 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - src/components/BackImpactDot.tsx: farget dot-indikator for ryggbelastning (rød/gul/grønn). Vises ved alle øvelsesnavn.
 - src/components/workout/RestTimer.tsx: rest-timer UI (ekstrahert fra log.tsx).
 - src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste, utstyrslabel, RPE-hjelper, BackImpactDot, trykk-for-fokus (FocusGlow: graderte lilla lag + iOS accent shadow).
-- src/components/FloatingRestTimer.tsx: flytende rest-timer pill — viser tid for fokusert øvelse, tap for innstillinger, long-press for start/stopp.
-- src/restTimerContext.tsx: rest-timer context (global state for rest-timer, presets, per-øvelse overrides, fokusert øvelse).
+- src/components/RestSettingsHost.tsx: rendrer rest-timer innstillings-modalen (åpnes fra tannhjul i logg-toppbaren).
+- src/components/workout/RestOverlay.tsx: stor hvile-overlay som dekker logg-skjermen mens timeren løper (nedtellings-ring, ±-justering, skip, og rask notat-boks for settet du nettopp logget).
+- src/restTimerContext.tsx: rest-timer context (global state for rest-timer, presets, per-øvelse overrides, fokusert øvelse, og `lastSet` for hurtignotat på hvileskjermen).
 - src/components/workout/SetEntryRow.tsx: individuell sett-rad (ekstrahert fra log.tsx).
 - src/components/modals/PlateCalcModal.tsx: skivefordeling-modal med stangtype-valg (Olympic 20kg, Women's 15kg, EZ Bar 10kg, Smith 15kg, Trap Bar 25kg), persistert preferanse.
 - src/components/modals/ExerciseSwapModal.tsx: øvelsesbytte-modal med BackImpactDot + inline opprett ny øvelse (navn + utstyr).
@@ -230,7 +231,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Warmup-sett lagres, men ikke brukt i PR/volum/strength index.
 - Edit/slett sett oppdaterer ikke PR-historikk automatisk.
 - Cue/link UI fjernet (legacy data beholdes kun i storage).
-- Rest-timer nå i flytende pill (FloatingRestTimer); RestTimerInline i RestTimer.tsx er ubrukt legacy.
+- Rest-timer: stor overlay (RestOverlay) mens den løper; innstillinger via tannhjul i logg-toppbaren (RestSettingsHost). Flytende pill fjernet. Sett-notat fanges på hvileskjermen + redigeres via edit-knapp; egen notat-knapp fjernet (var redundant med edit). RestTimerInline i RestTimer.tsx er ubrukt legacy.
 - Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
 - App icon PNG (1024×1024) — SVG-filer generert (assets/gymdash-icon.svg + foreground), må konverteres til PNG for Play Store.
 - ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.
