@@ -35,8 +35,37 @@ DISCOVERY → PLANNING → BUILD → QUALITY → OPS
 
 Output lagres i `docs/` (ideas/, plans/, prompts/, research/, reviews/, sessions/).
 
+## Utgivelse (EAS Build → Play Store)
+
+Appen publiseres til Play via **EAS Build + EAS Submit (auto-submit)**. Full guide: `docs/RELEASE.md`.
+
+**Oppsett (ferdig per juni 2026):**
+- Tjenestekonto `eas-submit@gymdash.iam.gserviceaccount.com` — satt opp i Play (13 tillatelser på appen), Google Cloud (**Android Publisher API enabled**, prosjekt «Gymdash») og lagret i EAS. Lokal nøkkel i `credentials/google-play-service-account.json` (git-ignorert).
+- GitHub koblet til EAS-prosjektet (`flagestad96-blip/app-gymdash`, base `/`).
+- Aktivt spor: **lukket testing «alpha»**. `eas.json` submit → track `alpha`, releaseStatus `completed`.
+- `appVersionSource: "local"` — app.json er fasit for `versionCode`. Bumpes via `scripts/bump-version.js`, **ikke** EAS auto-increment (koblet til patch notes + håndhevet av `check-version`).
+
+**Per release (kjerneflyt):**
+1. `npm run bump-version <patch|minor|major>` (bumper app.json/package.json + patchNotes-placeholder)
+2. Fyll inn ekte patch notes i `src/patchNotes.ts` + i18n (`src/i18n/{en,nb}/patchNotes.ts`) + `## vX.Y.Z` i `CHANGELOG.md`
+3. `npm run verify`
+4. **Sett «Hva er nytt» i Play Console manuelt** (se gotcha)
+5. `npm run build:android` → bygger + auto-submitter til alpha. Testerne får auto-oppdatering når Google er ferdig å prosessere (minutter–timer).
+
+**⚠️ Gotcha — Play «Hva er nytt» (release notes):**
+EAS Submit laster KUN opp `.aab`-en — den setter **ikke** Play sin «Hva er nytt»-tekst. Når feltet er tomt, gjenbruker Google **forrige releases** tekst (derfor viste v0.10.0-beta gamle v0.9.0-notater). Dette er IKKE det samme som appens interne `patchNotes.ts` (som er korrekt) — det er Play Store-listingen.
+→ **Sett release notes manuelt hver release:** Play Console → Test og publiser → Lukket testing «alpha» → *Administrer utgivelsen* → «Hva er nytt i denne utgaven» (per språk nb/en, maks 500 tegn). Kilde: nyeste entry i `patchNotes.ts` (tekstene ligger i i18n-filene).
+
+**Sjekkliste til neste økt:**
+- `versionCode` MÅ økes hver release, ellers avviser Play (duplikat).
+- Play «Hva er nytt» settes manuelt — auto-submit gjør det ikke.
+- **Produksjon** (åpen for alle): krever fortsatt 12 testere i 14 dager (har 2). Bytt `track` til `production` i eas.json når innvilget.
+- **Tag-push-workflow** (`.eas/workflows/release-android.yml`): for at den skal trigge må branchen + workflow-fila pushes til GitHub, og `serviceAccountKeyPath` fjernes fra `eas.json` (serverne bruker EAS-lagret nøkkel, ikke lokal fil).
+- 🔐 Vurder å rullere Play-tjenestekontonøkkelen i Google Cloud (den lå i en chat-logg under oppsettet).
+
 ## Pågående arbeid
 
+- **Release-pipeline**: EAS auto-submit til alpha er live (se «Utgivelse» over). Workflow-finalisering + Play «Hva er nytt»-automatisering gjenstår om ønskelig.
 - **Gym locations**: Migration 22 + `gymStore.ts` ferdig. UI-integrasjon gjenstår (gym-picker i logg, management i settings, utstyrsfiltrering)
 
 ## Backlog (prioritert)

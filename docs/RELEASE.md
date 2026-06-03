@@ -65,6 +65,21 @@ Steg 5 bygger en `.aab` på EAS-serverne og kjører **EAS Submit automatisk**
 det lukkede sporet får oppdateringen så snart Google har prosessert den (vanligvis
 minutter til noen timer).
 
+### ⚠️ «Hva er nytt» må settes manuelt i Play Console
+
+**EAS Submit setter IKKE Play sin «Hva er nytt»-tekst** — den laster kun opp
+`.aab`-en. Når feltet er tomt, gjenbruker Google **forrige releases** tekst, så
+nye versjoner viser gamle notater til du retter det.
+
+> Dette er IKKE appens interne `patchNotes.ts` (den er korrekt) — det er
+> Play Store-listingen, en separat ting.
+
+Sett den manuelt hver release:
+**Play Console → Test og publiser → Lukket testing «alpha» → Administrer
+utgivelsen → «Hva er nytt i denne utgaven»** (per språk nb + en, maks 500 tegn).
+Kilde til teksten: nyeste entry i `src/patchNotes.ts` (selve tekstene ligger i
+`src/i18n/{en,nb}/patchNotes.ts`).
+
 ### Hvis en build allerede er bygd uten auto-submit
 
 ```bash
