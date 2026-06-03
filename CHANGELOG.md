@@ -1,5 +1,23 @@
 # Gymdash Changelog
 
+## v0.11.0-beta — 2026-06-03
+
+### Rest timer & set notes
+- **Decluttered rest screen**: removed the floating timer pill; the large rest overlay is the single timer surface, and rest settings stay on the Log top-bar gear.
+- **Quick set note on the rest screen**: jot a note for the set you just finished while the timer runs (persists immediately so nothing is lost).
+- **Next exercise on the rest screen**: shows what's next when you finish an exercise.
+- **No timer after the final set**: finishing the workout's last exercise starts no rest timer — there's nothing to rest for.
+- Removed the redundant per-set note button (the edit button already covers notes).
+
+### Icon & name
+- **Fixed app icon**: regenerated the icon assets from the SVG source (the build was shipping a stray template export with guide lines); added `scripts/render-icons.js`.
+- Capitalized the launcher name to "Gymdash".
+
+### Build & release
+- **Auto-submit pipeline**: `npm run release:android` builds, submits to the Play closed-testing track, and sets the store "What's new" via the Play Developer API (`scripts/set-release-notes.js`).
+- Dropped unused `victory-native`; aligned packages to Expo SDK 54 (`expo doctor` clean).
+- Removed deprecated StatusBar props for Android 15 edge-to-edge compliance.
+
 ## v0.10.0-beta — 2026-06-02
 
 ### Aurora redesign (dark-only)
