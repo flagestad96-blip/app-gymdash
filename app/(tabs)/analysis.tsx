@@ -998,7 +998,6 @@ export default function Analysis() {
         <TrainingStatusCard
           result={trainingStatus}
           loading={trainingStatusLoading}
-          onViewAnalysis={() => {/* already on analysis */}}
           onStartDeload={async () => {
             try {
               const programMode = (await getSettingAsync("programMode")) || "normal";

@@ -1,8 +1,8 @@
 ﻿// app/(tabs)/calendar.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, Modal } from "react-native";
+import { View, Text, Pressable, ScrollView, Modal, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { ensureDb, getDb, formatDuration } from "../../src/db";
+import { ensureDb, getDb, formatDuration, deleteWorkout } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, IconButton, Card, ListRow, Btn } from "../../src/ui";
@@ -302,6 +302,28 @@ export default function CalendarScreen() {
       setPrevExOrder([]);
     }
   }, []);
+
+  const confirmDeleteWorkout = useCallback(() => {
+    const w = detailWorkout;
+    if (!w) return;
+    Alert.alert(t("history.deleteWorkout"), t("history.deleteWorkoutConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("common.delete"),
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteWorkout(w.id);
+            setDetailWorkout(null);
+            await loadData();
+          } catch (err) {
+            console.warn("deleteWorkout failed", err);
+            Alert.alert(t("common.error"), t("history.deleteWorkout"));
+          }
+        },
+      },
+    ]);
+  }, [detailWorkout, t, loadData]);
 
   // Group detail sets by exercise (preserves execution order from created_at sorting)
   const exerciseGroups = useMemo(() => {
@@ -737,7 +759,10 @@ export default function CalendarScreen() {
                   </Text>
                 ) : null}
               </View>
-              <IconButton icon="close" onPress={() => setDetailWorkout(null)} />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <IconButton icon="delete-outline" tone="danger" onPress={confirmDeleteWorkout} accessibilityLabel={t("history.deleteWorkout")} />
+                <IconButton icon="close" onPress={() => setDetailWorkout(null)} />
+              </View>
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 30 }}>

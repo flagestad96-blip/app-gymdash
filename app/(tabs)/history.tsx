@@ -9,10 +9,10 @@
 // volume and set count. Editing is intentionally deferred (will be wired
 // to PR-recalculation in a follow-up sprint).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, FlatList, Modal } from "react-native";
+import { View, Text, Pressable, FlatList, Modal, Alert } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import { ensureDb, getDb } from "../../src/db";
+import { ensureDb, getDb, deleteWorkout } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { Screen, TopBar, Chip, IconButton, TextField, Btn } from "../../src/ui";
@@ -285,6 +285,28 @@ LIMIT ?`;
     [router],
   );
 
+  const confirmDeleteWorkout = useCallback(
+    (id: string) => {
+      Alert.alert(t("history.deleteWorkout"), t("history.deleteWorkoutConfirm"), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("common.delete"),
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteWorkout(id);
+              setWorkoutRows((prev) => prev.filter((w) => w.id !== id));
+            } catch (err) {
+              console.warn("deleteWorkout failed", err);
+              Alert.alert(t("common.error"), t("history.deleteWorkout"));
+            }
+          },
+        },
+      ]);
+    },
+    [t],
+  );
+
   const pickerResults = useMemo(() => {
     const q = exercisePickerQuery.trim();
     return q ? searchExercises(q).slice(0, 30) : [];
@@ -345,44 +367,61 @@ LIMIT ?`;
                       : "";
                   const dur = durationMinutes(item.started_at, item.ended_at);
                   return (
-                    <Pressable
-                      onPress={() => openWorkout(item.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${item.date} ${dayLabel}`}
-                      style={({ pressed }) => ({
-                        padding: 14,
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
                         borderRadius: theme.radius.lg,
                         borderWidth: 1,
                         borderColor: theme.glassBorder,
-                        backgroundColor: pressed
-                          ? theme.accent + "1A"
-                          : theme.glass,
-                        gap: 6,
-                      })}
+                        backgroundColor: theme.glass,
+                      }}
                     >
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                        <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 15 }}>
-                          {item.date}
-                        </Text>
-                        {dur != null ? (
-                          <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                            {t("history.workoutRow.duration", { min: dur })}
+                      <Pressable
+                        onPress={() => openWorkout(item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.date} ${dayLabel}`}
+                        style={({ pressed }) => ({
+                          flex: 1,
+                          padding: 14,
+                          borderTopLeftRadius: theme.radius.lg,
+                          borderBottomLeftRadius: theme.radius.lg,
+                          backgroundColor: pressed ? theme.accent + "1A" : "transparent",
+                          gap: 6,
+                        })}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 15 }}>
+                            {item.date}
+                          </Text>
+                          {dur != null ? (
+                            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                              {t("history.workoutRow.duration", { min: dur })}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {dayLabel ? (
+                          <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.medium, fontSize: 13 }}>
+                            {dayLabel}
                           </Text>
                         ) : null}
-                      </View>
-                      {dayLabel ? (
-                        <Text style={{ color: theme.accent, fontFamily: theme.fontFamily.medium, fontSize: 13 }}>
-                          {dayLabel}
+                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                          {t("history.workoutRow.setsLine", {
+                            sets: item.working_sets,
+                            volume: formatWeight(wu.toDisplay(item.volume_kg)),
+                            unit: wu.unitLabel(),
+                          })}
                         </Text>
-                      ) : null}
-                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
-                        {t("history.workoutRow.setsLine", {
-                          sets: item.working_sets,
-                          volume: formatWeight(wu.toDisplay(item.volume_kg)),
-                          unit: wu.unitLabel(),
-                        })}
-                      </Text>
-                    </Pressable>
+                      </Pressable>
+                      <View style={{ paddingRight: 8 }}>
+                        <IconButton
+                          icon="delete-outline"
+                          tone="danger"
+                          onPress={() => confirmDeleteWorkout(item.id)}
+                          accessibilityLabel={t("history.deleteWorkout")}
+                        />
+                      </View>
+                    </View>
                   );
                 }}
               />
