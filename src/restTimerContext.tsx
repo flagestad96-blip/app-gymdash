@@ -75,6 +75,10 @@ export type RestTimerContextValue = {
   lastSet: { id: string; note: string } | null;
   setLastSet: (v: { id: string; note: string } | null) => void;
   updateLastSetNote: (note: string) => void;
+
+  // Label of the next exercise/block, shown on the rest overlay when one is done.
+  nextUpLabel: string | null;
+  setNextUpLabel: (v: string | null) => void;
 };
 
 const RestTimerContext = createContext<RestTimerContextValue | null>(null);
@@ -103,6 +107,7 @@ export function RestTimerProvider({ children }: Props) {
   const [activeWorkoutId, setActiveWorkoutIdState] = useState<string | null>(null);
   const [restSettingsOpen, setRestSettingsOpen] = useState(false);
   const [lastSet, setLastSet] = useState<{ id: string; note: string } | null>(null);
+  const [nextUpLabel, setNextUpLabel] = useState<string | null>(null);
   const [perSideOverrides, setPerSideOverrides] = useState<Record<string, boolean>>({});
   const [transitionRestSeconds, setTransitionRestSecondsState] = useState(15);
   const [restPhase, setRestPhase] = useState<RestPhase>("normal");
@@ -458,6 +463,8 @@ export function RestTimerProvider({ children }: Props) {
     lastSet,
     setLastSet,
     updateLastSetNote,
+    nextUpLabel,
+    setNextUpLabel,
   };
 
   // Don't render children until settings are loaded

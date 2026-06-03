@@ -493,6 +493,20 @@ export default function Logg() {
     return map;
   }, [renderBlocks]);
 
+  // Label of the block that comes after the one containing `exId` — used as the
+  // "next up" hint on the rest overlay when an exercise is finished.
+  const nextBlockLabelAfter = useCallback((exId: string): string | null => {
+    const idx = renderBlocks.findIndex((b) =>
+      b.type === "single" ? b.exId === exId : b.a === exId || b.b === exId || b.c === exId,
+    );
+    if (idx === -1 || idx >= renderBlocks.length - 1) return null;
+    const next = renderBlocks[idx + 1];
+    if (next.type === "single") return displayNameFor(next.exId);
+    return next.c
+      ? `${displayNameFor(next.a)} / ${displayNameFor(next.b)} / ${displayNameFor(next.c)}`
+      : `${displayNameFor(next.a)} / ${displayNameFor(next.b)}`;
+  }, [renderBlocks]);
+
   const blockAnchorKeys = useMemo(() => renderBlocks.map((b) => b.anchorKey), [renderBlocks]);
 
   const setsByExercise = useMemo(() => {
@@ -1164,6 +1178,7 @@ export default function Logg() {
     restTimer.setActiveWorkoutId(null);
     restTimer.setFocusedExerciseId(null);
     restTimer.setLastSet(null);
+    restTimer.setNextUpLabel(null);
     setWorkoutStartedAt(null);
     setWorkoutElapsedSec(0);
     setWorkoutSets([]);
@@ -1323,6 +1338,11 @@ export default function Logg() {
     restTimer.setLastSet({ id: row.id, note: "" });
 
     if (!opts?.skipRestTimer && restTimer.restEnabled) {
+      // When this set finishes the exercise (target sets reached), show what's next.
+      const tgt = getTargetFor(exId);
+      const workingSets = (setsByExercise[exId] ?? []).filter((s) => !s.is_warmup).length + (row.is_warmup ? 0 : 1);
+      const exerciseDone = !row.is_warmup && tgt.targetSets > 0 && workingSets >= tgt.targetSets;
+      restTimer.setNextUpLabel(exerciseDone ? nextBlockLabelAfter(exId) : null);
       restTimer.startRestTimer(restTimer.getRestForExercise(exId));
     }
     return row;
@@ -1334,6 +1354,7 @@ export default function Logg() {
   ) {
     const row = await addSetForExercise(args.exId, undefined, { skipRestTimer: true });
     if (!row) return;
+    restTimer.setNextUpLabel(null); // superset rests don't show a single-exercise "next up"
 
     if (!restTimer.restEnabled) return;
 

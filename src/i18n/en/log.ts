@@ -39,6 +39,7 @@ const log: TranslationMap = {
   "log.restDone": "Rest done!",
   "log.skipRest": "Skip",
   "log.rest": "Rest",
+  "log.nextUp": "Next up",
   "log.exerciseProgress": "Exercise {i} of {n}",
   "log.notes": "Notes",
   "log.workoutNotes": "Workout notes",

@@ -69,6 +69,34 @@ export default function RestOverlay() {
         style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
+        {rt.nextUpLabel ? (
+          <View style={{ alignItems: "center", marginBottom: theme.space.xl }}>
+            <Text
+              style={{
+                color: theme.muted,
+                fontFamily: theme.mono,
+                fontSize: theme.fontSize.xs,
+                letterSpacing: 2,
+                textTransform: "uppercase",
+              }}
+            >
+              {t("log.nextUp")}
+            </Text>
+            <Text
+              style={{
+                color: theme.accent,
+                fontFamily: theme.fontFamily.semibold,
+                fontSize: theme.fontSize.lg,
+                marginTop: 2,
+                textAlign: "center",
+              }}
+              numberOfLines={2}
+            >
+              {rt.nextUpLabel}
+            </Text>
+          </View>
+        ) : null}
+
         <Text
           style={{
             color: theme.muted,
