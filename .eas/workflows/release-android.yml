@@ -1,0 +1,39 @@
+# EAS Workflow — bygg produksjons-AAB og send til Play (alpha-sporet)
+#
+# Kjører på EAS sine servere, ikke maskinen din.
+#
+# Trigger: push av en versjons-tag, f.eks.
+#     git tag v0.10.0-beta && git push origin v0.10.0-beta
+# Tag-en skal peke på commiten der versjonen er bumpet (app.json er fasit pga.
+# appVersionSource: "local" i eas.json).
+#
+# Kan også kjøres manuelt:  eas workflow:run release-android.yml
+#
+# Engangsoppsett kreves før dette virker (se docs/RELEASE.md):
+#   1. Google Play-tjenestekonto lagret i EAS
+#      (eas credentials → Android → Google Service Account)
+#   2. GitHub-repoet koblet til EAS-prosjektet
+#      (expo.dev → prosjektet → Connect GitHub)
+
+name: Release Android
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build_android:
+    name: Build production AAB
+    type: build
+    params:
+      platform: android
+      profile: production
+
+  submit_android:
+    name: Submit to Play (alpha)
+    needs: [build_android]
+    type: submit
+    params:
+      profile: production
+      build_id: ${{ needs.build_android.outputs.build_id }}

@@ -1,5 +1,8 @@
 {
-  "cli": { "version": ">= 10.0.0" },
+  "cli": {
+    "version": ">= 10.0.0",
+    "appVersionSource": "local"
+  },
   "build": {
     "preview": {
       "distribution": "internal",
@@ -8,6 +11,15 @@
     "production": {
       "distribution": "store",
       "android": { "buildType": "app-bundle" }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./credentials/google-play-service-account.json",
+        "track": "alpha",
+        "releaseStatus": "completed"
+      }
     }
   }
 }
