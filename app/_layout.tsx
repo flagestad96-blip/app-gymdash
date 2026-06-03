@@ -285,7 +285,7 @@ function RootLayoutInner() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <RestTimerProvider>
-          <StatusBar style="light" backgroundColor="transparent" translucent />
+          <StatusBar style="light" />
           <View style={{ flex: 1, backgroundColor: theme.bg }}>
             <AppBackground />
             {appReady ? (
