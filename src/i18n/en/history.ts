@@ -29,6 +29,11 @@ const history: TranslationMap = {
   "history.detail.sets": "Sets",
   "history.detail.volume": "Volume",
   "history.tapSetToEdit": "Tap a set to edit or delete",
+  "history.deleteWorkout": "Delete workout",
+  "history.deleteWorkoutConfirm": "Delete this entire workout? All sets are removed and PR records are recomputed. This cannot be undone.",
+  "history.editNotes": "Edit note",
+  "history.notesPlaceholder": "Note for this workout...",
+  "history.workoutDeleted": "Workout deleted",
 
   // ── Exercise Notes ──
   "exerciseNotes.placeholder": "Note for this exercise...",

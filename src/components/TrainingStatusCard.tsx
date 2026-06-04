@@ -9,7 +9,9 @@ import type { TrainingStatusResult } from "../trainingStatus";
 export type TrainingStatusCardProps = {
   result: TrainingStatusResult | null;
   loading: boolean;
-  onViewAnalysis: () => void;
+  // When omitted, the "view full analysis" link is hidden — e.g. on the
+  // analysis tab itself, where there is nowhere further to navigate.
+  onViewAnalysis?: () => void;
   onStartDeload?: () => void;
 };
 
@@ -178,7 +180,9 @@ export default function TrainingStatusCard({
       )}
 
       {/* Links */}
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+      {(onViewAnalysis || showDeloadButton) && (
+      <View style={{ flexDirection: "row", justifyContent: onViewAnalysis ? "space-between" : "flex-end", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        {onViewAnalysis && (
         <Pressable onPress={onViewAnalysis} hitSlop={8}>
           <Text
             style={{
@@ -191,6 +195,7 @@ export default function TrainingStatusCard({
             {t("home.status.viewAnalysis")}
           </Text>
         </Pressable>
+        )}
 
         {showDeloadButton && (
           <Pressable
@@ -216,6 +221,7 @@ export default function TrainingStatusCard({
           </Pressable>
         )}
       </View>
+      )}
     </GlassCard>
   );
 }

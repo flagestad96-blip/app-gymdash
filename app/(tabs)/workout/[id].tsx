@@ -5,12 +5,12 @@
 // user can correct a typo or delete a set after the fact. PR records are
 // re-computed by EditSetModal on save/delete.
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, FlatList, Pressable } from "react-native";
+import { View, Text, FlatList, Pressable, Alert, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ensureDb, getDb } from "../../../src/db";
+import { ensureDb, getDb, deleteWorkout, updateWorkoutNotes } from "../../../src/db";
 import { useTheme } from "../../../src/theme";
 import { useI18n } from "../../../src/i18n";
-import { Screen, TopBar, IconButton } from "../../../src/ui";
+import { Screen, TopBar, IconButton, Btn } from "../../../src/ui";
 import { displayNameFor } from "../../../src/exerciseLibrary";
 import { useWeightUnit } from "../../../src/units";
 import { formatWeight } from "../../../src/format";
@@ -55,6 +55,8 @@ export default function WorkoutDetailScreen() {
   const [workout, setWorkout] = useState<WorkoutRow | null>(null);
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
   const [editing, setEditing] = useState<SetRow | null>(null);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
 
   const load = useCallback(async () => {
     if (!workoutId) {
@@ -101,6 +103,37 @@ export default function WorkoutDetailScreen() {
   }, [workoutId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const handleDelete = useCallback(() => {
+    if (!workout) return;
+    Alert.alert(t("history.deleteWorkout"), t("history.deleteWorkoutConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("common.delete"),
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteWorkout(workout.id);
+            router.back();
+          } catch (err) {
+            console.warn("deleteWorkout failed", err);
+            Alert.alert(t("common.error"), t("history.deleteWorkout"));
+          }
+        },
+      },
+    ]);
+  }, [workout, t, router]);
+
+  const saveNotes = useCallback(async () => {
+    if (!workout) return;
+    try {
+      await updateWorkoutNotes(workout.id, notesDraft);
+      setEditingNotes(false);
+      await load();
+    } catch (err) {
+      console.warn("updateWorkoutNotes failed", err);
+    }
+  }, [workout, notesDraft, load]);
 
   if (!ready) {
     return (
@@ -156,6 +189,7 @@ export default function WorkoutDetailScreen() {
         title={workout.date}
         subtitle={dayLabel || t("history.workoutDetail")}
         left={<IconButton icon="arrow-back" onPress={() => router.back()} />}
+        right={<IconButton icon="delete-outline" onPress={handleDelete} />}
       />
 
       <FlatList
@@ -184,11 +218,46 @@ export default function WorkoutDetailScreen() {
                 value={`${formatWeight(wu.toDisplay(totalVolumeKg))} ${wu.unitLabel()}`}
               />
             </View>
-            {workout.notes ? (
-              <Text style={{ color: theme.muted, fontSize: 12, fontFamily: theme.mono, marginTop: 4 }}>
-                {workout.notes}
-              </Text>
-            ) : null}
+            {editingNotes ? (
+              <View style={{ gap: 8, marginTop: 4 }}>
+                <TextInput
+                  value={notesDraft}
+                  onChangeText={setNotesDraft}
+                  placeholder={t("history.notesPlaceholder")}
+                  placeholderTextColor={theme.muted}
+                  multiline
+                  autoFocus
+                  style={{
+                    color: theme.text, backgroundColor: theme.panel,
+                    borderColor: theme.glassBorder, borderWidth: 1,
+                    borderRadius: theme.radius.md, paddingHorizontal: 12, paddingVertical: 10,
+                    fontFamily: theme.mono, fontSize: 13, minHeight: 56, maxHeight: 140,
+                    textAlignVertical: "top",
+                  }}
+                />
+                <View style={{ flexDirection: "row", gap: 10, justifyContent: "flex-end" }}>
+                  <Btn label={t("common.cancel")} onPress={() => setEditingNotes(false)} />
+                  <Btn label={t("common.save")} tone="accent" onPress={saveNotes} />
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => { setNotesDraft(workout.notes ?? ""); setEditingNotes(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={t("history.editNotes")}
+                style={{ marginTop: 4 }}
+              >
+                {workout.notes ? (
+                  <Text style={{ color: theme.muted, fontSize: 12, fontFamily: theme.mono }}>
+                    {workout.notes}
+                  </Text>
+                ) : (
+                  <Text style={{ color: theme.accent, fontSize: 12, fontFamily: theme.mono }}>
+                    {t("history.editNotes")}
+                  </Text>
+                )}
+              </Pressable>
+            )}
             <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, marginTop: 4, opacity: 0.8 }}>
               {t("history.tapSetToEdit")}
             </Text>
