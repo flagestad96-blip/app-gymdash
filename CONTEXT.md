@@ -14,7 +14,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Modern UI components: GradientButton, GlassCard, ProgressRing, StatPill, AnimatedNumber (src/ui/modern.tsx).
 - Theme API: `useTheme()`/`theme` proxy; `setPalette/getPalette`, `setGlassIntensity/getGlassIntensity`, `PALETTE_LIST`, `getPaletteColors`. `setThemeMode/getThemeMode/ThemeMode` er deprecated no-op shims (dark-only); `theme.isDark` er alltid true.
 - Navigasjon: Drawer med grupperte seksjoner (Trening/Innsikt/App) + ikon per rad, aurora active-state.
-- Logg: én øvelse om gangen (pager m/ prev/next + «hopp til»-strip) + stor hvile-overlay mellom sett (RestOverlay, root-rendret, gated til /log).
+- Logg: én øvelse om gangen (pager m/ prev/next + «hopp til»-strip) + dokket hvilebar mellom sett (RestBar, root-rendret, synlig hele appen mens hvilen løper). Slank bunn-bar med nedtelling + inline ±15s/skip; resten av skjermen er fri/scrollbar over den. Tap på baren utvider til kompakt kontrollkort (neste øvelse + notat) — aldri full-skjerm.
 - Logo: stilisert dumbbell, glass-card bakgrunn, upward arrow accent (GymdashLogo.tsx).
 
 ## Nåværende funksjonalitet
@@ -163,7 +163,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - src/components/workout/RestTimer.tsx: rest-timer UI (ekstrahert fra log.tsx).
 - src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste, utstyrslabel, RPE-hjelper, BackImpactDot, trykk-for-fokus (FocusGlow: graderte lilla lag + iOS accent shadow).
 - src/components/RestSettingsHost.tsx: rendrer rest-timer innstillings-modalen (åpnes fra tannhjul i logg-toppbaren).
-- src/components/workout/RestOverlay.tsx: stor hvile-overlay som dekker logg-skjermen mens timeren løper (nedtellings-ring, ±-justering, skip, og rask notat-boks for settet du nettopp logget).
+- src/components/workout/RestBar.tsx: dokket, utvidbar hvile-timer. Slank bar i bunnen mens hvilen løper (nedtelling + inline ±15s/skip/+30s) så du kan bla fritt i appen over den; tap utvider til kompakt kontrollkort (nedtellings-ring, ±15s/skip/+30s, neste-øvelse, rask notat-boks). Aldri full-skjerm; root-rendret, synlig hele appen mens hvilen løper.
 - src/restTimerContext.tsx: rest-timer context (global state for rest-timer, presets, per-øvelse overrides, fokusert øvelse, og `lastSet` for hurtignotat på hvileskjermen).
 - src/components/workout/SetEntryRow.tsx: individuell sett-rad (ekstrahert fra log.tsx).
 - src/components/modals/PlateCalcModal.tsx: skivefordeling-modal med stangtype-valg (Olympic 20kg, Women's 15kg, EZ Bar 10kg, Smith 15kg, Trap Bar 25kg), persistert preferanse.
@@ -231,7 +231,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Warmup-sett lagres, men ikke brukt i PR/volum/strength index.
 - Edit/slett sett oppdaterer ikke PR-historikk automatisk.
 - Cue/link UI fjernet (legacy data beholdes kun i storage).
-- Rest-timer: stor overlay (RestOverlay) mens den løper; innstillinger via tannhjul i logg-toppbaren (RestSettingsHost). Flytende pill fjernet. Sett-notat fanges på hvileskjermen + redigeres via edit-knapp; egen notat-knapp fjernet (var redundant med edit). RestTimerInline i RestTimer.tsx er ubrukt legacy.
+- Rest-timer: dokket utvidbar hvilebar (RestBar) — slank bunn-bar mens hvilen løper med nedtelling + inline ±15s/skip/+30s (bla fritt i appen over den), tappes ut til kompakt kontrollkort (neste-øvelse, sett-notat); aldri full-skjerm. Vises kun mens hvilen løper. Innstillinger via tannhjul i logg-toppbaren (RestSettingsHost). Sett-notat fanges i kontrollkortet + redigeres via edit-knapp; egen notat-knapp fjernet (var redundant med edit). RestTimerInline i RestTimer.tsx er ubrukt legacy. (Tidligere: full-skjerm RestOverlay — «ble hele verden»; og FloatingRestTimer-hjørneboble — tungvint tidsjustering. Begge fjernet.)
 - Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
 - App icon PNG (1024×1024) — SVG-filer generert (assets/gymdash-icon.svg + foreground), må konverteres til PNG for Play Store.
 - ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.

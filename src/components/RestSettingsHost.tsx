@@ -1,8 +1,8 @@
 // src/components/RestSettingsHost.tsx
-// Hosts the rest-timer settings modal at the app root. The modal is opened from
-// the Log screen's top-bar gear icon (restTimer.setRestSettingsOpen(true)); the
-// running timer itself is shown by RestOverlay, so there is no on-screen chrome
-// here — this component renders nothing until the settings modal is open.
+// Hosts the rest-timer settings modal at the app root. The modal is opened from the
+// Log screen's top-bar gear icon (restTimer.setRestSettingsOpen(true)); the running
+// timer itself is shown by RestBar, so there is no on-screen chrome here — this
+// component renders nothing until the settings modal is open.
 import React from "react";
 import { useI18n } from "../i18n";
 import { useRestTimer } from "../restTimerContext";
