@@ -143,6 +143,10 @@ export default function Logg() {
   const [prBanners, setPrBanners] = useState<Record<string, string>>({});
   const [lastAddedSetId, setLastAddedSetId] = useState<string | null>(null);
   const lastAddedAnim = useRef(new Animated.Value(0)).current;
+  // Exercises that hit a *genuine* new heaviest PR during this session (excludes
+  // first-ever baseline sets). Used to build the "PRs this session" summary so it
+  // only lists real records — not every exercise's all-time best.
+  const sessionPrExIdsRef = useRef<Set<string>>(new Set());
 
   const [finishSummary, setFinishSummary] = useState<{
     duration: string;
@@ -1070,6 +1074,7 @@ export default function Logg() {
     setWorkoutStartedAt(startedAt);
     setWorkoutSets([]);
     setWorkoutNotes("");
+    sessionPrExIdsRef.current = new Set();
   }
 
   async function endWorkout() {
@@ -1110,9 +1115,17 @@ export default function Logg() {
       return merged;
     });
 
+    // Only list exercises that set a *genuine* new heaviest PR this session.
+    // We confirm via the accumulator (excludes first-ever baseline sets) AND
+    // that the current heaviest record still points to a set from this workout
+    // (so an edit-down/delete during the session correctly drops the PR).
+    const workoutSetIds = new Set(workoutSets.map((s) => s.id));
     const prs: string[] = [];
-    for (const [exId, rec] of Object.entries(dbPrMap)) {
-      if (rec.heaviest) prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.heaviest.value))} ${wu.unitLabel()}`);
+    for (const exId of sessionPrExIdsRef.current) {
+      const rec = dbPrMap[exId]?.heaviest;
+      if (rec && rec.setId && workoutSetIds.has(rec.setId)) {
+        prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.value))} ${wu.unitLabel()}`);
+      }
     }
 
     // Compute set tracking stats (exclude ad-hoc exercises from planned ratio)
@@ -1300,6 +1313,9 @@ export default function Logg() {
 
     setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
 
+    // Track genuine heaviest PRs so the finish summary lists only real records.
+    if (rawMsgs.some((m) => m.startsWith("heaviest:"))) sessionPrExIdsRef.current.add(exId);
+
     // Convert coded messages to display strings
     const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
     const messages: string[] = rawMsgs.map((msg) => {
@@ -1477,6 +1493,9 @@ export default function Logg() {
         // 2) Full historical recompute — fixes ghost PRs if edited down
         const recomputed = recomputePRForExercise(exId, pid);
         setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
+
+        // Track genuine heaviest PRs from an in-session edit too.
+        if (rawMsgs.some((m) => m.startsWith("heaviest:"))) sessionPrExIdsRef.current.add(exId);
 
         // Show banner if forward check found a new PR
         const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";

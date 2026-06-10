@@ -805,6 +805,50 @@ export async function updateSetNote(setId: string, note: string): Promise<void> 
   await database.runAsync(`UPDATE sets SET notes = ? WHERE id = ?`, [note.trim() ? note : null, setId]);
 }
 
+/** Update workout-level notes for a completed (or in-progress) session. */
+export async function updateWorkoutNotes(workoutId: string, notes: string): Promise<void> {
+  if (!workoutId) return;
+  await ensureDb();
+  await getDb().runAsync(`UPDATE workouts SET notes = ? WHERE id = ?`, [notes.trim() ? notes.trim() : null, workoutId]);
+}
+
+/**
+ * Delete an entire workout and all its sets, then re-compute PR records for
+ * every affected exercise so no stale heaviest/e1RM records are left pointing
+ * at deleted sets. Used by the history, calendar and workout-detail screens.
+ */
+export async function deleteWorkout(workoutId: string): Promise<void> {
+  if (!workoutId) return;
+  await ensureDb();
+  const database = getDb();
+
+  // Capture affected exercises + the workout's program before deleting, so we
+  // know what to re-compute afterwards.
+  const affected = database.getAllSync<{ exercise_id: string | null; program_id: string | null }>(
+    `SELECT DISTINCT s.exercise_id, w.program_id
+     FROM workouts w
+     LEFT JOIN sets s ON s.workout_id = w.id
+     WHERE w.id = ?`,
+    [workoutId],
+  );
+
+  await database.runAsync(`DELETE FROM sets WHERE workout_id = ?`, [workoutId]);
+  await database.runAsync(`DELETE FROM workouts WHERE id = ?`, [workoutId]);
+
+  // Re-compute PRs for affected exercises. Lazy require avoids the
+  // db.ts ↔ prEngine circular import (prEngine imports getDb from here).
+  try {
+    const { recomputePRForExercise } = require("./prEngine") as typeof import("./prEngine");
+    for (const r of affected ?? []) {
+      if (r.exercise_id && r.program_id) {
+        try { recomputePRForExercise(r.exercise_id, r.program_id); } catch (err) { console.warn("deleteWorkout PR recompute failed", err); }
+      }
+    }
+  } catch (err) {
+    console.warn("deleteWorkout: could not load prEngine for recompute", err);
+  }
+}
+
 export async function listBodyMetrics(limit?: number): Promise<BodyMetricRow[]> {
   await ensureDb();
   const database = getDb();

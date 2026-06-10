@@ -29,6 +29,11 @@ const history: TranslationMap = {
   "history.detail.sets": "Sett",
   "history.detail.volume": "Volum",
   "history.tapSetToEdit": "Trykk på et sett for å redigere eller slette",
+  "history.deleteWorkout": "Slett økt",
+  "history.deleteWorkoutConfirm": "Slette hele denne økten? Alle settene fjernes og PR-rekorder regnes ut på nytt. Dette kan ikke angres.",
+  "history.editNotes": "Rediger notat",
+  "history.notesPlaceholder": "Notat for økten...",
+  "history.workoutDeleted": "Økt slettet",
 
   // ── Exercise Notes ──
   "exerciseNotes.placeholder": "Notat for denne øvelsen...",
