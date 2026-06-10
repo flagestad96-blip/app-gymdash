@@ -1,5 +1,20 @@
 # Gymdash Changelog
 
+## v0.12.0-beta — 2026-06-10
+
+### Docked rest bar
+- **Rest timer reworked as a docked bar** (beta-tester feedback: the full-screen overlay "became the whole world"): a slim bottom bar with the countdown + always-visible −15s / skip / +30s, so the screen above stays free to browse upcoming exercises and history between sets. Visible across the whole app while a rest runs.
+- **Tap to expand**: the bar opens into a compact control card with a countdown ring, the next exercise, and the quick set-note field — never a full-screen takeover.
+- **"Rest done" moment**: when the countdown completes naturally the bar lingers ~2s as a success confirmation before fading out.
+- **Stable progress ring**: ±15s/+30s adjustments no longer flash the ring back to full (`startRestTimer` gained a `durationSec` denominator option).
+- **Serialized notifications**: rapid time adjustments can no longer race the async cancel/reschedule and leave duplicate rest notifications.
+- The Log screen adds bottom clearance while the bar is visible so it never covers the add-exercise / end-workout buttons.
+
+### Workout management
+- **Delete workouts & edit workout notes** from history rows, the workout detail screen and the calendar detail modal. Deleting recomputes PRs for affected exercises.
+- **Fixed "PRs this session"**: the finish summary listed every exercise's all-time best; now only genuine new records set during the session are shown.
+- Removed a dead "View full analysis" link on the analysis tab.
+
 ## v0.11.0-beta — 2026-06-03
 
 ### Rest timer & set notes

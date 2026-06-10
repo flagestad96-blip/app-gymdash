@@ -19,6 +19,18 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
+    version: "0.12.0-beta",
+    date: "2026-06-10",
+    changes: [
+      { type: "improved", key: "patchNotes.0_12_0.restBar" },
+      { type: "new", key: "patchNotes.0_12_0.restExpand" },
+      { type: "new", key: "patchNotes.0_12_0.restDone" },
+      { type: "new", key: "patchNotes.0_12_0.workoutManage" },
+      { type: "fix", key: "patchNotes.0_12_0.prSummary" },
+      { type: "fix", key: "patchNotes.0_12_0.analysisLink" },
+    ],
+  },
+  {
     version: "0.11.0-beta",
     date: "2026-06-03",
     changes: [

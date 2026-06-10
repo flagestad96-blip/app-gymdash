@@ -104,7 +104,7 @@ if (mode !== "sync") {
   },
 `;
   const updated = src.replace(
-    /(export const patchNotes: PatchNote\[\] = \[\n)/,
+    /(export const patchNotes: PatchNote\[\] = \[\r?\n)/,
     `$1${placeholder}`,
   );
   if (updated === src) {
