@@ -9,19 +9,23 @@
 // control card with the next-up exercise and a quick set note; tap the chevron or
 // outside to collapse back to the bar.
 //
+// When the countdown reaches zero naturally the bar lingers for a couple of seconds
+// in a "rest done" state before fading out, so the moment isn't a silent vanish.
+//
 // Root-rendered and visible across the whole app while a rest is running; it reads
 // everything it needs from the rest-timer context.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   Pressable,
+  Animated,
   StyleSheet,
-  Dimensions,
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
@@ -30,6 +34,14 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useRestTimer, mmss } from "../../restTimerContext";
+
+// Vertical space the docked bar occupies above the safe-area inset. Screens with
+// bottom-anchored content add this as paddingBottom while a rest runs so the bar
+// never covers their last buttons/rows.
+export const REST_BAR_CLEARANCE = 96;
+
+// How long the "rest done" state lingers before fading out.
+const DONE_LINGER_MS = 2200;
 
 function Ring({
   size,
@@ -76,8 +88,9 @@ function StepButton({ label, onPress }: { label: string; onPress: () => void }) 
       accessibilityRole="button"
       accessibilityLabel={label}
       style={({ pressed }) => ({
+        minWidth: 48,
+        minHeight: 44,
         paddingHorizontal: 12,
-        paddingVertical: 10,
         borderRadius: theme.radius.pill,
         borderWidth: 1,
         borderColor: theme.glassBorder,
@@ -96,8 +109,10 @@ export default function RestBar() {
   const theme = useTheme();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const rt = useRestTimer();
   const [expanded, setExpanded] = useState(false);
+  const [justDone, setJustDone] = useState(false);
 
   const running = rt.restRunning && rt.restRemaining > 0;
   const total = rt.restDurationSec > 0 ? rt.restDurationSec : rt.restRemaining;
@@ -106,18 +121,90 @@ export default function RestBar() {
   const isTransition = running && rt.restPhase === "transition";
   const tint = isTransition ? theme.warn : theme.accent;
 
+  // "Rest done" lingering state. A natural completion leaves restRemaining at 0;
+  // skip/stop resets it to the default, so this only triggers when time ran out.
+  const remainingRef = useRef(rt.restRemaining);
+  remainingRef.current = rt.restRemaining;
+  const prevRunningRef = useRef(running);
+  const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const was = prevRunningRef.current;
+    prevRunningRef.current = running;
+    if (was && !running && remainingRef.current === 0) {
+      setJustDone(true);
+      doneOpacity.setValue(1);
+      doneTimerRef.current = setTimeout(() => {
+        Animated.timing(doneOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() =>
+          setJustDone(false),
+        );
+      }, DONE_LINGER_MS);
+    } else if (running) {
+      // A new rest started — clear any lingering done state immediately.
+      if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
+      setJustDone(false);
+    }
+  }, [running, doneOpacity]);
+
+  useEffect(() => () => { if (doneTimerRef.current) clearTimeout(doneTimerRef.current); }, []);
+
   // Collapse back to the bar whenever the rest ends, so the card never lingers.
   useEffect(() => {
     if (!running) setExpanded(false);
   }, [running]);
 
-  // The bar exists only while a rest is actually counting down.
-  if (!running) return null;
+  // ---- "Rest done" linger: brief success bar, then fade out ----
+  if (!running) {
+    if (!justDone) return null;
+    return (
+      <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]} pointerEvents="box-none">
+        <View style={{ flex: 1, justifyContent: "flex-end" }} pointerEvents="box-none">
+          <Animated.View style={{ opacity: doneOpacity }}>
+            <Pressable
+              onPress={() => {
+                if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
+                setJustDone(false);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t("log.restDone")}
+              style={{
+                marginHorizontal: 12,
+                marginBottom: insets.bottom + 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: theme.space.sm,
+                backgroundColor: theme.modalGlass,
+                borderColor: theme.success,
+                borderWidth: 1,
+                borderRadius: theme.radius.xl,
+                paddingVertical: 16,
+                paddingHorizontal: 12,
+                shadowColor: theme.shadow.lg.color,
+                shadowOpacity: theme.shadow.lg.opacity,
+                shadowRadius: theme.shadow.lg.radius,
+                shadowOffset: theme.shadow.lg.offset,
+              }}
+            >
+              <MaterialIcons name="check-circle" size={22} color={theme.success} />
+              <Text style={{ color: theme.success, fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.md }}>
+                {t("log.restDone")}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </View>
+    );
+  }
 
   const adjust = (delta: number) => {
     Haptics.selectionAsync().catch(() => {});
     const next = Math.max(1, rt.restRemaining + delta);
-    rt.startRestTimer(next, { phase: rt.restPhase, phaseLabel: rt.restPhaseLabel });
+    // Keep the ring's denominator stable: extend the total when adding time, keep it
+    // when subtracting, so the progress ring never flashes back to full on a tap.
+    const newTotal = Math.max(next, total + Math.max(0, delta));
+    rt.startRestTimer(next, { phase: rt.restPhase, phaseLabel: rt.restPhaseLabel, durationSec: newTotal });
   };
 
   const skip = () => {
@@ -125,27 +212,11 @@ export default function RestBar() {
     rt.stopRestTimer();
   };
 
-  const SkipButton = (
-    <Pressable
-      onPress={skip}
-      accessibilityRole="button"
-      accessibilityLabel={t("log.skipRest")}
-      style={({ pressed }) => ({
-        paddingHorizontal: 16,
-        paddingVertical: 11,
-        borderRadius: theme.radius.pill,
-        backgroundColor: theme.accent,
-        opacity: pressed ? 0.85 : 1,
-      })}
-    >
-      <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.sm }}>
-        {t("log.skipRest")}
-      </Text>
-    </Pressable>
-  );
-
   // ---- Collapsed: docked rest bar ----
   if (!expanded) {
+    // The chevron is an expand affordance; drop it on very narrow screens where the
+    // time display needs the room.
+    const showChevron = windowWidth >= 340;
     return (
       <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]} pointerEvents="box-none">
         <View style={{ flex: 1, justifyContent: "flex-end" }} pointerEvents="box-none">
@@ -159,7 +230,7 @@ export default function RestBar() {
               borderColor: tint,
               borderWidth: 1,
               borderRadius: theme.radius.xl,
-              paddingVertical: 10,
+              paddingVertical: 8,
               paddingHorizontal: 12,
               gap: theme.space.sm,
               shadowColor: theme.shadow.lg.color,
@@ -168,7 +239,7 @@ export default function RestBar() {
               shadowOffset: theme.shadow.lg.offset,
             }}
           >
-            {/* Tap zone → expand to the full card */}
+            {/* Tap zone → expand to the full card (next-up + set note live there) */}
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -203,10 +274,12 @@ export default function RestBar() {
                   {mmss(rt.restRemaining)}
                 </Text>
               </View>
+              {showChevron ? <MaterialIcons name="expand-less" size={16} color={theme.muted} /> : null}
             </Pressable>
 
             {/* Inline controls — always visible, zero taps to adjust. Skip is a
-                compact icon here (the expanded card has the full labelled button). */}
+                compact icon here (the expanded card has the full labelled button);
+                the wider margin around it guards against fat-finger ± taps. */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.xs }}>
               <StepButton label="−15s" onPress={() => adjust(-15)} />
               <Pressable
@@ -215,7 +288,8 @@ export default function RestBar() {
                 accessibilityLabel={t("log.skipRest")}
                 style={({ pressed }) => ({
                   width: 44,
-                  height: 40,
+                  height: 44,
+                  marginHorizontal: 2,
                   alignItems: "center",
                   justifyContent: "center",
                   borderRadius: theme.radius.pill,
@@ -234,7 +308,7 @@ export default function RestBar() {
   }
 
   // ---- Expanded: compact control card (no full-screen scrim) ----
-  const ringSize = Math.min(Dimensions.get("window").width - 160, 150);
+  const ringSize = Math.min(windowWidth - 160, 150);
   const showNote = rt.lastSet && rt.restPhase !== "transition";
 
   return (
@@ -334,7 +408,22 @@ export default function RestBar() {
 
             <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space.md }}>
               <StepButton label="−15s" onPress={() => adjust(-15)} />
-              {SkipButton}
+              <Pressable
+                onPress={skip}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.skipRest")}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 16,
+                  paddingVertical: 11,
+                  borderRadius: theme.radius.pill,
+                  backgroundColor: theme.accent,
+                  opacity: pressed ? 0.85 : 1,
+                })}
+              >
+                <Text style={{ color: "#fff", fontFamily: theme.fontFamily.semibold, fontSize: theme.fontSize.sm }}>
+                  {t("log.skipRest")}
+                </Text>
+              </Pressable>
               <StepButton label="+30s" onPress={() => adjust(30)} />
             </View>
           </View>

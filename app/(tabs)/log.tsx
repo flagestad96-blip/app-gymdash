@@ -60,6 +60,7 @@ import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
+import { REST_BAR_CLEARANCE } from "../../src/components/workout/RestBar";
 import type { InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
 import type { SetRow } from "../../src/components/workout/SetEntryRow";
 import PlateCalcModal from "../../src/components/modals/PlateCalcModal";
@@ -1634,7 +1635,14 @@ export default function Logg() {
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="none"
-          contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: theme.space.xl }}
+          contentContainerStyle={{
+            padding: theme.space.lg,
+            gap: theme.space.md,
+            // While the docked rest bar is visible it floats over the bottom of the
+            // scroll content — clear it so the last buttons (add exercise / end
+            // workout) stay reachable.
+            paddingBottom: restTimer.restRunning ? REST_BAR_CLEARANCE + theme.space.xl : theme.space.xl,
+          }}
         >
           <TopBar
             title={t("log.title")}

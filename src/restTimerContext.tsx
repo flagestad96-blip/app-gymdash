@@ -63,7 +63,10 @@ export type RestTimerContextValue = {
   isPerSide: (exId: string) => boolean;
 
   // Timer controls
-  startRestTimer: (seconds?: number, opts?: { phase?: RestPhase; phaseLabel?: string | null }) => Promise<void>;
+  startRestTimer: (
+    seconds?: number,
+    opts?: { phase?: RestPhase; phaseLabel?: string | null; durationSec?: number },
+  ) => Promise<void>;
   stopRestTimer: () => void;
 
   // Settings modal state
@@ -115,6 +118,10 @@ export function RestTimerProvider({ children }: Props) {
   const [loaded, setLoaded] = useState(false);
 
   const restDoneRef = useRef(false);
+  // Serializes async notification cancel/reschedule across rapid start/adjust/stop
+  // calls — without this, overlapping sequences can leave two scheduled notifications.
+  const notifSeqRef = useRef(0);
+  const notifChainRef = useRef<Promise<void>>(Promise.resolve());
   const appStateRef = useRef(AppState.currentState);
   const lastSetRef = useRef(lastSet);
   useEffect(() => { lastSetRef.current = lastSet; }, [lastSet]);
@@ -380,30 +387,51 @@ export function RestTimerProvider({ children }: Props) {
     setRestPhaseLabel(null);
     setSettingAsync("restEndsAt", "").catch(() => {});
     setSettingAsync("restDurationSec", "").catch(() => {});
-    cancelAllRestTimerNotifications().catch(() => {});
+    // Supersede any in-flight start so a queued schedule can't fire after stop.
+    const seq = ++notifSeqRef.current;
+    notifChainRef.current = notifChainRef.current
+      .then(async () => {
+        if (seq !== notifSeqRef.current) return;
+        await cancelAllRestTimerNotifications();
+      })
+      .catch(() => {});
     setRestNotificationId(null);
   }, [restSeconds]);
 
   const startRestTimer = useCallback(
-    async (seconds?: number, opts?: { phase?: RestPhase; phaseLabel?: string | null }) => {
+    async (seconds?: number, opts?: { phase?: RestPhase; phaseLabel?: string | null; durationSec?: number }) => {
       if (!restEnabled) return;
-      const requestedDuration = seconds ?? restSeconds;
-      // Clamp duration to the same range used for restSeconds so an out-of-range value can't produce a giant timer.
-      const duration = clampInt(Math.floor(requestedDuration), 1, 600);
-      const end = Date.now() + duration * 1000;
+      const requestedRemaining = seconds ?? restSeconds;
+      // Clamp to the same range used for restSeconds so an out-of-range value can't produce a giant timer.
+      const remaining = clampInt(Math.floor(requestedRemaining), 1, 600);
+      // The progress-ring denominator. Callers adjusting a RUNNING timer (±15s/+30s)
+      // pass the original total via opts.durationSec so the ring doesn't flash back
+      // to full on every adjustment; a fresh start just uses the remaining time.
+      const duration = clampInt(Math.floor(opts?.durationSec ?? remaining), remaining, 600);
+      const end = Date.now() + remaining * 1000;
       setRestEndsAt(end);
       setRestDurationSec(duration);
       setRestRunning(true);
       restDoneRef.current = false;
-      setRestRemaining(duration);
+      setRestRemaining(remaining);
       setRestPhase(opts?.phase ?? "normal");
       setRestPhaseLabel(opts?.phaseLabel ?? null);
       setSettingAsync("restEndsAt", String(end)).catch(() => {});
       setSettingAsync("restDurationSec", String(duration)).catch(() => {});
-      // Cancel ALL rest-timer notifications before scheduling new one
-      await cancelAllRestTimerNotifications();
-      const notificationId = await scheduleRestNotification(duration);
-      setRestNotificationId(notificationId);
+      // Reschedule the background notification. Chained + sequence-guarded so rapid
+      // adjustments can't interleave cancel/schedule and leave a stale duplicate;
+      // only the latest call ends up scheduling.
+      const seq = ++notifSeqRef.current;
+      notifChainRef.current = notifChainRef.current
+        .then(async () => {
+          if (seq !== notifSeqRef.current) return; // superseded by a newer start/stop
+          await cancelAllRestTimerNotifications();
+          if (seq !== notifSeqRef.current) return;
+          const notificationId = await scheduleRestNotification(remaining);
+          setRestNotificationId(notificationId);
+        })
+        .catch(() => {});
+      await notifChainRef.current;
     },
     [restEnabled, restSeconds]
   );

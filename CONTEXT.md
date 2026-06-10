@@ -163,7 +163,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - src/components/workout/RestTimer.tsx: rest-timer UI (ekstrahert fra log.tsx).
 - src/components/workout/ExerciseCard.tsx: øvelseskort med sett-liste, utstyrslabel, RPE-hjelper, BackImpactDot, trykk-for-fokus (FocusGlow: graderte lilla lag + iOS accent shadow).
 - src/components/RestSettingsHost.tsx: rendrer rest-timer innstillings-modalen (åpnes fra tannhjul i logg-toppbaren).
-- src/components/workout/RestBar.tsx: dokket, utvidbar hvile-timer. Slank bar i bunnen mens hvilen løper (nedtelling + inline ±15s/skip/+30s) så du kan bla fritt i appen over den; tap utvider til kompakt kontrollkort (nedtellings-ring, ±15s/skip/+30s, neste-øvelse, rask notat-boks). Aldri full-skjerm; root-rendret, synlig hele appen mens hvilen løper.
+- src/components/workout/RestBar.tsx: dokket, utvidbar hvile-timer. Slank bar i bunnen mens hvilen løper (nedtelling + inline ±15s/skip/+30s) så du kan bla fritt i appen over den; tap utvider til kompakt kontrollkort (nedtellings-ring, ±15s/skip/+30s, neste-øvelse, rask notat-boks). Aldri full-skjerm; root-rendret, synlig hele appen mens hvilen løper. Ved naturlig fullført nedtelling henger en «Hvile ferdig!»-bar igjen ~2 sek før fade. Eksporterer REST_BAR_CLEARANCE — logg-skjermen legger den til som paddingBottom mens hvilen løper så baren ikke dekker bunn-knappene.
 - src/restTimerContext.tsx: rest-timer context (global state for rest-timer, presets, per-øvelse overrides, fokusert øvelse, og `lastSet` for hurtignotat på hvileskjermen).
 - src/components/workout/SetEntryRow.tsx: individuell sett-rad (ekstrahert fra log.tsx).
 - src/components/modals/PlateCalcModal.tsx: skivefordeling-modal med stangtype-valg (Olympic 20kg, Women's 15kg, EZ Bar 10kg, Smith 15kg, Trap Bar 25kg), persistert preferanse.
@@ -236,6 +236,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - App icon PNG (1024×1024) — SVG-filer generert (assets/gymdash-icon.svg + foreground), må konverteres til PNG for Play Store.
 - ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.
 - trainingStatus.ts: computeTrainingStatus() kan gi synlig lag på hjemskjermen med stor treningshistorikk. Bruk loading skeleton.
+- RestBar: kun logg-skjermen kompenserer med paddingBottom (REST_BAR_CLEARANCE) — på andre skjermer (historikk/analyse/kropp) kan baren dekke nederste rad/knapp mens hvilen løper. Baren rendres også over åpen drawer (kosmetisk, zIndex 1000).
 
 ## Build — Preview APK (Android)
 - Kommandoer: `npx eas login` (ved behov) og `npx eas build --platform android --profile preview`
