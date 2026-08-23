@@ -20,6 +20,7 @@ import ProgramStore from "../src/programStore";
 import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
+import { runAutoBackupIfDue } from "../src/autoBackup";
 import RestSettingsHost from "../src/components/RestSettingsHost";
 import RestBar from "../src/components/workout/RestBar";
 import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
@@ -273,6 +274,8 @@ function RootLayoutInner() {
       } catch {
         // Silent fail - tabs will load their own data
       }
+      // Daily automatic backup (throttled internally; no-op unless enabled).
+      runAutoBackupIfDue().catch(() => {});
     });
 
     return () => task.cancel();

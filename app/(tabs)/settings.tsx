@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Modal,
+  Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme, setPalette, getPalette, getPaletteColors, setGlassIntensity, getGlassIntensity, PALETTE_LIST, type Palette } from "../../src/theme";
@@ -21,6 +22,13 @@ import ProgramStore from "../../src/programStore";
 import { displayNameFor, resolveExerciseId } from "../../src/exerciseLibrary";
 import { exportFullBackup, importBackup, exportCsv, type ImportMode } from "../../src/backup";
 import { saveBackupFile, shareFile, pickBackupFile } from "../../src/fileSystem";
+import {
+  getAutoBackupStatus,
+  setAutoBackupEnabled,
+  chooseBackupDirectory,
+  runAutoBackupIfDue,
+  describeBackupDir,
+} from "../../src/autoBackup";
 import {
   requestNotificationPermissions,
   hasNotificationPermissions,
@@ -111,6 +119,10 @@ export default function Settings() {
   const [reminderNotifId, setReminderNotifId] = useState<string | null>(null);
   const [restDayNotifId, setRestDayNotifId] = useState<string | null>(null);
 
+  const [autoBackupOn, setAutoBackupOn] = useState(false);
+  const [autoBackupDirUri, setAutoBackupDirUri] = useState<string | null>(null);
+  const [autoBackupLastRun, setAutoBackupLastRun] = useState<string | null>(null);
+
   async function loadSettings() {
     await ensureDb();
     const pmRaw = await getSettingAsync("programMode");
@@ -157,6 +169,14 @@ export default function Settings() {
     const loadedGyms = listGyms();
     setGyms(loadedGyms);
 
+    // Load auto-backup status
+    try {
+      const abStatus = await getAutoBackupStatus();
+      setAutoBackupOn(abStatus.enabled);
+      setAutoBackupDirUri(abStatus.dirUri);
+      setAutoBackupLastRun(abStatus.lastRunAt);
+    } catch {}
+
     // Load persisted notification toggles
     const permGranted = await hasNotificationPermissions();
     setNotifPermission(permGranted);
@@ -189,6 +209,54 @@ export default function Settings() {
   }, []);
 
   // Notification permission is now loaded inside loadSettings()
+
+  async function refreshAutoBackupStatus() {
+    try {
+      const status = await getAutoBackupStatus();
+      setAutoBackupOn(status.enabled);
+      setAutoBackupDirUri(status.dirUri);
+      setAutoBackupLastRun(status.lastRunAt);
+    } catch {}
+  }
+
+  async function handleToggleAutoBackup(v: boolean) {
+    if (!v) {
+      await setAutoBackupEnabled(false);
+      setAutoBackupOn(false);
+      return;
+    }
+    // Android needs a target folder (ideally one a cloud app syncs) before
+    // auto-backup can write anything.
+    let dirUri = autoBackupDirUri;
+    if (Platform.OS === "android" && !dirUri) {
+      dirUri = await chooseBackupDirectory();
+      if (!dirUri) {
+        Alert.alert(t("settings.autoBackup"), t("settings.autoBackup.folderNeeded"));
+        return;
+      }
+      setAutoBackupDirUri(dirUri);
+    }
+    await setAutoBackupEnabled(true);
+    setAutoBackupOn(true);
+    // Take the first backup immediately so the user sees it working.
+    const result = await runAutoBackupIfDue({ force: true });
+    if (result === "done") {
+      await refreshAutoBackupStatus();
+    } else if (result === "error" || result === "unconfigured") {
+      Alert.alert(t("common.error"), t("settings.autoBackup.failed"));
+    }
+  }
+
+  async function handleChangeBackupFolder() {
+    const dirUri = await chooseBackupDirectory();
+    if (!dirUri) return;
+    setAutoBackupDirUri(dirUri);
+    if (autoBackupOn) {
+      const result = await runAutoBackupIfDue({ force: true });
+      if (result === "done") await refreshAutoBackupStatus();
+      else if (result === "error") Alert.alert(t("common.error"), t("settings.autoBackup.failed"));
+    }
+  }
 
   async function handleExportToFile() {
     setBackupBusy(true);
@@ -1159,6 +1227,35 @@ export default function Settings() {
         </Card>
 
         <Card title={t("settings.backup")}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={{ color: theme.text }}>{t("settings.autoBackup")}</Text>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>{t("settings.autoBackup.desc")}</Text>
+            </View>
+            <Switch value={autoBackupOn} onValueChange={handleToggleAutoBackup} />
+          </View>
+          {autoBackupOn ? (
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>
+                {Platform.OS === "android"
+                  ? t("settings.autoBackup.folder", { folder: describeBackupDir(autoBackupDirUri) ?? "—" })
+                  : t("settings.autoBackup.iosLocation")}
+              </Text>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>
+                {autoBackupLastRun
+                  ? t("settings.autoBackup.lastRun", { when: autoBackupLastRun.slice(0, 16).replace("T", " ") })
+                  : t("settings.autoBackup.neverRun")}
+                {"  ·  "}
+                {t("settings.autoBackup.keepNote", { n: 7 })}
+              </Text>
+              {Platform.OS === "android" ? (
+                <View style={{ flexDirection: "row" }}>
+                  <Btn label={t("settings.autoBackup.changeFolder")} onPress={handleChangeBackupFolder} small />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+          <View style={{ height: 1, backgroundColor: theme.divider, marginVertical: 4 }} />
           <Text style={{ color: theme.muted }}>
             {t("settings.backup.desc")}
           </Text>

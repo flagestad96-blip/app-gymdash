@@ -61,6 +61,53 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
+// Cached "granted" so the per-set schedule path doesn't hit the permissions
+// API every time. Never caches a denial — if the user grants later in system
+// settings, the next check picks it up.
+let grantedCache = false;
+
+/**
+ * Make sure rest notifications can actually fire: requests the OS permission
+ * (Android 13+ requires a runtime prompt; without it every schedule silently
+ * no-ops) and creates the Android notification channel. Safe to call often.
+ */
+export async function ensureRestNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === "web" || IS_EXPO_GO) return false;
+  if (grantedCache) return true;
+  const granted = await requestNotificationPermissions();
+  if (granted) {
+    grantedCache = true;
+    const Notifications = await getNotifications();
+    if (Notifications) await ensureRestChannel(Notifications);
+  }
+  return granted;
+}
+
+export const REST_CHANNEL_ID = "rest-timer";
+let channelEnsured = false;
+
+/**
+ * Android 8+: notifications land on a channel, and the channel's importance —
+ * not the notification's — decides sound/heads-up. Without a dedicated
+ * high-importance channel the rest alert can arrive silently or not at all.
+ */
+async function ensureRestChannel(Notifications: Awaited<ReturnType<typeof getNotifications>>): Promise<void> {
+  if (Platform.OS !== "android" || channelEnsured || !Notifications) return;
+  try {
+    await Notifications.setNotificationChannelAsync(REST_CHANNEL_ID, {
+      name: t("notifications.restChannelName"),
+      importance: Notifications.AndroidImportance.MAX,
+      sound: "default",
+      vibrationPattern: [0, 250, 250, 250],
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    channelEnsured = true;
+  } catch (error) {
+    console.error("Failed to create rest notification channel:", error);
+  }
+}
+
 /**
  * Check if notification permissions are currently granted
  */
@@ -96,6 +143,8 @@ export async function scheduleRestNotification(seconds: number): Promise<string 
     return null;
   }
 
+  await ensureRestChannel(Notifications);
+
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
@@ -109,6 +158,7 @@ export async function scheduleRestNotification(seconds: number): Promise<string 
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: Math.max(1, Math.round(seconds)),
+        channelId: REST_CHANNEL_ID,
       },
     });
 

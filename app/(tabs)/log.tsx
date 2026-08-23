@@ -45,7 +45,7 @@ import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import HintBanner from "../../src/components/HintBanner";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
-import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
+import { setupNotificationHandler, cancelAllRestNotifications, ensureRestNotificationPermission } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
 import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, type PrMap } from "../../src/prEngine";
@@ -63,6 +63,7 @@ import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/E
 import { mergeManualSupersets, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
 import SupersetPickerModal from "../../src/components/modals/SupersetPickerModal";
 import { assessProgression, daysBetween, GAP_SHORT_DAYS, type ProgressionAdvice } from "../../src/progressionEngine";
+import { runAutoBackupIfDue } from "../../src/autoBackup";
 import { getRecentSessions } from "../../src/exerciseHistory";
 import { REST_BAR_CLEARANCE } from "../../src/components/workout/RestBar";
 import type { InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
@@ -1224,6 +1225,9 @@ export default function Logg() {
 
   async function startWorkout() {
     if (activeWorkoutId) return;
+    // Natural moment to ask for notification permission: the user just chose
+    // to train, so "get notified when rest is over" makes obvious sense.
+    ensureRestNotificationPermission().catch(() => {});
     const id = uid("workout");
     const startedAt = isoNow();
     const programId = program?.id ?? null;
@@ -1365,6 +1369,10 @@ export default function Logg() {
     setWorkoutSets([]);
     setSuggestedDayIndex(nextIdx);
     setActiveDayIndex(nextIdx);
+
+    // A finished workout is exactly when new data exists — take an automatic
+    // backup right away (no-op unless the user enabled auto-backup).
+    runAutoBackupIfDue({ force: true }).catch(() => {});
   }
 
   async function handleSaveTemplate() {

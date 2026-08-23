@@ -25,6 +25,7 @@ const notifications: TranslationMap = {
   "notifications.title": "NOTIFICATIONS",
   "notifications.restDone": "Rest done!",
   "notifications.nextSet": "Ready for the next set",
+  "notifications.restChannelName": "Rest timer",
   "notifications.workoutTime": "Workout time!",
   "notifications.readyForSession": "Ready for today's session?",
   "notifications.restDayCheck": "Rest day check",
