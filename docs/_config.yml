@@ -1,0 +1,24 @@
+# GitHub Pages-konfigurasjon for kilden main:/docs
+#
+# Siden publiserer én ting: index.html — personvernerklæringen som Play-listingen
+# lenker til (https://flagestad96-blip.github.io/app-gymdash/). Resten av docs/ er
+# intern utviklingsdokumentasjon full av React Native-snutter som `{{ color: ... }}`,
+# som Jekylls Liquid-parser tolker som templating. Det fikk hver Pages-build til å
+# feile (siden juni 2026) — siden ble liggende på siste vellykkede build, så en
+# endring i personvernerklæringen ville aldri blitt deployet.
+#
+# Vi ekskluderer derfor de interne mappene fra site-bygget. De ligger fortsatt i
+# repoet som før — de blir bare ikke publisert som nettsider.
+exclude:
+  - architecture
+  - brainstorm
+  - discovery
+  - plans
+  - prompts
+  - research
+  - reviews
+  - scout
+  - sessions
+  - tasks
+  - ux
+  - "*.md"
