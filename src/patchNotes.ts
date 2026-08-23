@@ -19,6 +19,23 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
+    version: "0.13.0-beta",
+    date: "2026-08-23",
+    changes: [
+      { type: "new", key: "patchNotes.0_13_0.superset" },
+      { type: "new", key: "patchNotes.0_13_0.coach" },
+      { type: "new", key: "patchNotes.0_13_0.comeback" },
+      { type: "new", key: "patchNotes.0_13_0.autoBackup" },
+      { type: "new", key: "patchNotes.0_13_0.repMax" },
+      { type: "new", key: "patchNotes.0_13_0.backLoad" },
+      { type: "improved", key: "patchNotes.0_13_0.font" },
+      { type: "improved", key: "patchNotes.0_13_0.equipmentPicker" },
+      { type: "fix", key: "patchNotes.0_13_0.restNotification" },
+      { type: "fix", key: "patchNotes.0_13_0.contrast" },
+      { type: "fix", key: "patchNotes.0_13_0.stats" },
+    ],
+  },
+  {
     version: "0.12.0-beta",
     date: "2026-06-10",
     changes: [
