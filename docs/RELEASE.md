@@ -89,6 +89,14 @@ node scripts/set-release-notes.js             # sett notatene på siste alpha-ut
 npm run submit:android   # laster opp siste build til alpha-sporet
 ```
 
+> **Sjekk at submit faktisk landet.** Observert aug 2026: et bygg som ble køet
+> med `--auto-submit --no-wait` ble rapportert som «Scheduled Android submission»,
+> men opplastingen dukket aldri opp i Play. `eas submit --id <build-id>` (som venter
+> og gir exit-kode) gikk rett gjennom etterpå. Mangler versjonen i Play etter en
+> release: kjør `npm run submit:android`. `npm run set-release-notes` fungerer
+> samtidig som kontroll — den feiler med «No release with versionCode X on track»
+> hvis submit ikke har landet.
+
 ---
 
 ## Automatisk release ved merge til main
