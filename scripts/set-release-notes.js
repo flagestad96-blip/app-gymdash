@@ -8,7 +8,9 @@
  * fills that gap so the store "What's new" never goes stale again.
  *
  * Reuses the SAME service account key as EAS Submit
- * (credentials/google-play-service-account.json).
+ * (credentials/google-play-service-account.json). That folder is git-ignored
+ * and therefore absent in CI, so the key may instead be supplied as the raw
+ * JSON in the env var GOOGLE_PLAY_SERVICE_ACCOUNT_JSON.
  *
  * Usage (run AFTER the build has been submitted to the track):
  *   node scripts/set-release-notes.js            # set notes on the alpha release
@@ -28,6 +30,8 @@ const ROOT = path.resolve(__dirname, "..");
 const DRY_RUN = process.argv.includes("--dry-run");
 const MAX_LEN = 500; // Google Play hard limit per language
 const KEY_PATH = path.join(ROOT, "credentials", "google-play-service-account.json");
+// CI alternative to the git-ignored key file: the raw JSON in an env var.
+const KEY_JSON_ENV = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON;
 
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -138,7 +142,16 @@ if (DRY_RUN) {
 
 // --- 5. push to Google Play via the Developer API ------------------------------
 (async () => {
-  if (!fs.existsSync(KEY_PATH)) fail(`Service account key not found at ${KEY_PATH}`);
+  let keyCredentials = null;
+  if (KEY_JSON_ENV) {
+    try {
+      keyCredentials = JSON.parse(KEY_JSON_ENV);
+    } catch {
+      fail("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is set but does not contain valid JSON");
+    }
+  } else if (!fs.existsSync(KEY_PATH)) {
+    fail(`Service account key not found at ${KEY_PATH} (or set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)`);
+  }
 
   let androidpublisher, auth;
   try {
@@ -148,7 +161,7 @@ if (DRY_RUN) {
   }
 
   const authClient = new auth.GoogleAuth({
-    keyFile: KEY_PATH,
+    ...(keyCredentials ? { credentials: keyCredentials } : { keyFile: KEY_PATH }),
     scopes: ["https://www.googleapis.com/auth/androidpublisher"],
   });
   const client = androidpublisher({ version: "v3", auth: authClient });

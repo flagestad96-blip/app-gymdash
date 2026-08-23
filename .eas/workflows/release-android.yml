@@ -2,12 +2,15 @@
 #
 # Kjører på EAS sine servere, ikke maskinen din.
 #
-# Trigger: push av en versjons-tag, f.eks.
-#     git tag v0.10.0-beta && git push origin v0.10.0-beta
-# Tag-en skal peke på commiten der versjonen er bumpet (app.json er fasit pga.
-# appVersionSource: "local" i eas.json).
+# Trigger: MANUELT (aug 2026). Automatisk utgivelse skjer nå ved merge til main
+# via .github/workflows/release-android.yml, som bygger kun når versionCode
+# faktisk er bumpet. Tag-triggeren er fjernet her fordi begge to ellers ville
+# bygget samme versionCode, og Play avviser den andre opplastingen som duplikat.
 #
-# Kan også kjøres manuelt:  eas workflow:run release-android.yml
+# Kjør denne manuelt hvis GitHub Actions er nede, eller du vil bygge uten merge:
+#     eas workflow:run release-android.yml
+#
+# app.json er fasit for versjonen pga. appVersionSource: "local" i eas.json.
 #
 # Engangsoppsett kreves før dette virker (se docs/RELEASE.md):
 #   1. Google Play-tjenestekonto lagret i EAS
@@ -17,10 +20,8 @@
 
 name: Release Android
 
-on:
-  push:
-    tags:
-      - "v*"
+# Ingen automatisk trigger — kjøres kun via `eas workflow:run`.
+on: {}
 
 jobs:
   build_android:

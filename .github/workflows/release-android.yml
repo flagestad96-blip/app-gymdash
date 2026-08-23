@@ -1,0 +1,106 @@
+# Autobuild + deploy to Google Play on merge to main.
+#
+# Guarded: a merge only triggers a build when it bumped `expo.android.versionCode`
+# in app.json (scripts/ci-should-release.js). Play rejects duplicate versionCodes,
+# so building on every merge would waste build minutes and fail at submit.
+#
+# Normal flow:
+#   1. npm run bump-version <patch|minor|major>
+#   2. fill in patch notes (src/patchNotes.ts + src/i18n/{en,nb}/patchNotes.ts + CHANGELOG.md)
+#   3. merge to main  ->  this workflow builds, submits to the alpha track and
+#      sets Play "What's new"
+#
+# Required repo secret:
+#   EXPO_TOKEN                        — expo.dev -> Account settings -> Access tokens
+# Optional repo secret:
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON  — the raw JSON of the Play service account key
+#                                       (same file as credentials/google-play-service-account.json).
+#                                       Without it the build still ships, but Play
+#                                       "What's new" must be set with `npm run set-release-notes`.
+
+name: release-android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if versionCode did not change (will fail at submit if Play already has it)"
+        type: boolean
+        default: false
+
+# Never let two releases run at once — they would race on the Play edit.
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Did versionCode change?
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      version_code: ${{ steps.check.outputs.version_code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # HEAD + its first parent, so HEAD^:app.json resolves
+
+      - id: check
+        env:
+          FORCE_RELEASE: ${{ inputs.force }}
+        run: node scripts/ci-should-release.js
+
+      - name: Summary
+        run: echo "${{ steps.check.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Build AAB · submit to Play (alpha)
+    needs: guard
+    if: needs.guard.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Check EXPO_TOKEN is set
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::EXPO_TOKEN secret is missing. Create one at expo.dev -> Account settings -> Access tokens, then add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify (check-version · typecheck · jest · lint)
+        run: npm run verify
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build AAB and submit to Play (alpha)
+        run: eas build --platform android --profile production --auto-submit --non-interactive
+
+      - name: Set Play "What's new"
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        run: npm run set-release-notes
+
+      - name: Note if release notes were skipped
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == ''
+        run: |
+          echo "::warning::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret not set — Play \"What's new\" was not updated. Run 'npm run set-release-notes' locally."
+
+      - name: Summary
+        run: |
+          echo "Released v${{ needs.guard.outputs.version }} (versionCode ${{ needs.guard.outputs.version_code }}) to the alpha track." >> "$GITHUB_STEP_SUMMARY"
