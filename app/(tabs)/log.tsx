@@ -60,6 +60,8 @@ import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
+import { mergeManualSupersets, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
+import SupersetPickerModal from "../../src/components/modals/SupersetPickerModal";
 import { REST_BAR_CLEARANCE } from "../../src/components/workout/RestBar";
 import type { InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
 import type { SetRow } from "../../src/components/workout/SetEntryRow";
@@ -90,23 +92,10 @@ type WorkoutRow = {
 
 type ProgramMode = "normal" | "back";
 
-type RenderBlock =
-  | {
-      type: "single";
-      exId: string;
-      baseExId: string;
-      anchorKey: string;
-    }
-  | {
-      type: "superset";
-      a: string;
-      b: string;
-      c?: string;
-      baseA: string;
-      baseB: string;
-      baseC?: string;
-      anchorKey: string;
-    };
+// Shape lives in superset.ts (MergeableBlock) so the manual-superset merge
+// helper can be pure + unit tested; `manual: true` marks supersets created
+// mid-session (they get an ungroup button).
+type RenderBlock = MergeableBlock;
 
 // Module-level flag - persists across component remounts (tab switches)
 let _logTabInitialized = false;
@@ -173,6 +162,12 @@ export default function Logg() {
 
   const [adHocExercises, setAdHocExercises] = useState<string[]>([]);
   const [addExerciseModalOpen, setAddExerciseModalOpen] = useState(false);
+
+  // Manual supersets — groups of 2–3 base exercise ids merged mid-session.
+  const [manualSupersets, setManualSupersets] = useState<string[][]>([]);
+  const [supersetPickerBase, setSupersetPickerBase] = useState<string | null>(null);
+  // Anchor key of a freshly merged block — consumed once renderBlocks contains it.
+  const pendingBlockAnchorRef = useRef<string | null>(null);
 
   const [editSetOpen, setEditSetOpen] = useState(false);
   const [editSet, setEditSet] = useState<SetRow | null>(null);
@@ -285,9 +280,11 @@ export default function Logg() {
         } else {
           await setSettingAsync("activeWorkoutId", "");
           await setSettingAsync("adHocExercises", "").catch(() => {});
+          await setSettingAsync("manualSupersets", "").catch(() => {});
           setActiveWorkoutId(null);
           setWorkoutStartedAt(null);
           setAdHocExercises([]);
+          setManualSupersets([]);
         }
       } else {
         setActiveWorkoutId(null);
@@ -364,6 +361,20 @@ export default function Logg() {
         } catch {}
       }
 
+      // Load manual (mid-session) supersets
+      let restoredManualSupersets: string[][] = [];
+      if (activeRow) {
+        try {
+          const savedManualSS = await getSettingAsync("manualSupersets");
+          if (savedManualSS) {
+            const parsed = JSON.parse(savedManualSS);
+            if (Array.isArray(parsed)) {
+              restoredManualSupersets = parsed.filter((g: unknown) => Array.isArray(g));
+            }
+          }
+        } catch {}
+      }
+
       // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
       setProgram(prog);
       setAlternatives(mergedAlts);
@@ -371,6 +382,7 @@ export default function Logg() {
       setActiveDayIndex(day);
       setSelectedAlternatives(restoredAlts);
       setAdHocExercises(restoredAdHoc);
+      setManualSupersets(restoredManualSupersets);
 
       // Load periodization
       try {
@@ -384,6 +396,7 @@ export default function Logg() {
       setProgram(ProgramStore.DEFAULT_STANDARD_PROGRAM);
       setAlternatives({});
       setSelectedAlternatives({});
+      setManualSupersets([]);
       setSuggestedDayIndex(0);
       setActiveDayIndex(0);
       setPeriodization(null);
@@ -450,8 +463,10 @@ export default function Logg() {
     for (const exId of adHocExercises) {
       blocks.push({ type: "single", exId, baseExId: exId, anchorKey: `adhoc_${exId}` });
     }
-    return blocks;
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises]);
+    // Apply mid-session superset merges last so both program singles and
+    // ad-hoc exercises can be combined.
+    return mergeManualSupersets(blocks, manualSupersets);
+  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -473,6 +488,47 @@ export default function Logg() {
     setAdHocExercises(next);
     setSettingAsync("adHocExercises", JSON.stringify(next)).catch(() => {});
     setAddExerciseModalOpen(false);
+  }
+
+  // ── Manual supersets (merge exercises mid-session) ──
+
+  // Single blocks other than the one the picker was opened from — the
+  // candidates that can join the new superset.
+  const supersetPartnerOptions = useMemo(() => {
+    if (!supersetPickerBase) return [];
+    return renderBlocks
+      .filter(
+        (b): b is Extract<RenderBlock, { type: "single" }> =>
+          b.type === "single" && b.baseExId !== supersetPickerBase,
+      )
+      .map((b) => ({ baseExId: b.baseExId, exId: b.exId }));
+  }, [renderBlocks, supersetPickerBase]);
+
+  const supersetPickerExId = useMemo(() => {
+    if (!supersetPickerBase) return null;
+    const b = renderBlocks.find(
+      (bl) => bl.type === "single" && bl.baseExId === supersetPickerBase,
+    );
+    return b && b.type === "single" ? b.exId : supersetPickerBase;
+  }, [renderBlocks, supersetPickerBase]);
+
+  function persistManualSupersets(next: string[][]) {
+    setManualSupersets(next);
+    setSettingAsync("manualSupersets", JSON.stringify(next)).catch(() => {});
+  }
+
+  function createManualSuperset(partnerBases: string[]) {
+    if (!supersetPickerBase || partnerBases.length === 0) return;
+    const group = [supersetPickerBase, ...partnerBases].slice(0, 3);
+    persistManualSupersets([...manualSupersets, group]);
+    setSupersetPickerBase(null);
+    pendingBlockAnchorRef.current = manualSupersetAnchorKey(group);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }
+
+  function ungroupManualSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
+    const bases = [block.baseA, block.baseB, ...(block.baseC ? [block.baseC] : [])];
+    persistManualSupersets(manualSupersets.filter((g) => !bases.every((id) => g.includes(id))));
   }
 
   const anchorItems = useMemo(() => {
@@ -513,6 +569,19 @@ export default function Logg() {
   }, [renderBlocks]);
 
   const blockAnchorKeys = useMemo(() => renderBlocks.map((b) => b.anchorKey), [renderBlocks]);
+
+  // After a mid-session superset merge, point the pager at the new block.
+  useEffect(() => {
+    const key = pendingBlockAnchorRef.current;
+    if (!key) return;
+    const idx = blockAnchorKeys.indexOf(key);
+    if (idx < 0) return;
+    pendingBlockAnchorRef.current = null;
+    goToBlock(idx);
+    // goToBlock is a stable-enough function declaration; keying on the anchor
+    // list is what actually matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockAnchorKeys]);
 
   const setsByExercise = useMemo(() => {
     const map: Record<string, SetRow[]> = {};
@@ -610,6 +679,8 @@ export default function Logg() {
     if ((prevDay === activeDayIndex && prevProg === (program?.id ?? null)) || activeWorkoutId) return;
     setSelectedAlternatives({});
     setSettingAsync("selectedAlternatives", "").catch(() => {});
+    setManualSupersets([]);
+    setSettingAsync("manualSupersets", "").catch(() => {});
   }, [activeDayIndex, program?.id, activeWorkoutId, ready]);
 
   const refreshWorkoutSets = useCallback(() => {
@@ -1186,7 +1257,9 @@ export default function Logg() {
     await setSettingAsync("activeWorkoutId", "");
     await setSettingAsync("selectedAlternatives", "").catch(() => {});
     await setSettingAsync("adHocExercises", "").catch(() => {});
+    await setSettingAsync("manualSupersets", "").catch(() => {});
     setAdHocExercises([]);
+    setManualSupersets([]);
     setActiveWorkoutId(null);
     restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
     restTimer.setActiveWorkoutId(null);
@@ -1855,6 +1928,11 @@ export default function Logg() {
                     gymEquipment={activeGymEquipment}
                     activeGoalLabel={goalLabels[exId]}
                     isAdHoc={adHocSet.has(exId)}
+                    onCreateSuperset={
+                      activeWorkoutId && renderBlocks.some((b) => b.type === "single" && b.baseExId !== block.baseExId)
+                        ? (base) => setSupersetPickerBase(base)
+                        : undefined
+                    }
                     onLayout={(e) => {
                       anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                       anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
@@ -1913,6 +1991,7 @@ export default function Logg() {
                     anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
                   }}
                   onLogRoundSet={(args) => logSupersetSet(block, args)}
+                  onUngroup={block.manual ? () => ungroupManualSuperset(block) : undefined}
                   {...cardCallbacks}
                 />
               );
@@ -2001,6 +2080,16 @@ export default function Logg() {
         onCreateCustom={handleCreateCustomFromAlt}
         lastSets={lastSets}
         exerciseNotes={exerciseNotes}
+      />
+
+      {/* Superset Picker Modal — merge exercises into a superset mid-session */}
+      <SupersetPickerModal
+        visible={supersetPickerBase != null}
+        baseExId={supersetPickerBase}
+        exId={supersetPickerExId}
+        options={supersetPartnerOptions}
+        onClose={() => setSupersetPickerBase(null)}
+        onCreate={createManualSuperset}
       />
 
       {/* Day Picker Modal */}

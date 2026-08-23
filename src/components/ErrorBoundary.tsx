@@ -82,7 +82,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             contentContainerStyle={{ paddingHorizontal: 4 }}
           >
             <Text
-              style={{ color: c.muted, fontFamily: "monospace", fontSize: 12, textAlign: "center" }}
+              style={{ color: c.muted, fontSize: 12, textAlign: "center" }}
               numberOfLines={3}
             >
               {error.message}

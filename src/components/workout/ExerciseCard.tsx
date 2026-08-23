@@ -68,6 +68,7 @@ type ExerciseHalfProps = {
   onExerciseNoteBlur: (exId: string) => void;
   onSetGoal: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
+  onCreateSuperset?: (baseExId: string) => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -107,6 +108,7 @@ function ExerciseHalf({
   onExerciseNoteBlur,
   onSetGoal,
   onOpenPlateCalc,
+  onCreateSuperset,
   workoutId,
   exerciseIndex,
   gymId,
@@ -196,8 +198,8 @@ function ExerciseHalf({
             </Pressable>
           </View>
         </View>
-        {altList.length ? (
-          <View style={{ flexDirection: "row", gap: 8 }}>
+        {altList.length || onCreateSuperset ? (
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             {baseExId !== exId && onSetAsDefault ? (
               <Pressable
                 onPress={() => {
@@ -205,30 +207,54 @@ function ExerciseHalf({
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 }}
                 style={{
-                  borderColor: theme.success,
+                  borderColor: theme.accent,
                   borderWidth: 1,
                   borderRadius: 12,
                   paddingHorizontal: 12,
                   paddingVertical: 8,
-                  backgroundColor: theme.isDark ? "rgba(34, 197, 94, 0.15)" : "rgba(34, 197, 94, 0.08)",
+                  // Solid accent fill — translucent tints wash out against the
+                  // aurora background (the old success-on-green pill was
+                  // unreadable on the sunset palette).
+                  backgroundColor: theme.accent,
                 }}
               >
-                <Text style={{ color: theme.success, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>{t("log.setAsDefault")}</Text>
+                <Text style={{ color: "#05070f", fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.semibold }}>{t("log.setAsDefault")}</Text>
               </Pressable>
             ) : null}
-            <Pressable
-              onPress={() => onOpenAltPicker(baseExId)}
-              style={{
-                borderColor: theme.accent,
-                borderWidth: 1,
-                borderRadius: 999,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                backgroundColor: theme.accent + "26",
-              }}
-            >
-              <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
-            </Pressable>
+            {onCreateSuperset ? (
+              <Pressable
+                onPress={() => onCreateSuperset(baseExId)}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.createSuperset")}
+                style={{
+                  borderColor: theme.accent,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: theme.accent + "26",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <MaterialIcons name="add-link" size={16} color={theme.accent} />
+              </Pressable>
+            ) : null}
+            {altList.length ? (
+              <Pressable
+                onPress={() => onOpenAltPicker(baseExId)}
+                style={{
+                  borderColor: theme.accent,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.accent + "26",
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -629,6 +655,7 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
+  onCreateSuperset?: (baseExId: string) => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -703,6 +730,7 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onExerciseNoteBlur={props.onExerciseNoteBlur}
         onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
+        onCreateSuperset={props.onCreateSuperset}
         workoutId={props.workoutId}
         exerciseIndex={props.exerciseIndex}
         gymId={props.gymId}
@@ -976,6 +1004,8 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
   onLogRoundSet: (args: SupersetLogArgs) => Promise<void> | void;
+  /** Present only for manual (mid-session) supersets — splits the group back into singles. */
+  onUngroup?: () => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -1271,6 +1301,20 @@ export function SupersetCard(props: SupersetCardProps) {
                 }}
               />
             ))}
+            {props.onUngroup ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  props.onUngroup!();
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.ungroupSuperset")}
+                style={{ marginLeft: 8 }}
+              >
+                <MaterialIcons name="link-off" size={18} color={theme.muted} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
 

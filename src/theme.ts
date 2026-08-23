@@ -13,8 +13,9 @@
 // deprecated no-ops so existing call sites compile while we migrate the
 // Settings personalization UI to palette + intensity.
 //
-// Type system: Inter (body), Instrument Serif (display), JetBrains Mono
-// (numerics) — loaded in app/_layout.tsx.
+// Type system: Inter (body + numerics/labels), Instrument Serif (display) —
+// loaded in app/_layout.tsx. `theme.mono` is a legacy token name that now maps
+// to Inter Medium (the old JetBrains Mono look was retired by user request).
 
 import React from "react";
 import { type TextStyle } from "react-native";
@@ -156,7 +157,7 @@ export function glassTokensFor(intensity: number) {
 // ── Token plumbing ───────────────────────────────────────────────────────────
 
 const TOKENS = {
-  // Aurora type system: Inter (body), Instrument Serif (display), JetBrains Mono (numerics).
+  // Aurora type system: Inter (body + numerics/labels), Instrument Serif (display).
   fontFamily: {
     regular: "Inter_400Regular",
     medium: "Inter_500Medium",
@@ -164,7 +165,8 @@ const TOKENS = {
     bold: "Inter_700Bold",
     serif: "InstrumentSerif_400Regular",
   },
-  mono: "JetBrainsMono_500Medium",
+  // Legacy token name — kept because ~200 call sites reference `theme.mono`.
+  mono: "Inter_500Medium",
   fontSize: { xs: 11, sm: 13, md: 15, lg: 18, xl: 22, xxl: 28 },
   fontWeight: { regular: "400", medium: "500", semibold: "600", bold: "700" } as const,
   lineHeight: { sm: 20, md: 24, lg: 36 },

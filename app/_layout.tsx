@@ -11,7 +11,6 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useFonts } from "@expo-google-fonts/inter";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
-import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { initDb, getSettingAsync } from "../src/db";
 import { ThemeProvider, useTheme, setPalette, setGlassIntensity, PALETTE_LIST } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
@@ -182,7 +181,6 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
     InstrumentSerif_400Regular,
-    JetBrainsMono_500Medium,
   });
 
   if (!fontsLoaded) return null;
