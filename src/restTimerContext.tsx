@@ -7,6 +7,7 @@ import { tagsFor, isPerSideExercise, type ExerciseTag } from "./exerciseLibrary"
 import {
   scheduleRestNotification,
   cancelAllRestTimerNotifications,
+  ensureRestNotificationPermission,
 } from "./notifications";
 import { mmss, clampInt } from "./format";
 
@@ -425,6 +426,10 @@ export function RestTimerProvider({ children }: Props) {
       notifChainRef.current = notifChainRef.current
         .then(async () => {
           if (seq !== notifSeqRef.current) return; // superseded by a newer start/stop
+          // Request the OS notification permission on first use — without this
+          // Android 13+ silently drops every scheduled rest notification.
+          await ensureRestNotificationPermission();
+          if (seq !== notifSeqRef.current) return;
           await cancelAllRestTimerNotifications();
           if (seq !== notifSeqRef.current) return;
           const notificationId = await scheduleRestNotification(remaining);

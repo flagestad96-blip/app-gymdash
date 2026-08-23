@@ -65,25 +65,18 @@ NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. List
 ## Pågående arbeid
 
 - **Release-pipeline**: EAS auto-submit til alpha er live (se «Utgivelse» over). Workflow-finalisering + Play «Hva er nytt»-automatisering gjenstår om ønskelig.
-- **Gym locations**: Migration 22 + `gymStore.ts` ferdig. UI-integrasjon gjenstår (gym-picker i logg, management i settings, utstyrsfiltrering)
 
 ## Backlog (prioritert)
 
-Ideer diskutert og godkjent for fremtidig implementering:
-
-### Høy prioritet
-1. **Edit/delete sett → PR-rekalkulering** — Når bruker retter et sett, må PR-historikk oppdateres. Tillitsproblem.
-2. **Gym locations UI** — Koble gymStore til logg-skjermen (gym-picker), settings (CRUD), og utstyrsfilter i exercise-picker.
-3. **Workout resume-indikator** — Vis tydelig på hjem-skjermen når en økt er aktiv men appen ble lukket (`started_at` uten `ended_at`).
-
-### Medium prioritet
-4. **Utstyrsfilter i exercise-picker** — Vis kun øvelser som matcher tilgjengelig utstyr. Ekstra kraftig med gym locations.
-5. **Rep-max estimator** — Vis estimert 3RM/5RM/10RM per øvelse (Epley/Brzycki). Lav innsats, høy opplevd verdi.
-6. **Ukentlig ryggbelastnings-score** — Summer ukens volum vektet med backImpact-nivå. Nyttig for brukere med ryggproblemer.
+> Gjennomgått 2026-08-23: punktene 1–6 fra forrige backlog er verifisert levert
+> (PR-rekalkulering ved edit/delete, gym locations UI inkl. picker/CRUD/
+> utstyrsmerking, resume-banner på hjem, utstyrssortering i exercise-picker,
+> rep-max estimator i Historikk, ukentlig ryggbelastnings-score på hjem).
 
 ### Lav prioritet / utforsk videre
-7. **Fatigue-trend fra RPE-data** — Rullerende RPE-graf over tid per muskelgruppe. Overtrening-signal.
-8. **Første-økt tooltips** — Kontekstuelle tips under første reelle logging (vis én gang).
+1. **Fatigue-trend fra RPE-data** — Rullerende RPE-graf over tid per muskelgruppe. Overtrening-signal. (Delvis dekket av treningsstatus-kortet og progresjons-coachens RPE-logikk.)
+2. **Første-økt tooltips** — Kontekstuelle tips under første reelle logging (vis én gang).
+3. **Comeback-ramp over flere økter** — Coachen foreslår i dag én redusert startvekt; kan utvides til en 2–3-ukers opptrappingsplan.
 
 ## Ikke gjør
 

@@ -11,7 +11,6 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useFonts } from "@expo-google-fonts/inter";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
-import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { initDb, getSettingAsync } from "../src/db";
 import { ThemeProvider, useTheme, setPalette, setGlassIntensity, PALETTE_LIST } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
@@ -21,6 +20,7 @@ import ProgramStore from "../src/programStore";
 import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
+import { runAutoBackupIfDue } from "../src/autoBackup";
 import RestSettingsHost from "../src/components/RestSettingsHost";
 import RestBar from "../src/components/workout/RestBar";
 import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
@@ -182,7 +182,6 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
     InstrumentSerif_400Regular,
-    JetBrainsMono_500Medium,
   });
 
   if (!fontsLoaded) return null;
@@ -275,6 +274,8 @@ function RootLayoutInner() {
       } catch {
         // Silent fail - tabs will load their own data
       }
+      // Daily automatic backup (throttled internally; no-op unless enabled).
+      runAutoBackupIfDue().catch(() => {});
     });
 
     return () => task.cancel();

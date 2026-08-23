@@ -32,6 +32,10 @@ const home: TranslationMap = {
   "home.volumeTrend.up": "\u2191 +{pct}% vs last week",
   "home.volumeTrend.down": "\u2193 {pct}% vs last week",
   "home.volumeTrend.flat": "\u2192 Flat vs last week",
+  "home.backLoad": "Back load: {score} weighted volume",
+  "home.backLoadTrend.up": "\u2191 +{pct}% vs last week",
+  "home.backLoadTrend.down": "\u2193 \u2212{pct}% vs last week",
+  "home.backLoadTrend.flat": "\u2192 flat vs last week",
   // Training status card
   "home.status.green": "On track",
   "home.status.yellow": "Monitor closely",

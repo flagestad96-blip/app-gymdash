@@ -25,6 +25,7 @@ const notifications: TranslationMap = {
   "notifications.title": "VARSLER",
   "notifications.restDone": "Hvil ferdig!",
   "notifications.nextSet": "Klar for neste sett",
+  "notifications.restChannelName": "Hviletimer",
   "notifications.workoutTime": "Treningstid!",
   "notifications.readyForSession": "Klar for dagens \u00f8kt?",
   "notifications.restDayCheck": "Hviledagssjekk",

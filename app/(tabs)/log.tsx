@@ -45,7 +45,7 @@ import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import HintBanner from "../../src/components/HintBanner";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
-import { setupNotificationHandler, cancelAllRestNotifications } from "../../src/notifications";
+import { setupNotificationHandler, cancelAllRestNotifications, ensureRestNotificationPermission } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
 import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, type PrMap } from "../../src/prEngine";
@@ -60,6 +60,11 @@ import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
+import { mergeManualSupersets, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
+import SupersetPickerModal from "../../src/components/modals/SupersetPickerModal";
+import { assessProgression, daysBetween, GAP_SHORT_DAYS, type ProgressionAdvice } from "../../src/progressionEngine";
+import { runAutoBackupIfDue } from "../../src/autoBackup";
+import { getRecentSessions } from "../../src/exerciseHistory";
 import { REST_BAR_CLEARANCE } from "../../src/components/workout/RestBar";
 import type { InputState, LastSetInfo } from "../../src/components/workout/ExerciseCard";
 import type { SetRow } from "../../src/components/workout/SetEntryRow";
@@ -90,23 +95,10 @@ type WorkoutRow = {
 
 type ProgramMode = "normal" | "back";
 
-type RenderBlock =
-  | {
-      type: "single";
-      exId: string;
-      baseExId: string;
-      anchorKey: string;
-    }
-  | {
-      type: "superset";
-      a: string;
-      b: string;
-      c?: string;
-      baseA: string;
-      baseB: string;
-      baseC?: string;
-      anchorKey: string;
-    };
+// Shape lives in superset.ts (MergeableBlock) so the manual-superset merge
+// helper can be pure + unit tested; `manual: true` marks supersets created
+// mid-session (they get an ungroup button).
+type RenderBlock = MergeableBlock;
 
 // Module-level flag - persists across component remounts (tab switches)
 let _logTabInitialized = false;
@@ -138,6 +130,11 @@ export default function Logg() {
   const [inputs, setInputs] = useState<Record<string, InputState>>({});
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   const [lastSets, setLastSets] = useState<Record<string, LastSetInfo>>({});
+  // Per-exercise coach advice (comeback/increase/hold/…) from progressionEngine.
+  const [exerciseAdvice, setExerciseAdvice] = useState<Record<string, ProgressionAdvice>>({});
+  // Days since the last completed workout when it exceeds the comeback
+  // threshold — drives the "welcome back" banner.
+  const [comebackGapDays, setComebackGapDays] = useState<number | null>(null);
   const [targets, setTargets] = useState<TargetsByDay>({});
   const [prRecords, setPrRecords] = useState<PrMap>({});
   const [prBanners, setPrBanners] = useState<Record<string, string>>({});
@@ -173,6 +170,12 @@ export default function Logg() {
 
   const [adHocExercises, setAdHocExercises] = useState<string[]>([]);
   const [addExerciseModalOpen, setAddExerciseModalOpen] = useState(false);
+
+  // Manual supersets — groups of 2–3 base exercise ids merged mid-session.
+  const [manualSupersets, setManualSupersets] = useState<string[][]>([]);
+  const [supersetPickerBase, setSupersetPickerBase] = useState<string | null>(null);
+  // Anchor key of a freshly merged block — consumed once renderBlocks contains it.
+  const pendingBlockAnchorRef = useRef<string | null>(null);
 
   const [editSetOpen, setEditSetOpen] = useState(false);
   const [editSet, setEditSet] = useState<SetRow | null>(null);
@@ -285,15 +288,34 @@ export default function Logg() {
         } else {
           await setSettingAsync("activeWorkoutId", "");
           await setSettingAsync("adHocExercises", "").catch(() => {});
+          await setSettingAsync("manualSupersets", "").catch(() => {});
           setActiveWorkoutId(null);
           setWorkoutStartedAt(null);
           setAdHocExercises([]);
+          setManualSupersets([]);
         }
       } else {
         setActiveWorkoutId(null);
         setWorkoutStartedAt(null);
       }
       // Note: restTimer.setActiveWorkoutId is handled by the context loading from settings
+
+      // Detect a training break: days since the last completed workout. Shown
+      // as a comeback banner when it crosses the threshold; per-exercise
+      // weight advice comes from the progression engine separately.
+      try {
+        const lastEnded = getDb().getFirstSync<{ date: string }>(
+          `SELECT date FROM workouts WHERE ended_at IS NOT NULL ORDER BY date DESC LIMIT 1`
+        );
+        if (lastEnded?.date) {
+          const gap = daysBetween(lastEnded.date, isoDateOnly());
+          setComebackGapDays(gap >= GAP_SHORT_DAYS ? gap : null);
+        } else {
+          setComebackGapDays(null);
+        }
+      } catch {
+        setComebackGapDays(null);
+      }
 
       const prog = activeRow?.program_id
         ? (await ProgramStore.getProgram(activeRow.program_id)) ?? (await ProgramStore.getActiveProgram(pm))
@@ -364,6 +386,20 @@ export default function Logg() {
         } catch {}
       }
 
+      // Load manual (mid-session) supersets
+      let restoredManualSupersets: string[][] = [];
+      if (activeRow) {
+        try {
+          const savedManualSS = await getSettingAsync("manualSupersets");
+          if (savedManualSS) {
+            const parsed = JSON.parse(savedManualSS);
+            if (Array.isArray(parsed)) {
+              restoredManualSupersets = parsed.filter((g: unknown) => Array.isArray(g));
+            }
+          }
+        } catch {}
+      }
+
       // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
       setProgram(prog);
       setAlternatives(mergedAlts);
@@ -371,6 +407,7 @@ export default function Logg() {
       setActiveDayIndex(day);
       setSelectedAlternatives(restoredAlts);
       setAdHocExercises(restoredAdHoc);
+      setManualSupersets(restoredManualSupersets);
 
       // Load periodization
       try {
@@ -384,6 +421,7 @@ export default function Logg() {
       setProgram(ProgramStore.DEFAULT_STANDARD_PROGRAM);
       setAlternatives({});
       setSelectedAlternatives({});
+      setManualSupersets([]);
       setSuggestedDayIndex(0);
       setActiveDayIndex(0);
       setPeriodization(null);
@@ -450,8 +488,10 @@ export default function Logg() {
     for (const exId of adHocExercises) {
       blocks.push({ type: "single", exId, baseExId: exId, anchorKey: `adhoc_${exId}` });
     }
-    return blocks;
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises]);
+    // Apply mid-session superset merges last so both program singles and
+    // ad-hoc exercises can be combined.
+    return mergeManualSupersets(blocks, manualSupersets);
+  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -473,6 +513,47 @@ export default function Logg() {
     setAdHocExercises(next);
     setSettingAsync("adHocExercises", JSON.stringify(next)).catch(() => {});
     setAddExerciseModalOpen(false);
+  }
+
+  // ── Manual supersets (merge exercises mid-session) ──
+
+  // Single blocks other than the one the picker was opened from — the
+  // candidates that can join the new superset.
+  const supersetPartnerOptions = useMemo(() => {
+    if (!supersetPickerBase) return [];
+    return renderBlocks
+      .filter(
+        (b): b is Extract<RenderBlock, { type: "single" }> =>
+          b.type === "single" && b.baseExId !== supersetPickerBase,
+      )
+      .map((b) => ({ baseExId: b.baseExId, exId: b.exId }));
+  }, [renderBlocks, supersetPickerBase]);
+
+  const supersetPickerExId = useMemo(() => {
+    if (!supersetPickerBase) return null;
+    const b = renderBlocks.find(
+      (bl) => bl.type === "single" && bl.baseExId === supersetPickerBase,
+    );
+    return b && b.type === "single" ? b.exId : supersetPickerBase;
+  }, [renderBlocks, supersetPickerBase]);
+
+  function persistManualSupersets(next: string[][]) {
+    setManualSupersets(next);
+    setSettingAsync("manualSupersets", JSON.stringify(next)).catch(() => {});
+  }
+
+  function createManualSuperset(partnerBases: string[]) {
+    if (!supersetPickerBase || partnerBases.length === 0) return;
+    const group = [supersetPickerBase, ...partnerBases].slice(0, 3);
+    persistManualSupersets([...manualSupersets, group]);
+    setSupersetPickerBase(null);
+    pendingBlockAnchorRef.current = manualSupersetAnchorKey(group);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }
+
+  function ungroupManualSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
+    const bases = [block.baseA, block.baseB, ...(block.baseC ? [block.baseC] : [])];
+    persistManualSupersets(manualSupersets.filter((g) => !bases.every((id) => g.includes(id))));
   }
 
   const anchorItems = useMemo(() => {
@@ -513,6 +594,19 @@ export default function Logg() {
   }, [renderBlocks]);
 
   const blockAnchorKeys = useMemo(() => renderBlocks.map((b) => b.anchorKey), [renderBlocks]);
+
+  // After a mid-session superset merge, point the pager at the new block.
+  useEffect(() => {
+    const key = pendingBlockAnchorRef.current;
+    if (!key) return;
+    const idx = blockAnchorKeys.indexOf(key);
+    if (idx < 0) return;
+    pendingBlockAnchorRef.current = null;
+    goToBlock(idx);
+    // goToBlock is a stable-enough function declaration; keying on the anchor
+    // list is what actually matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockAnchorKeys]);
 
   const setsByExercise = useMemo(() => {
     const map: Record<string, SetRow[]> = {};
@@ -598,6 +692,39 @@ export default function Logg() {
     return () => { cancelled = true; };
   }, [program?.id, exerciseIds]);
 
+  // Assess per-exercise progression advice from recent history: training gaps
+  // (comeback weights), rep performance across ALL sets, average RPE, and
+  // plateaus over the last sessions. The current workout is excluded so the
+  // verdict stays stable while logging.
+  useEffect(() => {
+    if (!ready || exerciseIds.length === 0) {
+      setExerciseAdvice({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const today = isoDateOnly();
+      const map: Record<string, ProgressionAdvice> = {};
+      for (const exId of exerciseIds) {
+        try {
+          const sessions = await getRecentSessions(exId, activeWorkoutId, 4, null);
+          const tgt = getTargetFor(exId);
+          const advice = assessProgression({
+            today,
+            target: { repMin: tgt.repMin, repMax: tgt.repMax, targetSets: tgt.targetSets, incrementKg: tgt.incrementKg },
+            sessions: sessions.map((s) => ({ date: s.date, sets: s.sets })),
+          });
+          if (advice) map[exId] = advice;
+        } catch {}
+      }
+      if (!cancelled) setExerciseAdvice(map);
+    })();
+    return () => { cancelled = true; };
+    // getTargetFor is recreated every render; the data it reads (targets,
+    // activeDayIndex) is covered explicitly below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, exerciseIds, activeWorkoutId, targets, activeDayIndex]);
+
   // Only clear alternatives when NOT in an active workout - during a session, alternatives should persist
   const prevDayRef = useRef<{ day: number; prog: string | null }>({ day: activeDayIndex, prog: program?.id ?? null });
   useEffect(() => {
@@ -610,6 +737,8 @@ export default function Logg() {
     if ((prevDay === activeDayIndex && prevProg === (program?.id ?? null)) || activeWorkoutId) return;
     setSelectedAlternatives({});
     setSettingAsync("selectedAlternatives", "").catch(() => {});
+    setManualSupersets([]);
+    setSettingAsync("manualSupersets", "").catch(() => {});
   }, [activeDayIndex, program?.id, activeWorkoutId, ready]);
 
   const refreshWorkoutSets = useCallback(() => {
@@ -795,7 +924,42 @@ export default function Logg() {
     } catch { setLastSets({}); }
   }, [ready, exerciseIdsKey, exerciseIds, program?.id, activeGymId, activeDayIndex]);
 
+  // Turn a structured engine verdict into an insightful, localized hint that
+  // explains WHY (facts: sets/reps/RPE/gap) and gives a concrete weight when
+  // the advice implies one.
+  function adviceText(advice: ProgressionAdvice): string {
+    const fw = (kg: number) => wu.formatWeight(kg);
+    const f = advice.facts;
+    switch (advice.kind) {
+      case "comebackLong":
+        return t("log.advice.comebackLong", {
+          weeks: Math.max(3, Math.round(advice.gapDays / 7)),
+          pct: advice.reductionPct ?? 10,
+          weight: fw(advice.suggestedWeightKg ?? f.topWeightKg),
+        });
+      case "comebackShort":
+        return t("log.advice.comebackShort", { days: advice.gapDays });
+      case "increase":
+        return f.avgRpe != null
+          ? t("log.advice.increaseReady", { sets: f.targetSets, reps: f.repMax, rpe: f.avgRpe, weight: fw(advice.suggestedWeightKg ?? f.topWeightKg) })
+          : t("log.advice.increaseReadyNoRpe", { sets: f.targetSets, reps: f.repMax, weight: fw(advice.suggestedWeightKg ?? f.topWeightKg) });
+      case "holdHighRpe":
+        return t("log.advice.holdHighRpe", { rpe: f.avgRpe ?? 9 });
+      case "reduce":
+        return t("log.advice.reduceStruggling", { repMin: f.repMin, weight: fw(advice.suggestedWeightKg ?? f.topWeightKg) });
+      case "plateauPushReps":
+        return t("log.advice.plateauPushReps", { n: f.sessionsAtSameWeight ?? 3, repMax: f.repMax });
+      case "plateauDeload":
+        return t("log.advice.plateauDeload", { n: f.sessionsAtSameWeight ?? 3, weight: fw(advice.suggestedWeightKg ?? f.topWeightKg) });
+      case "buildReps":
+        return t("log.advice.buildReps", { best: f.bestReps, repMax: f.repMax });
+    }
+  }
+
   function buildCoachHint(exId: string) {
+    const advice = exerciseAdvice[exId];
+    if (advice) return adviceText(advice);
+    // Fallback while advice loads (or without history): last-set heuristic.
     const last = lastSets[exId];
     if (!last) return null;
     const target = getTargetFor(exId);
@@ -1061,6 +1225,9 @@ export default function Logg() {
 
   async function startWorkout() {
     if (activeWorkoutId) return;
+    // Natural moment to ask for notification permission: the user just chose
+    // to train, so "get notified when rest is over" makes obvious sense.
+    ensureRestNotificationPermission().catch(() => {});
     const id = uid("workout");
     const startedAt = isoNow();
     const programId = program?.id ?? null;
@@ -1133,7 +1300,9 @@ export default function Logg() {
     let totalDoneSets = 0;
     let totalBonusSets = 0;
     for (const block of renderBlocks) {
-      const exIdsInBlock = block.type === "single" ? [block.exId] : [block.a, block.b];
+      const exIdsInBlock = block.type === "single"
+        ? [block.exId]
+        : [block.a, block.b, ...(block.c ? [block.c] : [])];
       for (const eid of exIdsInBlock) {
         if (adHocSet.has(eid)) continue;
         const tgt = getTargetFor(eid);
@@ -1186,7 +1355,9 @@ export default function Logg() {
     await setSettingAsync("activeWorkoutId", "");
     await setSettingAsync("selectedAlternatives", "").catch(() => {});
     await setSettingAsync("adHocExercises", "").catch(() => {});
+    await setSettingAsync("manualSupersets", "").catch(() => {});
     setAdHocExercises([]);
+    setManualSupersets([]);
     setActiveWorkoutId(null);
     restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
     restTimer.setActiveWorkoutId(null);
@@ -1198,6 +1369,10 @@ export default function Logg() {
     setWorkoutSets([]);
     setSuggestedDayIndex(nextIdx);
     setActiveDayIndex(nextIdx);
+
+    // A finished workout is exactly when new data exists — take an automatic
+    // backup right away (no-op unless the user enabled auto-backup).
+    runAutoBackupIfDue({ force: true }).catch(() => {});
   }
 
   async function handleSaveTemplate() {
@@ -1712,6 +1887,26 @@ export default function Logg() {
             </View>
           ) : null}
 
+          {/* Comeback banner — shown after a training break until the next
+              completed workout resets the gap. */}
+          {comebackGapDays != null ? (
+            <View style={{
+              backgroundColor: theme.accent + "1A",
+              borderColor: theme.accent,
+              borderWidth: 1,
+              borderRadius: 14,
+              padding: 12,
+              gap: 4,
+            }}>
+              <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 14 }}>
+                {t("log.comebackTitle")}
+              </Text>
+              <Text style={{ color: theme.muted, fontFamily: theme.fontFamily.regular, fontSize: 12, lineHeight: 17 }}>
+                {t("log.comebackBanner", { days: comebackGapDays })}
+              </Text>
+            </View>
+          ) : null}
+
           <Card title={t("log.sessionCard")} style={{ borderColor: theme.accent, backgroundColor: theme.accent + "1F" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <View>
@@ -1855,6 +2050,16 @@ export default function Logg() {
                     gymEquipment={activeGymEquipment}
                     activeGoalLabel={goalLabels[exId]}
                     isAdHoc={adHocSet.has(exId)}
+                    comebackWeightKg={
+                      exerciseAdvice[exId]?.kind === "comebackLong"
+                        ? exerciseAdvice[exId]?.suggestedWeightKg
+                        : undefined
+                    }
+                    onCreateSuperset={
+                      activeWorkoutId && renderBlocks.some((b) => b.type === "single" && b.baseExId !== block.baseExId)
+                        ? (base) => setSupersetPickerBase(base)
+                        : undefined
+                    }
                     onLayout={(e) => {
                       anchorPositionsRef.current[block.anchorKey] = e.nativeEvent.layout.y;
                       anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
@@ -1913,6 +2118,7 @@ export default function Logg() {
                     anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
                   }}
                   onLogRoundSet={(args) => logSupersetSet(block, args)}
+                  onUngroup={block.manual ? () => ungroupManualSuperset(block) : undefined}
                   {...cardCallbacks}
                 />
               );
@@ -2001,6 +2207,16 @@ export default function Logg() {
         onCreateCustom={handleCreateCustomFromAlt}
         lastSets={lastSets}
         exerciseNotes={exerciseNotes}
+      />
+
+      {/* Superset Picker Modal — merge exercises into a superset mid-session */}
+      <SupersetPickerModal
+        visible={supersetPickerBase != null}
+        baseExId={supersetPickerBase}
+        exId={supersetPickerExId}
+        options={supersetPartnerOptions}
+        onClose={() => setSupersetPickerBase(null)}
+        onCreate={createManualSuperset}
       />
 
       {/* Day Picker Modal */}
@@ -2284,6 +2500,7 @@ export default function Logg() {
         onClose={() => setAddExerciseModalOpen(false)}
         onSelect={addAdHocExercise}
         existingExerciseIds={exerciseIds}
+        gymEquipment={activeGymEquipment}
       />
 
       {/* Save as Template Modal */}

@@ -32,6 +32,10 @@ const home: TranslationMap = {
   "home.volumeTrend.up": "\u2191 +{pct}% vs forrige uke",
   "home.volumeTrend.down": "\u2193 {pct}% vs forrige uke",
   "home.volumeTrend.flat": "\u2192 Flatt vs forrige uke",
+  "home.backLoad": "Ryggbelastning: {score} vektet volum",
+  "home.backLoadTrend.up": "\u2191 +{pct}% vs forrige uke",
+  "home.backLoadTrend.down": "\u2193 \u2212{pct}% vs forrige uke",
+  "home.backLoadTrend.flat": "\u2192 flatt vs forrige uke",
   // Training status card
   "home.status.green": "P\u00e5 rett spor",
   "home.status.yellow": "F\u00f8lg med n\u00f8ye",

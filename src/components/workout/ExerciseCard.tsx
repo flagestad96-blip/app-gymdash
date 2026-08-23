@@ -9,6 +9,7 @@ import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
 import { formatWeight } from "../../format";
+import { epley1RM } from "../../metrics";
 import { displayNameFor, getExercise, isPerSideExercise, type Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 import type { SetRow } from "./SetEntryRow";
@@ -68,6 +69,9 @@ type ExerciseHalfProps = {
   onExerciseNoteBlur: (exId: string) => void;
   onSetGoal: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
+  onCreateSuperset?: (baseExId: string) => void;
+  /** Reduced start weight (kg) after a training break — renders a quick-apply pill. */
+  comebackWeightKg?: number;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -107,6 +111,8 @@ function ExerciseHalf({
   onExerciseNoteBlur,
   onSetGoal,
   onOpenPlateCalc,
+  onCreateSuperset,
+  comebackWeightKg,
   workoutId,
   exerciseIndex,
   gymId,
@@ -196,8 +202,8 @@ function ExerciseHalf({
             </Pressable>
           </View>
         </View>
-        {altList.length ? (
-          <View style={{ flexDirection: "row", gap: 8 }}>
+        {altList.length || onCreateSuperset ? (
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             {baseExId !== exId && onSetAsDefault ? (
               <Pressable
                 onPress={() => {
@@ -205,30 +211,54 @@ function ExerciseHalf({
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 }}
                 style={{
-                  borderColor: theme.success,
+                  borderColor: theme.accent,
                   borderWidth: 1,
                   borderRadius: 12,
                   paddingHorizontal: 12,
                   paddingVertical: 8,
-                  backgroundColor: theme.isDark ? "rgba(34, 197, 94, 0.15)" : "rgba(34, 197, 94, 0.08)",
+                  // Solid accent fill — translucent tints wash out against the
+                  // aurora background (the old success-on-green pill was
+                  // unreadable on the sunset palette).
+                  backgroundColor: theme.accent,
                 }}
               >
-                <Text style={{ color: theme.success, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>{t("log.setAsDefault")}</Text>
+                <Text style={{ color: "#05070f", fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.semibold }}>{t("log.setAsDefault")}</Text>
               </Pressable>
             ) : null}
-            <Pressable
-              onPress={() => onOpenAltPicker(baseExId)}
-              style={{
-                borderColor: theme.accent,
-                borderWidth: 1,
-                borderRadius: 999,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                backgroundColor: theme.accent + "26",
-              }}
-            >
-              <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
-            </Pressable>
+            {onCreateSuperset ? (
+              <Pressable
+                onPress={() => onCreateSuperset(baseExId)}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.createSuperset")}
+                style={{
+                  borderColor: theme.accent,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: theme.accent + "26",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <MaterialIcons name="add-link" size={16} color={theme.accent} />
+              </Pressable>
+            ) : null}
+            {altList.length ? (
+              <Pressable
+                onPress={() => onOpenAltPicker(baseExId)}
+                style={{
+                  borderColor: theme.accent,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.accent + "26",
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11, fontWeight: theme.fontWeight.medium }}>ALT</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -301,6 +331,26 @@ function ExerciseHalf({
         ) : null}
         {historyOpen && (
           <View style={{ gap: 6, paddingTop: 2 }}>
+            {(() => {
+              // Estimated rep-maxes (Epley) from the best working set in the
+              // fetched sessions \u2014 helps pick loads for other rep ranges.
+              if (!historySessions || historySessions.length === 0) return null;
+              let bestE1 = 0;
+              for (const sess of historySessions) {
+                for (const s of sess.sets) {
+                  if (s.isWarmup || !(s.weight > 0) || !(s.reps > 0)) continue;
+                  const e = epley1RM(s.weight, s.reps);
+                  if (e > bestE1) bestE1 = e;
+                }
+              }
+              if (bestE1 <= 0) return null;
+              const est = (reps: number) => formatWeight(wu.toDisplay(bestE1 / (1 + reps / 30)));
+              return (
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.estRepMaxes", { r3: est(3), r5: est(5), r10: est(10), unit: wu.unitLabel() })}
+                </Text>
+              );
+            })()}
             {historySessions === null ? (
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>...</Text>
             ) : historySessions.length === 0 ? (
@@ -309,16 +359,19 @@ function ExerciseHalf({
               historySessions.map((session) => {
                 const [, mo, da] = session.date.split("-");
                 const dateLabel = `${parseInt(da)}.${parseInt(mo)}`;
-                if (session.sets.length === 0) return null;
-                const best = session.sets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b));
-                const setsLine = session.sets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");
+                // Warmups are shown in the sets line but never picked as "best".
+                const workingSets = session.sets.filter((s) => !s.isWarmup);
+                const displaySets = workingSets.length > 0 ? workingSets : session.sets;
+                if (displaySets.length === 0) return null;
+                const best = displaySets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b));
+                const setsLine = displaySets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");
                 const orderDiffers = session.exerciseOrder !== exerciseIndex;
                 return (
                   <View key={session.workoutId} style={{ gap: 2 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }}>{dateLabel}</Text>
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                        {t("log.setsCount", { n: String(session.sets.length) })}
+                        {t("log.setsCount", { n: String(displaySets.length) })}
                       </Text>
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                         {t("log.bestSet", { weight: formatWeight(wu.toDisplay(best.weight)), reps: String(best.reps) })}
@@ -343,23 +396,48 @@ function ExerciseHalf({
             {t("log.hintLabel", { hint: coachHint })}
           </Text>
         ) : null}
-        {lastSet ? (
-          <Pressable
-            onPress={() => onApplyLastSet(exId)}
-            style={{
-              borderColor: theme.glassBorder,
-              borderWidth: 1,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: theme.glass,
-              alignSelf: "flex-start",
-            }}
-          >
-            <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
-              {t("log.useLast")}
-            </Text>
-          </Pressable>
+        {lastSet || comebackWeightKg != null ? (
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {comebackWeightKg != null ? (
+              <Pressable
+                onPress={() => {
+                  onSetInput(exId, "weight", formatWeight(wu.toDisplay(comebackWeightKg)));
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={{
+                  borderColor: theme.accent,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.accent + "26",
+                  alignSelf: "flex-start",
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.advice.useComebackWeight", { weight: `${formatWeight(wu.toDisplay(comebackWeightKg))} ${wu.unitLabel()}` })}
+                </Text>
+              </Pressable>
+            ) : null}
+            {lastSet ? (
+              <Pressable
+                onPress={() => onApplyLastSet(exId)}
+                style={{
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.glass,
+                  alignSelf: "flex-start",
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.useLast")}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         {prBanner ? (
           <LinearGradient
@@ -629,6 +707,8 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
+  onCreateSuperset?: (baseExId: string) => void;
+  comebackWeightKg?: number;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -703,6 +783,8 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onExerciseNoteBlur={props.onExerciseNoteBlur}
         onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
+        onCreateSuperset={props.onCreateSuperset}
+        comebackWeightKg={props.comebackWeightKg}
         workoutId={props.workoutId}
         exerciseIndex={props.exerciseIndex}
         gymId={props.gymId}
@@ -976,6 +1058,8 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
   onLogRoundSet: (args: SupersetLogArgs) => Promise<void> | void;
+  /** Present only for manual (mid-session) supersets — splits the group back into singles. */
+  onUngroup?: () => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -1271,6 +1355,20 @@ export function SupersetCard(props: SupersetCardProps) {
                 }}
               />
             ))}
+            {props.onUngroup ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  props.onUngroup!();
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.ungroupSuperset")}
+                style={{ marginLeft: 8 }}
+              >
+                <MaterialIcons name="link-off" size={18} color={theme.muted} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
 

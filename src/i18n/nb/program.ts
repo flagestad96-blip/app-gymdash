@@ -104,6 +104,8 @@ const program: TranslationMap = {
   "progression.suggestions": "Progresjonsforslag",
   "progression.apply": "Bruk",
   "progression.dismiss": "Avvis",
+  "progression.reasonRpe": "Alle {sets} sett nådde {reps}+ reps på {weight} med snitt-RPE {rpe} — du har mer å gå på.",
+  "progression.reasonNoRpe": "Alle {sets} sett nådde {reps}+ reps på {weight} — jevnt og kontrollert, klar for neste steg.",
 
   // ── Periodization ──
   "periodization.title": "Periodisering",

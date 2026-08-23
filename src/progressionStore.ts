@@ -169,7 +169,31 @@ export async function upsertTarget(args: {
 
 // ── Auto-progression ────────────────────────────────────────────────
 
-type SetRow = { exercise_id: string; weight: number; reps: number };
+type SetRow = { exercise_id: string; weight: number; reps: number; rpe: number | null };
+
+/**
+ * Structured reason stored (as JSON) in progression_log.reason so the UI can
+ * build a localized, insightful explanation. Legacy rows hold plain strings —
+ * parse failures fall back to displaying the raw text.
+ */
+export type SuggestionReason = {
+  v: 1;
+  sets: number;
+  reps: number;
+  weightKg: number;
+  avgRpe: number | null;
+};
+
+export function parseSuggestionReason(reason: string | null): SuggestionReason | null {
+  if (!reason) return null;
+  try {
+    const parsed = JSON.parse(reason);
+    if (parsed && parsed.v === 1 && Number.isFinite(parsed.sets) && Number.isFinite(parsed.weightKg)) {
+      return parsed as SuggestionReason;
+    }
+  } catch {}
+  return null;
+}
 
 export async function analyzeWorkoutForProgression(
   workoutId: string,
@@ -186,7 +210,7 @@ export async function analyzeWorkoutForProgression(
   const dayIndex = Number.isFinite(workout?.day_index ?? NaN) ? Number(workout!.day_index) : 0;
 
   const sets = await db.getAllAsync<SetRow>(
-    `SELECT exercise_id, weight, reps FROM sets
+    `SELECT exercise_id, weight, reps, rpe FROM sets
      WHERE workout_id = ? AND is_warmup IS NOT 1
      ORDER BY exercise_id, created_at`,
     [workoutId]
@@ -215,7 +239,18 @@ export async function analyzeWorkoutForProgression(
     const hitMax = workingSets.filter((s) => s.reps >= target.repMax);
     if (hitMax.length < target.targetSets) continue;
 
-    // All target sets hit repMax — suggest progression
+    // Reps alone don't tell the whole story: if hitting them cost near-max
+    // effort (avg RPE ≥ 9), adding load next session mostly buys grinding —
+    // hold the suggestion until the same work feels manageable.
+    const rpes = hitMax
+      .map((s) => s.rpe)
+      .filter((r): r is number => typeof r === "number" && r > 0);
+    const avgRpe = rpes.length > 0
+      ? Math.round((rpes.reduce((a, b) => a + b, 0) / rpes.length) * 10) / 10
+      : null;
+    if (avgRpe != null && avgRpe >= 9) continue;
+
+    // All target sets hit repMax at a manageable effort — suggest progression
     const maxWeight = Math.max(...workingSets.map((s) => s.weight));
     const newWeight = maxWeight + target.incrementKg;
 
@@ -228,7 +263,14 @@ export async function analyzeWorkoutForProgression(
     if (existing) continue;
 
     const id = uid("prog");
-    const reason = `${hitMax.length}x${target.repMax}+ @ ${maxWeight}kg`;
+    const reasonPayload: SuggestionReason = {
+      v: 1,
+      sets: hitMax.length,
+      reps: target.repMax,
+      weightKg: maxWeight,
+      avgRpe,
+    };
+    const reason = JSON.stringify(reasonPayload);
     await db.runAsync(
       `INSERT INTO progression_log (id, program_id, exercise_id, old_weight_kg, new_weight_kg, reason, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
