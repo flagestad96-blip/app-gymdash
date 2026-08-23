@@ -41,6 +41,8 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Logg: PR-banner ved nye pers (tungeste/e1RM/volum). Første sett = baseline (ingen banner). PR-sjekk leser direkte fra DB (ikke React state) for å unngå stale data.
 - Logg: +3 quick add, notater per sett og per økt.
 - Logg: superset auto-fokus til neste øvelse etter set.
+- Logg: smart progresjons-coach (`src/progressionEngine.ts`, ren + Jest-testet) — per-øvelse råd fra siste 4 økter: comeback etter treningsopphold (14+ dager: hold vekt; 21+/42+ dager: foreslå −10 %/−15 % startvekt med «Start på X»-pill), øk/hold/bygg-reps/reduser-verdikt basert på ALLE arbeidssett + snitt-RPE, og platå-deteksjon (3 økter samme vekt: lav RPE → push reps, høy RPE → lett deload). Hint-linjen forklarer alltid hvorfor. Comeback-banner på logg-skjermen ved 14+ dagers pause (fra siste ended_at-økt).
+- Hjem: progresjonsforslag er RPE-gatet (snitt-RPE ≥ 9 på maks-settene → intet forslag) og lagrer strukturert begrunnelse (JSON i progression_log.reason, `parseSuggestionReason`) som rendres som forklarende tekst; legacy-rader viser rå streng.
 - Logg: manuelle supersett underveis i økt — lenke-knapp på øvelseskortet åpner picker (velg 1–2 andre øvelser, maks 3 totalt), slår sammen single-blokker til supersett-rundekort. Del-opp-ikon (link-off) i supersett-headeren reverserer. Persisteres i settings (`manualSupersets`) per aktiv økt, ryddes ved økt-slutt/dagbytte. Ren merge-logikk i `superset.ts` (`mergeManualSupersets`) med Jest-dekning.
 - Logg: «Bytt øvelse»-knapp med alternative-picker under trening.
 - Logg: KG/reps suffix-labels alltid synlige i inputfelt.
@@ -250,6 +252,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-08-23: Smart progresjons-coach — ny `progressionEngine.ts` (comeback etter treningsopphold m/ konkrete lettere startvekter, RPE-bevisste øk/hold-råd, platå-deteksjon), comeback-banner i logg, «Start på X»-quick-apply, RPE-gating + strukturerte begrunnelser i auto-progresjonsforslag (hjem). `getRecentSessions` returnerer nå `isWarmup`.
 - 2026-08-23: Manuelle supersett underveis i økt (lenke-knapp på øvelseskort + SupersetPickerModal + ungroup, setting `manualSupersets`, merge-helper m/ tester). JetBrains Mono fjernet — `theme.mono` peker nå på Inter_500Medium (pakken avinstallert). «Sett som standard»-pillen fikk solid accent-bakgrunn + mørk tekst (var uleselig success-på-grønn på sunset-palett).
 - 2026-06-02: Aurora-overhaling (branch redesign/pro-overhaul) — dark-only designsystem (theme.ts), Inter/Instrument Serif/JetBrains Mono fonter, animert aurora-bakgrunn, frostet GlassCard, gruppert drawer m/ ikoner. Logg: én-øvelse-pager + stor RestOverlay mellom sett. Settings: palette + glass-intensitet (erstatter tema-velger). Palette-literal-opprydding på alle skjermer. Bekreftet eksisterende: per-set notes, per-dag reprange, 3-veis superset, edit superset in place, navngi dager, resume-banner, kalender exit-knapp, auto-end-prompt. Smoke-test: expo export OK. Se docs/plans/pro-overhaul-roadmap.md.
 - 2026-02-25: Training Intelligence — bug-fix runde: 7 stille catch{} erstattet med console.warn, sessionsInWindow-felt lagt til TrainingStatusResult, warmup-filtrering i sesjonstellingsqueries.

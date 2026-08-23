@@ -14,7 +14,7 @@ import { displayNameFor, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
 import { getNextWorkoutPreview } from "../../src/programStore";
-import { getPendingSuggestions, applySuggestion, dismissSuggestion, type ProgressionSuggestion } from "../../src/progressionStore";
+import { getPendingSuggestions, applySuggestion, dismissSuggestion, parseSuggestionReason, type ProgressionSuggestion } from "../../src/progressionStore";
 import { isoDateOnly } from "../../src/storage";
 import { getActiveGym } from "../../src/gymStore";
 import TrainingStatusCard from "../../src/components/TrainingStatusCard";
@@ -577,9 +577,19 @@ export default function HomeScreen() {
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                       {wu.formatWeight(s.oldWeightKg)} {"\u2192"} {wu.formatWeight(s.newWeightKg)}
                     </Text>
-                    {s.reason ? (
-                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{s.reason}</Text>
-                    ) : null}
+                    {(() => {
+                      // Newer suggestions store a structured reason — render an
+                      // insightful, localized explanation; legacy rows show raw text.
+                      const parsed = parseSuggestionReason(s.reason);
+                      const text = parsed
+                        ? parsed.avgRpe != null
+                          ? t("progression.reasonRpe", { sets: parsed.sets, reps: parsed.reps, weight: wu.formatWeight(parsed.weightKg), rpe: parsed.avgRpe })
+                          : t("progression.reasonNoRpe", { sets: parsed.sets, reps: parsed.reps, weight: wu.formatWeight(parsed.weightKg) })
+                        : s.reason;
+                      return text ? (
+                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, lineHeight: 14 }}>{text}</Text>
+                      ) : null;
+                    })()}
                   </View>
                   <Pressable
                     onPress={async () => {

@@ -69,6 +69,8 @@ type ExerciseHalfProps = {
   onSetGoal: (exId: string) => void;
   onOpenPlateCalc: (exId: string) => void;
   onCreateSuperset?: (baseExId: string) => void;
+  /** Reduced start weight (kg) after a training break — renders a quick-apply pill. */
+  comebackWeightKg?: number;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -109,6 +111,7 @@ function ExerciseHalf({
   onSetGoal,
   onOpenPlateCalc,
   onCreateSuperset,
+  comebackWeightKg,
   workoutId,
   exerciseIndex,
   gymId,
@@ -369,23 +372,48 @@ function ExerciseHalf({
             {t("log.hintLabel", { hint: coachHint })}
           </Text>
         ) : null}
-        {lastSet ? (
-          <Pressable
-            onPress={() => onApplyLastSet(exId)}
-            style={{
-              borderColor: theme.glassBorder,
-              borderWidth: 1,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: theme.glass,
-              alignSelf: "flex-start",
-            }}
-          >
-            <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
-              {t("log.useLast")}
-            </Text>
-          </Pressable>
+        {lastSet || comebackWeightKg != null ? (
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {comebackWeightKg != null ? (
+              <Pressable
+                onPress={() => {
+                  onSetInput(exId, "weight", formatWeight(wu.toDisplay(comebackWeightKg)));
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={{
+                  borderColor: theme.accent,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.accent + "26",
+                  alignSelf: "flex-start",
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.advice.useComebackWeight", { weight: `${formatWeight(wu.toDisplay(comebackWeightKg))} ${wu.unitLabel()}` })}
+                </Text>
+              </Pressable>
+            ) : null}
+            {lastSet ? (
+              <Pressable
+                onPress={() => onApplyLastSet(exId)}
+                style={{
+                  borderColor: theme.glassBorder,
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.glass,
+                  alignSelf: "flex-start",
+                }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.useLast")}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         {prBanner ? (
           <LinearGradient
@@ -656,6 +684,7 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
   onCreateSuperset?: (baseExId: string) => void;
+  comebackWeightKg?: number;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -731,6 +760,7 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
         onCreateSuperset={props.onCreateSuperset}
+        comebackWeightKg={props.comebackWeightKg}
         workoutId={props.workoutId}
         exerciseIndex={props.exerciseIndex}
         gymId={props.gymId}

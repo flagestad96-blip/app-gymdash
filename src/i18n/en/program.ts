@@ -104,6 +104,8 @@ const program: TranslationMap = {
   "progression.suggestions": "Progression Suggestions",
   "progression.apply": "Apply",
   "progression.dismiss": "Dismiss",
+  "progression.reasonRpe": "All {sets} sets hit {reps}+ reps at {weight} with avg RPE {rpe} — you've got more in the tank.",
+  "progression.reasonNoRpe": "All {sets} sets hit {reps}+ reps at {weight} — steady and controlled, ready for the next step.",
 
   // ── Periodization ──
   "periodization.title": "Periodization",

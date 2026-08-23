@@ -5,7 +5,7 @@ import { getDb } from "./db";
 export type ExerciseSession = {
   workoutId: string;
   date: string;
-  sets: { weight: number; reps: number; rpe?: number | null }[];
+  sets: { weight: number; reps: number; rpe?: number | null; isWarmup?: boolean }[];
   exerciseOrder: number;
   fromOtherGym?: boolean;
 };
@@ -71,8 +71,9 @@ export async function getRecentSessions(
         weight: number;
         reps: number;
         rpe: number | null;
+        is_warmup: number | null;
       }>(
-        `SELECT weight, reps, rpe FROM sets
+        `SELECT weight, reps, rpe, is_warmup FROM sets
          WHERE workout_id = ? AND exercise_id = ?
          ORDER BY set_index ASC`,
         [wr.workout_id, exerciseId]
@@ -91,6 +92,7 @@ export async function getRecentSessions(
           weight: s.weight,
           reps: s.reps,
           rpe: s.rpe,
+          isWarmup: s.is_warmup === 1 || undefined,
         })),
         exerciseOrder:
           exOrder?.findIndex((e) => e.exercise_id === exerciseId) ?? 0,
