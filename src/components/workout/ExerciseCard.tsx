@@ -9,6 +9,7 @@ import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
 import { formatWeight } from "../../format";
+import { epley1RM } from "../../metrics";
 import { displayNameFor, getExercise, isPerSideExercise, type Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 import type { SetRow } from "./SetEntryRow";
@@ -330,6 +331,26 @@ function ExerciseHalf({
         ) : null}
         {historyOpen && (
           <View style={{ gap: 6, paddingTop: 2 }}>
+            {(() => {
+              // Estimated rep-maxes (Epley) from the best working set in the
+              // fetched sessions \u2014 helps pick loads for other rep ranges.
+              if (!historySessions || historySessions.length === 0) return null;
+              let bestE1 = 0;
+              for (const sess of historySessions) {
+                for (const s of sess.sets) {
+                  if (s.isWarmup || !(s.weight > 0) || !(s.reps > 0)) continue;
+                  const e = epley1RM(s.weight, s.reps);
+                  if (e > bestE1) bestE1 = e;
+                }
+              }
+              if (bestE1 <= 0) return null;
+              const est = (reps: number) => formatWeight(wu.toDisplay(bestE1 / (1 + reps / 30)));
+              return (
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.estRepMaxes", { r3: est(3), r5: est(5), r10: est(10), unit: wu.unitLabel() })}
+                </Text>
+              );
+            })()}
             {historySessions === null ? (
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>...</Text>
             ) : historySessions.length === 0 ? (
@@ -338,16 +359,19 @@ function ExerciseHalf({
               historySessions.map((session) => {
                 const [, mo, da] = session.date.split("-");
                 const dateLabel = `${parseInt(da)}.${parseInt(mo)}`;
-                if (session.sets.length === 0) return null;
-                const best = session.sets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b));
-                const setsLine = session.sets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");
+                // Warmups are shown in the sets line but never picked as "best".
+                const workingSets = session.sets.filter((s) => !s.isWarmup);
+                const displaySets = workingSets.length > 0 ? workingSets : session.sets;
+                if (displaySets.length === 0) return null;
+                const best = displaySets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b));
+                const setsLine = displaySets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");
                 const orderDiffers = session.exerciseOrder !== exerciseIndex;
                 return (
                   <View key={session.workoutId} style={{ gap: 2 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 11 }}>{dateLabel}</Text>
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                        {t("log.setsCount", { n: String(session.sets.length) })}
+                        {t("log.setsCount", { n: String(displaySets.length) })}
                       </Text>
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                         {t("log.bestSet", { weight: formatWeight(wu.toDisplay(best.weight)), reps: String(best.reps) })}

@@ -1296,7 +1296,9 @@ export default function Logg() {
     let totalDoneSets = 0;
     let totalBonusSets = 0;
     for (const block of renderBlocks) {
-      const exIdsInBlock = block.type === "single" ? [block.exId] : [block.a, block.b];
+      const exIdsInBlock = block.type === "single"
+        ? [block.exId]
+        : [block.a, block.b, ...(block.c ? [block.c] : [])];
       for (const eid of exIdsInBlock) {
         if (adHocSet.has(eid)) continue;
         const tgt = getTargetFor(eid);
@@ -2490,6 +2492,7 @@ export default function Logg() {
         onClose={() => setAddExerciseModalOpen(false)}
         onSelect={addAdHocExercise}
         existingExerciseIds={exerciseIds}
+        gymEquipment={activeGymEquipment}
       />
 
       {/* Save as Template Modal */}

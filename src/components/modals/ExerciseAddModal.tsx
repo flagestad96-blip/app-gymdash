@@ -14,16 +14,29 @@ type Props = {
   onClose: () => void;
   onSelect: (exerciseId: string) => void;
   existingExerciseIds: string[];
+  /** Equipment available at the active gym — sorts matching exercises first
+   *  and marks the rest, without hiding anything. */
+  gymEquipment?: Set<Equipment> | null;
 };
 
-export default function ExerciseAddModal({ visible, onClose, onSelect, existingExerciseIds }: Props) {
+export default function ExerciseAddModal({ visible, onClose, onSelect, existingExerciseIds, gymEquipment }: Props) {
   const theme = useTheme();
   const { t } = useI18n();
   const [query, setQuery] = useState("");
 
   const results = useMemo(() => {
-    return searchExercises(query).slice(0, 50);
-  }, [query]);
+    const list = searchExercises(query).slice(0, 50);
+    if (!gymEquipment) return list.map((item) => ({ item, unavailable: false }));
+    const withAvailability = list.map((item) => {
+      const eq = getExercise(item.id)?.equipment as Equipment | undefined;
+      return { item, unavailable: eq != null && !gymEquipment.has(eq) };
+    });
+    // Stable partition: available exercises first, original order preserved.
+    return [
+      ...withAvailability.filter((r) => !r.unavailable),
+      ...withAvailability.filter((r) => r.unavailable),
+    ];
+  }, [query, gymEquipment]);
 
   const existingSet = useMemo(() => new Set(existingExerciseIds), [existingExerciseIds]);
 
@@ -96,12 +109,13 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
 
           <FlatList
             data={results}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(r) => r.item.id}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: 240, flexGrow: 1 }}
-            renderItem={({ item }) => {
+            renderItem={({ item: row }) => {
+              const { item, unavailable } = row;
               const alreadyIn = existingSet.has(item.id);
               return (
                 <Pressable
@@ -118,7 +132,7 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
                         : theme.glass,
                     marginBottom: 6,
                     gap: 3,
-                    opacity: alreadyIn ? 0.5 : pressed ? 0.8 : 1,
+                    opacity: alreadyIn ? 0.5 : unavailable ? 0.45 : pressed ? 0.8 : 1,
                   })}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -132,6 +146,11 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
                         <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
                       ) : null;
                     })()}
+                    {unavailable ? (
+                      <Text style={{ color: theme.warn, fontFamily: theme.mono, fontSize: 10 }}>
+                        {t("gym.notAtThisGym")}
+                      </Text>
+                    ) : null}
                   </View>
                   {alreadyIn ? (
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>

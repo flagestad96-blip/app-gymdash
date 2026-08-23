@@ -179,6 +179,7 @@ const log: TranslationMap = {
   "log.advice.plateauDeload": "Same weight {n} sessions in a row at high RPE. A light pull-back to {weight} gives your body room to move forward.",
   "log.advice.useComebackWeight": "Start at {weight}",
   "log.comebackTitle": "Welcome back!",
+  "log.estRepMaxes": "Estimated (Epley): 3RM {r3} · 5RM {r5} · 10RM {r10} ({unit})",
   "log.comebackBanner": "It's been {days} days since your last workout. Strength comes back quickly — each exercise hint now suggests an adjusted starting weight so you can build back up safely.",
   "log.dayChip": "Day: {n}",
   "log.showHistory": "History",

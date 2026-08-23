@@ -22,6 +22,7 @@ import { computeTrainingStatus, type TrainingStatusResult } from "../../src/trai
 import { toggleManualDeload } from "../../src/periodization";
 import { computeStreak } from "../../src/streak";
 import { mondayOf, previousMondayOf } from "../../src/weekRange";
+import { computeBackLoad, backLoadTrend } from "../../src/backLoad";
 
 const BACKUP_REMINDER_DAYS = 14;
 
@@ -67,6 +68,7 @@ export default function HomeScreen() {
   const [todayWorkout, setTodayWorkout] = useState<TodayWorkout | null>(null);
   const [weekStats, setWeekStats] = useState({ days: 0, sets: 0, volume: 0, avgRpe: null as number | null });
   const [volumeTrend, setVolumeTrend] = useState<{ pct: number; dir: "up" | "down" | "flat" } | null>(null);
+  const [backLoad, setBackLoad] = useState<{ scoreKg: number; trend: { pct: number; dir: "up" | "down" | "flat" } | null } | null>(null);
   const [streak, setStreak] = useState(0);
   const [recentPRs, setRecentPRs] = useState<PrRow[]>([]);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
@@ -96,9 +98,10 @@ export default function HomeScreen() {
           [today]
         );
         if (w?.id) {
+          // Warmups excluded so today's volume matches the week-stats numbers.
           const setRows = db.getAllSync<{ exercise_id: string | null; vol: number }>(
             `SELECT exercise_id, COALESCE(SUM(weight * reps), 0) as vol
-             FROM sets WHERE workout_id = ? GROUP BY exercise_id`,
+             FROM sets WHERE workout_id = ? AND is_warmup IS NOT 1 GROUP BY exercise_id`,
             [w.id]
           );
           const countStats = db.getFirstSync<{ c: number; ex: number }>(
@@ -163,6 +166,21 @@ export default function HomeScreen() {
         } else {
           setVolumeTrend(null);
         }
+
+        // Weekly lower-back load: reuse the per-exercise volume rows, weighted
+        // by each exercise's backImpact level.
+        const toBackRows = (rows: { exercise_id: string | null; vol: number }[] | null) =>
+          (rows ?? []).map((row) => ({
+            exerciseId: row.exercise_id,
+            volumeKg: row.vol * (isPerSideExercise(row.exercise_id ?? "") ? 2 : 1),
+          }));
+        const backThis = computeBackLoad(toBackRows(thisWeekRows));
+        const backPrev = computeBackLoad(toBackRows(prevWeekRows));
+        setBackLoad(
+          backThis.scoreKg > 0 || backPrev.scoreKg > 0
+            ? { scoreKg: backThis.scoreKg, trend: backLoadTrend(backThis.scoreKg, backPrev.scoreKg) }
+            : null
+        );
 
         const rpeRow = db.getFirstSync<{ avg: number | null }>(
           `SELECT AVG(s.rpe) as avg
@@ -526,6 +544,18 @@ export default function HomeScreen() {
                 : volumeTrend.dir === "down"
                   ? t("home.volumeTrend.down", { pct: String(volumeTrend.pct) })
                   : t("home.volumeTrend.flat")}
+            </Text>
+          )}
+          {backLoad && (
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, marginTop: 2 }}>
+              {t("home.backLoad", { score: wu.formatWeight(backLoad.scoreKg) })}
+              {backLoad.trend
+                ? " " + (backLoad.trend.dir === "up"
+                    ? t("home.backLoadTrend.up", { pct: String(backLoad.trend.pct) })
+                    : backLoad.trend.dir === "down"
+                      ? t("home.backLoadTrend.down", { pct: String(backLoad.trend.pct) })
+                      : t("home.backLoadTrend.flat"))
+                : ""}
             </Text>
           )}
         </Card>

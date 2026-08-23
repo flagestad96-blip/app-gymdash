@@ -179,6 +179,7 @@ const log: TranslationMap = {
   "log.advice.plateauDeload": "Samme vekt {n} \u00f8kter p\u00e5 rad med h\u00f8y RPE. Et lett tilbaketrekk til {weight} gir kroppen rom til \u00e5 komme videre.",
   "log.advice.useComebackWeight": "Start p\u00e5 {weight}",
   "log.comebackTitle": "Velkommen tilbake!",
+  "log.estRepMaxes": "Estimert (Epley): 3RM {r3} · 5RM {r5} · 10RM {r10} ({unit})",
   "log.comebackBanner": "Det er {days} dager siden forrige \u00f8kt. Styrken kommer raskt tilbake \u2014 hintet p\u00e5 hver \u00f8velse foresl\u00e5r n\u00e5 en justert startvekt, s\u00e5 du kan bygge deg trygt opp igjen.",
   "log.dayChip": "Dag: {n}",
   "log.showHistory": "Historikk",
