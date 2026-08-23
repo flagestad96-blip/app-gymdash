@@ -49,7 +49,8 @@ Appen publiseres til Play via **EAS Build + EAS Submit (auto-submit)**. Full gui
 1. `npm run bump-version <patch|minor|major>` (bumper app.json/package.json + patchNotes-placeholder)
 2. Fyll inn ekte patch notes i `src/patchNotes.ts` + i18n (`src/i18n/{en,nb}/patchNotes.ts`) + `## vX.Y.Z` i `CHANGELOG.md`
 3. `npm run verify`
-4. `npm run release:android` → bygger + auto-submitter til alpha **og** setter «Hva er nytt» automatisk. Testerne får auto-oppdatering når Google er ferdig å prosessere (minutter–timer).
+4. **Merge til `main`** → `.github/workflows/release-android.yml` bygger, auto-submitter til alpha og setter «Hva er nytt». Testerne får auto-oppdatering når Google er ferdig å prosessere (minutter–timer).
+   - Lokal fallback (uten CI): `npm run release:android` gjør nøyaktig det samme fra maskinen din.
 
 **Play «Hva er nytt» (release notes) — automatisert:**
 EAS Submit setter ikke release notes selv. Det gjør `scripts/set-release-notes.js` (kjøres av `npm run release:android`): leser nyeste `patchNotes.ts`-entry + i18n-tekstene og setter «Hva er nytt» via **Play Developer API** (gjenbruker tjenestekonto-nøkkelen). Forhåndsvis uten å publisere: `node scripts/set-release-notes.js --dry-run`.
@@ -57,14 +58,15 @@ NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. List
 
 **Sjekkliste til neste økt:**
 - `versionCode` MÅ økes hver release, ellers avviser Play (duplikat).
-- Play «Hva er nytt» settes automatisk av `release:android` (`set-release-notes.js` via Play API). **NB:** tag-push-workflowen kjører kun build+submit på EAS — den setter IKKE release notes (scriptet trenger den lokale nøkkelen i `credentials/`). Etter en tag-release: kjør `npm run set-release-notes` lokalt, eller sett teksten i Play Console. Store-listingen er `en-US` only — legg til norsk listing-språk i Play hvis du vil ha norske notater.
+- Play «Hva er nytt» settes automatisk — av `release:android` lokalt, eller av merge-workflowen hvis repo-secreten `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` er satt (scriptet godtar nøkkelen som env-var siden `credentials/` er git-ignorert og ikke finnes i CI). Mangler secreten, hopper workflowen over steget med en warning — kjør `npm run set-release-notes` lokalt etterpå. Store-listingen er `en-US` only — legg til norsk listing-språk i Play hvis du vil ha norske notater.
 - **Produksjon** (åpen for alle): krever fortsatt 12 testere i 14 dager (har 2). Bytt `track` til `production` i eas.json når innvilget.
-- **Tag-push-workflow** (`.eas/workflows/release-android.yml`): `serviceAccountKeyPath` er fjernet fra `eas.json` (aug 2026) — EAS-serverne bruker den EAS-lagrede nøkkelen, og lokal `eas submit` gjør nå det samme. Workflowen trigges av **tag-push** (`git tag vX.Y.Z && git push origin vX.Y.Z`), IKKE av merge til main. Merge kjører kun `.github/workflows/verify.yml` (typecheck/test/lint).
+- **Autobuild ved merge til main** (`.github/workflows/release-android.yml`, aug 2026): merge til `main` bygger + submitter, men **kun når merge-en bumpet `versionCode`** (guard: `scripts/ci-should-release.js` sammenligner HEAD mot HEAD^). Uendret versionCode → hele release-jobben hoppes over. Krever repo-secreten **`EXPO_TOKEN`**; `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` er valgfri (kun for «Hva er nytt»).
+- **EAS-workflowen** (`.eas/workflows/release-android.yml`) har ikke lenger tag-trigger — den ville bygget samme versionCode som merge-workflowen, og Play avviser duplikatet. Kjør den manuelt ved behov: `eas workflow:run release-android.yml`. `serviceAccountKeyPath` er fjernet fra `eas.json` — både EAS-serverne og lokal `eas submit` bruker den EAS-lagrede nøkkelen.
 - 🔐 Vurder å rullere Play-tjenestekontonøkkelen i Google Cloud (den lå i en chat-logg under oppsettet).
 
 ## Pågående arbeid
 
-- **Release-pipeline**: ferdig. EAS auto-submit til alpha er live, og tag-push-workflowen er avblokkert (se «Utgivelse» over). Eneste manuelle steg etter en tag-release er Play «Hva er nytt» (`npm run set-release-notes`).
+- **Release-pipeline**: ferdig. Merge til `main` med bumpet `versionCode` bygger, submitter til alpha og setter Play «Hva er nytt» automatisk (se «Utgivelse» over). Gjenstår kun å legge inn repo-secreten `EXPO_TOKEN` (og valgfritt `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`) i GitHub før workflowen kan kjøre.
 
 ## Backlog (prioritert)
 

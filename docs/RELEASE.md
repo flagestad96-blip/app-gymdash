@@ -91,21 +91,35 @@ npm run submit:android   # laster opp siste build til alpha-sporet
 
 ---
 
-## Full automatikk (valgfritt): EAS Workflows
+## Automatisk release ved merge til main
 
-I stedet for å kjøre `npm run build:android` lokalt kan en **git-tag** trigge
-bygg + submit på EAS sine servere. Workflow-fila ligger i
-[`.eas/workflows/release-android.yml`](../.eas/workflows/release-android.yml).
+Merge til `main` bygger og submitter automatisk — men **kun når merge-en
+faktisk bumpet `versionCode`** i app.json. Workflow-fila ligger i
+[`.github/workflows/release-android.yml`](../.github/workflows/release-android.yml).
+
+1. `guard`-jobben kjører [`scripts/ci-should-release.js`](../scripts/ci-should-release.js),
+   som sammenligner `expo.android.versionCode` på `HEAD` mot `HEAD^`. Uendret
+   versionCode → release-jobben hoppes over, og ingen byggeminutter brukes.
+   (Kjør scriptet lokalt for å se hva CI ville bestemt.)
+2. `release`-jobben kjører `npm run verify`, så
+   `eas build --platform android --profile production --auto-submit`, og til slutt
+   `npm run set-release-notes`.
 
 ### Engangsoppsett (i tillegg til tjenestekontoen over)
 
-1. **Lagre Play-nøkkelen i EAS** (serverne har ikke den lokale fila):
+1. **`EXPO_TOKEN`** (påkrevd) — expo.dev → Account settings → Access tokens →
+   lag en token. Legg den inn i GitHub: repoet → Settings → Secrets and
+   variables → Actions → New repository secret. Uten den stopper workflowen
+   umiddelbart med en tydelig feilmelding.
+2. **`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`** (valgfri) — hele innholdet i
+   `credentials/google-play-service-account.json` som én secret. Uten den
+   bygger og submitter workflowen fortsatt, men Play «Hva er nytt» hoppes over
+   (med en warning) og må settes med `npm run set-release-notes` lokalt.
+3. **Lagre Play-nøkkelen i EAS** (allerede gjort — serverne har ikke den lokale fila):
    ```bash
    eas credentials
    # → Android → Google Service Account → last opp samme JSON-nøkkel
    ```
-2. **Koble GitHub til EAS:** expo.dev → Gymdash-prosjektet → **Connect GitHub**,
-   autoriser, og velg dette repoet.
 
 ### Slik releaser du da
 
@@ -113,15 +127,23 @@ bygg + submit på EAS sine servere. Workflow-fila ligger i
 npm run bump-version minor      # som før
 # fyll inn patch notes + CHANGELOG
 npm run verify
-git add -A && git commit -m "release: v0.11.0-beta"
-git tag v0.11.0-beta
-git push && git push origin v0.11.0-beta   # ← tag-en trigger bygg + submit
+git add -A && git commit -m "release: v0.14.0-beta"
+# merge til main (PR eller direkte push) ← trigger bygg + submit + «Hva er nytt»
 ```
 
-Workflow-en kan også startes manuelt: `eas workflow:run release-android.yml`.
+> Versjonsbumpen forblir manuell (se under) — automatikken fjerner kun det
+> lokale bygg-steget, ikke den bevisste versjoneringen.
 
-> Versjonsbump forblir manuell uansett (se under) — automatikken fjerner kun
-> det lokale bygg-steget, ikke den bevisste versjoneringen.
+### Manuelle fallbacks
+
+- **Lokalt, uten CI:** `npm run release:android` (bygg + auto-submit + «Hva er nytt»).
+- **På EAS sine servere:** [`.eas/workflows/release-android.yml`](../.eas/workflows/release-android.yml)
+  gjør samme bygg + submit, men har ingen automatisk trigger lenger — tag-triggeren
+  er fjernet slik at tag-push og merge ikke bygger samme `versionCode` to ganger
+  (Play ville avvist den andre som duplikat). Start den manuelt med
+  `eas workflow:run release-android.yml`. Krever at GitHub-repoet er koblet til
+  EAS-prosjektet (expo.dev → prosjektet → Connect GitHub). NB: den setter ikke
+  Play «Hva er nytt» — kjør `npm run set-release-notes` etterpå.
 
 ## Hvorfor ikke auto-increment?
 
@@ -142,7 +164,7 @@ notes brukerne faktisk ser. Derfor er `appVersionSource: "local"` satt i
 
 | Play-spor          | Hvem            | Hvordan dit                                   |
 | ------------------ | --------------- | --------------------------------------------- |
-| `alpha` (lukket)   | Inviterte testere | `npm run build:android` (auto-submit)        |
+| `alpha` (lukket)   | Inviterte testere | Merge til `main` med bumpet `versionCode` (eller `npm run release:android` lokalt) |
 | `internal`         | Internt team    | `eas submit -p android --profile production --track internal` |
 | `production`       | Alle på Google Play | Krever 12 testere/14 dager først — ikke åpnet ennå |
 
