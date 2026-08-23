@@ -1,5 +1,33 @@
 # Gymdash Changelog
 
+## v0.13.0-beta — 2026-08-23
+
+### Supersets on the fly
+- **Create supersets mid-workout**: a link button on each exercise card opens a picker to merge 2–3 exercises into a superset round-card; a split button in the superset header reverses it. Groups persist for the active workout and clear on workout end / day change. Pure merge logic in `superset.ts` with Jest coverage.
+
+### Smarter progression coach
+- **Detraining awareness** (`src/progressionEngine.ts`): after 14+ days away from an exercise the coach holds the weight; after 21+/42+ days it suggests a concrete −10%/−15% starting weight (rounded to the exercise increment) with a "Start at X" quick-apply pill, plus a welcome-back banner on the Log screen.
+- **Insightful advice**: verdicts now read every working set against the rep range plus average RPE (increase / hold on high RPE / build reps / reduce) and detect plateaus across three sessions at the same weight (low RPE → push reps, high RPE → light deload). Every hint explains *why*, with concrete numbers.
+- **RPE-gated auto-progression**: no weight increase is suggested when hitting the reps cost avg RPE ≥ 9; suggestions store a structured reason rendered as a localized explanation instead of a cryptic `3x10+ @ 60kg`.
+
+### Automatic backup
+- **Backs itself up**: pick a folder once (Android SAF — ideally a cloud-synced one) and the app writes a full JSON backup on launch (max once a day) and right after every completed workout, keeping the 7 newest and pruning only files it created itself. iOS falls back to the app documents folder. Toggle, folder picker and last-run status live in Settings → Backup, and each run stamps `last_backup_at` so the home-screen backup nag quiets down on its own.
+
+### Insight
+- **Rep-max estimator**: estimated 3RM/5RM/10RM (Epley) at the top of each exercise's history panel.
+- **Weekly back load**: home week-stats now show volume weighted by each exercise's back-impact level (red 1.0 / yellow 0.5 / green 0.15), with a week-over-week trend.
+- **Equipment-aware exercise picker**: exercises available at the active gym sort first; the rest are marked "not at this gym" rather than hidden.
+
+### Typography
+- **JetBrains Mono retired** app-wide (user request); `theme.mono` now maps to Inter Medium and the font package was uninstalled.
+
+### Fixes
+- **Rest notification outside the app**: two root causes — the OS notification permission was only ever requested from the workout-reminder toggles (on Android 13+ that meant every scheduled rest notification was silently dropped), and no Android notification channel existed (on Android 8+ the channel, not the notification, decides sound and heads-up). Permission is now requested at workout start / first timer, and a high-importance `rest-timer` channel with sound and vibration is created.
+- **"Set as default" contrast**: solid accent fill with dark text instead of a success-on-green tint that was unreadable on the sunset palette.
+- Home "today" volume counted warmup sets while week stats excluded them — the two cards now agree.
+- End-of-workout planned/done/bonus stats ignored the C slot of 3-way supersets.
+- History "best set" could pick a warmup set; warmups are now excluded from best-set and per-session counts.
+
 ## v0.12.0-beta — 2026-06-10
 
 ### Docked rest bar

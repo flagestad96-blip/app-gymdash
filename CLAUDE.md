@@ -57,14 +57,14 @@ NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. List
 
 **Sjekkliste til neste økt:**
 - `versionCode` MÅ økes hver release, ellers avviser Play (duplikat).
-- Play «Hva er nytt» settes automatisk av `release:android` (`set-release-notes.js` via Play API). Store-listingen er `en-US` only — legg til norsk listing-språk i Play hvis du vil ha norske notater.
+- Play «Hva er nytt» settes automatisk av `release:android` (`set-release-notes.js` via Play API). **NB:** tag-push-workflowen kjører kun build+submit på EAS — den setter IKKE release notes (scriptet trenger den lokale nøkkelen i `credentials/`). Etter en tag-release: kjør `npm run set-release-notes` lokalt, eller sett teksten i Play Console. Store-listingen er `en-US` only — legg til norsk listing-språk i Play hvis du vil ha norske notater.
 - **Produksjon** (åpen for alle): krever fortsatt 12 testere i 14 dager (har 2). Bytt `track` til `production` i eas.json når innvilget.
-- **Tag-push-workflow** (`.eas/workflows/release-android.yml`): for at den skal trigge må branchen + workflow-fila pushes til GitHub, og `serviceAccountKeyPath` fjernes fra `eas.json` (serverne bruker EAS-lagret nøkkel, ikke lokal fil).
+- **Tag-push-workflow** (`.eas/workflows/release-android.yml`): `serviceAccountKeyPath` er fjernet fra `eas.json` (aug 2026) — EAS-serverne bruker den EAS-lagrede nøkkelen, og lokal `eas submit` gjør nå det samme. Workflowen trigges av **tag-push** (`git tag vX.Y.Z && git push origin vX.Y.Z`), IKKE av merge til main. Merge kjører kun `.github/workflows/verify.yml` (typecheck/test/lint).
 - 🔐 Vurder å rullere Play-tjenestekontonøkkelen i Google Cloud (den lå i en chat-logg under oppsettet).
 
 ## Pågående arbeid
 
-- **Release-pipeline**: EAS auto-submit til alpha er live (se «Utgivelse» over). Workflow-finalisering + Play «Hva er nytt»-automatisering gjenstår om ønskelig.
+- **Release-pipeline**: ferdig. EAS auto-submit til alpha er live, og tag-push-workflowen er avblokkert (se «Utgivelse» over). Eneste manuelle steg etter en tag-release er Play «Hva er nytt» (`npm run set-release-notes`).
 
 ## Backlog (prioritert)
 
