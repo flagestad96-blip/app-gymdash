@@ -2033,7 +2033,14 @@ export default function Logg() {
           {/* Exercise switcher — only relevant with more than one block. */}
           {renderBlocks.length > 1 ? (
             <Card title={t("log.jumpTo")}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {/* Bleed to the card edge so chips clip at the border, not at the
+                  card's inner padding; the content keeps the same inset. */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -theme.space.lg }}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: theme.space.lg }}
+              >
                 {anchorItems.map((item) => (
                   <Chip
                     key={item.key}
