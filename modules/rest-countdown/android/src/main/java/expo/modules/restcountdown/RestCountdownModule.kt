@@ -86,20 +86,26 @@ class RestCountdownModule : Module() {
     // falls back to an inexact alarm that Doze can defer for minutes, so the
     // app surfaces a banner (see ExactAlarmBanner) until access is granted.
     Function("canScheduleExactAlarms") {
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@Function true
-      val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      alarmManager.canScheduleExactAlarms()
+      // No early return: expo-modules' generic Function lambda infers its
+      // return type from the body, and a bare return@Function breaks it.
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        true
+      } else {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.canScheduleExactAlarms()
+      }
     }
 
     // Opens the system "Alarms & reminders" screen for this app.
     Function("openExactAlarmSettings") {
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@Function
-      val intent = Intent(
-        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-        Uri.parse("package:" + context.packageName),
-      )
-      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      context.startActivity(intent)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val intent = Intent(
+          Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+          Uri.parse("package:" + context.packageName),
+        )
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+      }
     }
   }
 }
