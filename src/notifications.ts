@@ -2,6 +2,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { t } from "./i18n";
+import { showRestCountdown, hideRestCountdown } from "../modules/rest-countdown";
 
 // NOTE: Expo Go doesn't support expo-notifications on Android. Re-verify in preview/dev builds before release.
 const IS_EXPO_GO =
@@ -221,6 +222,27 @@ export async function cancelAllRestTimerNotifications(): Promise<void> {
   } catch (e) {
     console.error("[notifications] cancelAllRestTimerNotifications error:", e);
   }
+}
+
+// ── Live rest countdown (Android notification shade) ─────────────────────────
+// Silent ongoing notification with a system chronometer counting down to the
+// end of the rest — visible with the screen locked, no JS while backgrounded.
+// No-op on iOS/web/Expo Go and in binaries built before the native module
+// (modules/rest-countdown) existed.
+
+export function showRestCountdownNotification(endsAtMs: number): void {
+  if (Platform.OS !== "android" || IS_EXPO_GO) return;
+  showRestCountdown({
+    title: t("notifications.restCountdownTitle"),
+    body: t("notifications.restCountdownBody"),
+    channelName: t("notifications.restCountdownChannel"),
+    endsAtMs,
+  });
+}
+
+export function hideRestCountdownNotification(): void {
+  if (Platform.OS !== "android" || IS_EXPO_GO) return;
+  hideRestCountdown();
 }
 
 // ── Workout Reminders (Tier 5) ────────────────────────────────────

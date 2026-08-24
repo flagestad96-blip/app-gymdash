@@ -8,6 +8,8 @@ import {
   scheduleRestNotification,
   cancelAllRestTimerNotifications,
   ensureRestNotificationPermission,
+  showRestCountdownNotification,
+  hideRestCountdownNotification,
 } from "./notifications";
 import { mmss, clampInt } from "./format";
 
@@ -254,6 +256,7 @@ export function RestTimerProvider({ children }: Props) {
         setSettingAsync("restEndsAt", "").catch(() => {});
         setSettingAsync("restDurationSec", "").catch(() => {});
         cancelAllRestTimerNotifications().catch(() => {});
+        hideRestCountdownNotification();
         if (restVibrate && Platform.OS !== "web") Vibration.vibrate(300);
         fireHapticDone();
       }
@@ -284,6 +287,7 @@ export function RestTimerProvider({ children }: Props) {
             setSettingAsync("restEndsAt", "").catch(() => {});
             setSettingAsync("restDurationSec", "").catch(() => {});
             cancelAllRestTimerNotifications().catch(() => {});
+            hideRestCountdownNotification();
           }
         }
       }
@@ -394,6 +398,7 @@ export function RestTimerProvider({ children }: Props) {
       .then(async () => {
         if (seq !== notifSeqRef.current) return;
         await cancelAllRestTimerNotifications();
+        hideRestCountdownNotification();
       })
       .catch(() => {});
     setRestNotificationId(null);
@@ -434,6 +439,9 @@ export function RestTimerProvider({ children }: Props) {
           if (seq !== notifSeqRef.current) return;
           const notificationId = await scheduleRestNotification(remaining);
           setRestNotificationId(notificationId);
+          // Live countdown in the shade for the same window. Uses `end` (not
+          // schedule time), so ±15s adjustments reposition it correctly.
+          showRestCountdownNotification(end);
         })
         .catch(() => {});
       await notifChainRef.current;
