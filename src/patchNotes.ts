@@ -19,6 +19,21 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
+    version: "0.14.0-beta",
+    date: "2026-08-24",
+    changes: [
+      { type: "new", key: "patchNotes.0_14_0.warmupRamp" },
+      { type: "new", key: "patchNotes.0_14_0.comebackRamp" },
+      { type: "new", key: "patchNotes.0_14_0.restCountdown" },
+      { type: "new", key: "patchNotes.0_14_0.liveStats" },
+      { type: "new", key: "patchNotes.0_14_0.muscleBalance" },
+      { type: "improved", key: "patchNotes.0_14_0.uiPolish" },
+      { type: "fix", key: "patchNotes.0_14_0.restNotification" },
+      { type: "fix", key: "patchNotes.0_14_0.keepPosition" },
+      { type: "fix", key: "patchNotes.0_14_0.bottomBar" },
+    ],
+  },
+  {
     version: "0.13.0-beta",
     date: "2026-08-23",
     changes: [

@@ -1,5 +1,26 @@
 # Gymdash Changelog
 
+## v0.14.0-beta — 2026-08-24
+
+### Train smarter
+- **Warm-up ramp on the exercise card**: a "Warm-up" expander computes the classic ramp — empty bar ×10 (barbell/trapbar), then 40%×5 / 60%×3 / 80%×1 of today's working weight, rounded to the exercise increment. Each step logs with one tap as a true warmup set (no rest timer, no RPE, excluded from stats — the first UI path that actually writes `is_warmup`). Pure logic in `src/warmupRamp.ts` with tests; steps below the bar weight are impossible by construction.
+- **Comeback ramp across sessions** (`progressionEngine.ts`): when a 21+ day gap sits in recent history and the comeback session went fine, the coach bridges half the remaining distance to the pre-gap top per session (min. one increment, capped at the old top) instead of crawling back in normal small steps. Defers to conservative verdicts on grinders (avg RPE ≥ 9) or missed rep ranges; the "Start at X" quick-apply pill covers ramp suggestions too.
+- **Live session stats in the ØKT card**: sets done/planned (bonus sets shown as "+N"), volume lifted so far, and a session PR counter — updated on every logged set, computed by the same `summarizeSessionSets()` the end-of-workout summary uses.
+- **Muscle balance assessment** (Analysis): the per-group weekly verdict (too little / ok / high vs. 6–10 hard sets, 8–12 for big groups) was computed but never rendered — now shown as colored badges, plus a push/pull ratio line with advice when it skews past 1.5:1.
+
+### Live rest countdown (Android)
+- New local Expo module (`modules/rest-countdown`, Kotlin): a silent ongoing notification with the system chronometer counting down to the end of the rest — ticks with the screen locked, repositions on ±15s/+30s, and removes itself (`setTimeoutAfter`) exactly when the "rest done" alert fires. Own IMPORTANCE_LOW channel so it never makes a sound. Degrades to a no-op on iOS/web/Expo Go and in older binaries.
+
+### First-session tips
+- Two new one-time hints staggered through the first real workout: the ALT swap (from 3 logged sets) and mid-session superset linking (from 6 sets).
+
+### Fixes
+- **Rest notifications arriving late or never**: expo-notifications only uses exact alarms when `canScheduleExactAlarms()` is true, and the app never declared `USE_EXACT_ALARM` — on Android 12+ every scheduled rest alert fell back to an inexact alarm that Doze defers for minutes. The permission is now declared (auto-granted on API 33+; a rest timer is a permitted timer use case).
+- **Log screen forgot your exercise on tab switches**: drawer navigation remounts the screen; the pager position is now remembered per day (module memory) and persisted while a workout is active, keyed on anchor keys so superset merges don't shift it. The session PR set moved to the same pattern, fixing PRs vanishing from the finish summary after a mid-workout tab visit.
+- **System navigation bar covering bottom content**: the app runs edge-to-edge but no screen reserved the bottom inset — the `Screen` wrapper now includes the bottom safe-area edge on all ten screens.
+- **"Set added" toast hidden behind the docked rest bar**: the root-mounted bar always paints above screen content; the toast now lifts above it while a rest runs.
+- **Chip rows clipped early**: all seven horizontal chip rows (jump-to, filters, equipment/tags) now bleed to their container's edge instead of cutting off at the inner padding.
+
 ## v0.13.0-beta — 2026-08-23
 
 ### Supersets on the fly
