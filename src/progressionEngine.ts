@@ -33,6 +33,7 @@ export type AdviceTarget = {
 export type AdviceKind =
   | "comebackLong" // 3+ weeks away — start lighter (suggestedWeightKg set)
   | "comebackShort" // 2–3 weeks away — keep weight, don't increase yet
+  | "comebackRamp" // building back after a gap — step toward the pre-gap top
   | "increase" // all sets at repMax with manageable RPE — go up
   | "holdHighRpe" // reps are there but RPE says it costs too much
   | "buildReps" // inside the rep range — build toward repMax first
@@ -58,6 +59,8 @@ export type ProgressionAdvice = {
     avgRpe: number | null;
     /** Sessions in a row at the same top weight (plateau kinds only). */
     sessionsAtSameWeight?: number;
+    /** The pre-gap top weight being ramped back to (comebackRamp only). */
+    oldTopWeightKg?: number;
   };
 };
 
@@ -100,6 +103,22 @@ function comebackWeight(topWeightKg: number, pct: number, incrementKg: number): 
   const reduced = roundToIncrement(topWeightKg * (1 - pct / 100), step);
   // Always at least one increment below the old top weight, but never ≤ 0.
   return Math.max(step, Math.min(reduced, topWeightKg - step));
+}
+
+/**
+ * Top working weight of the most recent session BEFORE a long training gap in
+ * the window, or null when no such gap exists. Sessions are newest first, so
+ * we look for the first adjacent pair separated by GAP_LONG_DAYS or more.
+ */
+function preGapTopWeight(sessions: AdviceSession[]): number | null {
+  for (let i = 0; i + 1 < sessions.length; i++) {
+    if (daysBetween(sessions[i + 1].date, sessions[i].date) >= GAP_LONG_DAYS) {
+      const pre = workingSets(sessions[i + 1]);
+      if (pre.length === 0) return null;
+      return Math.max(...pre.map((s) => s.weight));
+    }
+  }
+  return null;
 }
 
 /**
@@ -148,6 +167,30 @@ export function assessProgression(args: {
   }
   if (gapDays >= GAP_SHORT_DAYS) {
     return { kind: "comebackShort", gapDays, facts: baseFacts };
+  }
+
+  // ── 1b. Comeback ramp — building back after a recent gap ──
+  // A long gap sits inside the recent window and the latest (comeback) session
+  // is still below the pre-gap top: bridge half the remaining distance per
+  // session (at least one increment), capped at the old top. Without this, the
+  // normal verdicts would crawl back from the reduced comeback weight in
+  // ordinary small increments. Skipped when the comeback session was already a
+  // grinder (avg RPE ≥ 9) or clearly under the rep range — the conservative
+  // verdicts below handle those.
+  const oldTop = preGapTopWeight(sessions);
+  if (oldTop != null && oldTop > topWeightKg + 0.01) {
+    const underMin = lastWorking.filter((s) => s.reps < target.repMin).length;
+    if ((avgRpe == null || avgRpe < 9) && underMin < 2) {
+      const step = target.incrementKg > 0 ? target.incrementKg : 2.5;
+      const half = roundToIncrement(topWeightKg + (oldTop - topWeightKg) / 2, step);
+      const suggested = Math.min(oldTop, Math.max(topWeightKg + step, half));
+      return {
+        kind: "comebackRamp",
+        gapDays,
+        suggestedWeightKg: suggested,
+        facts: { ...baseFacts, oldTopWeightKg: oldTop },
+      };
+    }
   }
 
   // ── 2. Last-session verdict ──

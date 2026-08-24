@@ -175,6 +175,7 @@ const log: TranslationMap = {
   "log.progression.buildReps": "Build reps within range",
   "log.progression.keepBuilding": "Keep building reps",
   "log.advice.comebackLong": "It's been {weeks} weeks since you last did this exercise. Strength comes back fast, but start about {pct}% lighter ({weight}) and build back up over 1–2 weeks.",
+  "log.advice.comebackRamp": "Building back after the break \u2014 last session went well. Go to {weight} and aim for your old {oldTop} over the next sessions.",
   "log.advice.comebackShort": "{days} days since you last did this exercise — keep last session's weight and focus on controlled reps before increasing again.",
   "log.advice.increaseReady": "Last time all {sets} sets hit {reps} reps at avg RPE {rpe} — you're ready to try {weight}.",
   "log.advice.increaseReadyNoRpe": "Last time all {sets} sets hit {reps} reps — you're ready to try {weight}.",

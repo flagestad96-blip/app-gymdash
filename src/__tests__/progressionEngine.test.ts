@@ -259,3 +259,76 @@ describe("assessProgression — plateau detection", () => {
     expect(advice?.kind).toBe("buildReps");
   });
 });
+
+describe("assessProgression — comeback ramp (building back after a gap)", () => {
+  // Pre-gap top 60; 30-day gap; comeback session at 50 went fine.
+  const preGap = session(daysAgo(33), [{ weight: 60, reps: 8, rpe: 8 }]);
+  const comeback = session(daysAgo(3), [
+    { weight: 50, reps: 8, rpe: 7 },
+    { weight: 50, reps: 8, rpe: 7 },
+    { weight: 50, reps: 8, rpe: 7 },
+  ]);
+
+  it("bridges half the distance back to the pre-gap top", () => {
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [comeback, preGap] });
+    expect(advice?.kind).toBe("comebackRamp");
+    expect(advice?.suggestedWeightKg).toBe(55); // 50 + (60-50)/2
+    expect(advice?.facts.oldTopWeightKg).toBe(60);
+  });
+
+  it("steps at least one increment even when nearly back", () => {
+    const nearlyBack = session(daysAgo(3), [{ weight: 59, reps: 8, rpe: 7 }]);
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [nearlyBack, preGap] });
+    expect(advice?.kind).toBe("comebackRamp");
+    // half-step rounds to 60; min one increment (59+2.5=61.5) capped at oldTop 60
+    expect(advice?.suggestedWeightKg).toBe(60);
+  });
+
+  it("does not fire once the old top is reached", () => {
+    const back = session(daysAgo(3), [{ weight: 60, reps: 8, rpe: 7 }]);
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [back, preGap] });
+    expect(advice?.kind).not.toBe("comebackRamp");
+  });
+
+  it("defers to conservative verdicts when the comeback session was a grinder", () => {
+    const grinder = session(daysAgo(3), [
+      { weight: 50, reps: 8, rpe: 9.5 },
+      { weight: 50, reps: 7, rpe: 9 },
+    ]);
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [grinder, preGap] });
+    expect(advice?.kind).not.toBe("comebackRamp");
+  });
+
+  it("defers when the comeback session missed the rep range", () => {
+    const missed = session(daysAgo(3), [
+      { weight: 50, reps: 4 },
+      { weight: 50, reps: 4 },
+      { weight: 50, reps: 5 },
+    ]);
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [missed, preGap] });
+    expect(advice?.kind).not.toBe("comebackRamp");
+  });
+
+  it("does not fire without a long gap in the window", () => {
+    const a = session(daysAgo(3), [{ weight: 50, reps: 8, rpe: 7 }]);
+    const b = session(daysAgo(7), [{ weight: 60, reps: 8, rpe: 8 }]);
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [a, b] });
+    expect(advice?.kind).not.toBe("comebackRamp");
+  });
+
+  it("still yields the detraining advice when today itself follows the gap", () => {
+    const advice = assessProgression({ today: TODAY, target: TARGET, sessions: [preGap] });
+    expect(advice?.kind).toBe("comebackLong");
+  });
+
+  it("keeps ramping across a second bridge session", () => {
+    const ramp1 = session(daysAgo(3), [{ weight: 55, reps: 8, rpe: 7.5 }]);
+    const advice = assessProgression({
+      today: TODAY,
+      target: TARGET,
+      sessions: [ramp1, comeback, preGap],
+    });
+    expect(advice?.kind).toBe("comebackRamp");
+    expect(advice?.suggestedWeightKg).toBe(57.5); // 55 + (60-55)/2
+  });
+});

@@ -778,7 +778,9 @@ export default function Logg() {
       const map: Record<string, ProgressionAdvice> = {};
       for (const exId of exerciseIds) {
         try {
-          const sessions = await getRecentSessions(exId, activeWorkoutId, 4, null);
+          // 5 sessions so the pre-gap session stays in the window through a
+          // 2–3 session comeback ramp.
+          const sessions = await getRecentSessions(exId, activeWorkoutId, 5, null);
           const tgt = getTargetFor(exId);
           const advice = assessProgression({
             today,
@@ -1010,6 +1012,11 @@ export default function Logg() {
         });
       case "comebackShort":
         return t("log.advice.comebackShort", { days: advice.gapDays });
+      case "comebackRamp":
+        return t("log.advice.comebackRamp", {
+          weight: fw(advice.suggestedWeightKg ?? f.topWeightKg),
+          oldTop: fw(f.oldTopWeightKg ?? f.topWeightKg),
+        });
       case "increase":
         return f.avgRpe != null
           ? t("log.advice.increaseReady", { sets: f.targetSets, reps: f.repMax, rpe: f.avgRpe, weight: fw(advice.suggestedWeightKg ?? f.topWeightKg) })
@@ -2186,7 +2193,7 @@ export default function Logg() {
                     activeGoalLabel={goalLabels[exId]}
                     isAdHoc={adHocSet.has(exId)}
                     comebackWeightKg={
-                      exerciseAdvice[exId]?.kind === "comebackLong"
+                      exerciseAdvice[exId]?.kind === "comebackLong" || exerciseAdvice[exId]?.kind === "comebackRamp"
                         ? exerciseAdvice[exId]?.suggestedWeightKg
                         : undefined
                     }

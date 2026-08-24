@@ -175,6 +175,7 @@ const log: TranslationMap = {
   "log.progression.buildReps": "Bygg reps innen range",
   "log.progression.keepBuilding": "Fortsett \u00e5 bygge reps",
   "log.advice.comebackLong": "Det er {weeks} uker siden sist du kj\u00f8rte denne \u00f8velsen. Styrken kommer raskt tilbake, men start ca. {pct} % lettere ({weight}) og bygg deg opp igjen over 1\u20132 uker.",
+  "log.advice.comebackRamp": "P\u00e5 vei tilbake etter pausen \u2014 forrige \u00f8kt satt fint. \u00d8k til {weight} og sikt mot gamle {oldTop} over de neste \u00f8ktene.",
   "log.advice.comebackShort": "{days} dager siden sist for denne \u00f8velsen \u2014 hold vekten fra sist og prioriter kontrollerte reps f\u00f8r du \u00f8ker igjen.",
   "log.advice.increaseReady": "Sist n\u00e5dde alle {sets} settene {reps} reps med snitt-RPE {rpe} \u2014 du er klar for \u00e5 pr\u00f8ve {weight}.",
   "log.advice.increaseReadyNoRpe": "Sist n\u00e5dde alle {sets} settene {reps} reps \u2014 du er klar for \u00e5 pr\u00f8ve {weight}.",
