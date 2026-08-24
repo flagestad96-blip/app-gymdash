@@ -2141,6 +2141,18 @@ export default function Logg() {
               {t("hint.restTimer")}
             </HintBanner>
           )}
+          {/* Contextual first-session tips, staggered by set count so they
+              surface one at a time as the first real workout progresses. */}
+          {activeWorkoutId && workoutSets.length >= 3 && (
+            <HintBanner hintKey="log_alt_swap" icon="swap-horiz">
+              {t("hint.altSwap")}
+            </HintBanner>
+          )}
+          {activeWorkoutId && workoutSets.length >= 6 && renderBlocks.length > 1 && (
+            <HintBanner hintKey="log_superset_link" icon="link">
+              {t("hint.supersetLink")}
+            </HintBanner>
+          )}
 
           <View
             style={{ gap: 12 }}

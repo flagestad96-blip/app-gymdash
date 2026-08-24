@@ -18,6 +18,8 @@ const onboarding: TranslationMap = {
   "hint.analysisIntro": "Log a few sessions to unlock charts, PRs, and muscle balance.",
   "hint.achievementsIntro": "Unlock achievements by hitting milestones. Tap any card for details.",
   "hint.dismiss": "Got it",
+  "hint.altSwap": "Machine taken? The ALT button swaps the exercise for an alternative \u2014 history and targets follow along.",
+  "hint.supersetLink": "The link button on the exercise card merges 2\u20133 exercises into a superset mid-workout.",
   "hint.timerLongPress": "Long-press the timer to start/stop. Tap to open settings.",
 };
 

@@ -18,6 +18,8 @@ const onboarding: TranslationMap = {
   "hint.analysisIntro": "Logg noen \u00f8kter for \u00e5 l\u00e5se opp grafer, PRs og muskelbalanse.",
   "hint.achievementsIntro": "L\u00e5s opp prestasjoner ved \u00e5 n\u00e5 milep\u00e6ler. Trykk et kort for detaljer.",
   "hint.dismiss": "Forst\u00e5tt",
+  "hint.altSwap": "Opptatt apparat? ALT-knappen bytter \u00f8velsen til et alternativ \u2014 historikk og m\u00e5l f\u00f8lger med.",
+  "hint.supersetLink": "Lenke-knappen p\u00e5 \u00f8velseskortet sl\u00e5r sammen 2\u20133 \u00f8velser til et supersett midt i \u00f8kta.",
   "hint.timerLongPress": "Hold inne timeren for start/stopp. Trykk for innstillinger.",
 };
 
