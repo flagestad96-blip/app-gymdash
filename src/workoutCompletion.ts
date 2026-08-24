@@ -33,6 +33,43 @@ export type CompletionInputs = {
  * ad-hoc lift mid-workout shouldn't block the «all done» prompt for
  * the planned program.
  */
+export type SessionSetSummary = {
+  plannedSets: number;
+  doneSets: number;
+  bonusSets: number;
+};
+
+/**
+ * Counts working (non-warmup) sets against the day's planned targets, using the
+ * same rules as the auto-end prompt: ad-hoc exercises are excluded from the
+ * planned total (their sets count as done), and `doneSets` per exercise is
+ * capped at its target so bonus work lands in `bonusSets` instead of inflating
+ * completion. Powers both the live ØKT stat row and the end-of-workout summary.
+ */
+export function summarizeSessionSets(input: CompletionInputs): SessionSetSummary {
+  let plannedSets = 0;
+  let doneSets = 0;
+  let bonusSets = 0;
+  for (const block of input.blocks) {
+    const exIds: string[] = block.type === "single"
+      ? [block.exId]
+      : block.c ? [block.a, block.b, block.c] : [block.a, block.b];
+    for (const eid of exIds) {
+      if (input.adHocSet.has(eid)) continue;
+      const tgt = input.getTarget(eid);
+      const working = (input.setsByExercise[eid] ?? []).filter((s) => !s.is_warmup).length;
+      if (tgt.targetSets > 0) {
+        plannedSets += tgt.targetSets;
+        doneSets += Math.min(working, tgt.targetSets);
+        bonusSets += Math.max(0, working - tgt.targetSets);
+      } else {
+        doneSets += working;
+      }
+    }
+  }
+  return { plannedSets, doneSets, bonusSets };
+}
+
 export function areAllPlannedSetsDone(input: CompletionInputs): boolean {
   if (input.blocks.length === 0) return false;
 

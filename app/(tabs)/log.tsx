@@ -78,7 +78,7 @@ import { shareWorkoutSummary } from "../../src/sharing";
 import { uid, isoDateOnly, isoNow } from "../../src/storage";
 import { epley1RM, round1 } from "../../src/metrics";
 import { formatWeight, shortLabel, parseTimeMs, clampInt } from "../../src/format";
-import { areAllPlannedSetsDone } from "../../src/workoutCompletion";
+import { areAllPlannedSetsDone, summarizeSessionSets } from "../../src/workoutCompletion";
 import { withTimeout } from "../../src/asyncUtils";
 
 type WorkoutRow = {
@@ -648,6 +648,27 @@ export default function Logg() {
     }
     return map;
   }, [workoutSets]);
+
+  // Live session stats for the ØKT card: set progress against the day's plan
+  // (same rules as the end-of-workout summary) + volume lifted so far.
+  const liveStats = useMemo(() => {
+    if (!activeWorkoutId) return null;
+    const sets = summarizeSessionSets({
+      blocks: renderBlocks,
+      setsByExercise,
+      adHocSet,
+      getTarget: (exId) => ({ targetSets: getTargetFor(exId).targetSets }),
+    });
+    let volumeKg = 0;
+    for (const s of workoutSets) {
+      const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
+      volumeKg += (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
+    }
+    return { ...sets, volumeKg };
+    // getTargetFor is recreated every render; the data it reads (targets,
+    // program) is covered via renderBlocks/setsByExercise changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkoutId, renderBlocks, setsByExercise, adHocSet, workoutSets]);
 
   // Reset the "auto-end prompt shown" flag when a new workout starts.
   useEffect(() => {
@@ -1352,26 +1373,13 @@ export default function Logg() {
     }
 
     // Compute set tracking stats (exclude ad-hoc exercises from planned ratio)
-    let totalPlannedSets = 0;
-    let totalDoneSets = 0;
-    let totalBonusSets = 0;
-    for (const block of renderBlocks) {
-      const exIdsInBlock = block.type === "single"
-        ? [block.exId]
-        : [block.a, block.b, ...(block.c ? [block.c] : [])];
-      for (const eid of exIdsInBlock) {
-        if (adHocSet.has(eid)) continue;
-        const tgt = getTargetFor(eid);
-        const workingSets = (setsByExercise[eid] ?? []).filter(s => !s.is_warmup).length;
-        if (tgt.targetSets > 0) {
-          totalPlannedSets += tgt.targetSets;
-          totalDoneSets += Math.min(workingSets, tgt.targetSets);
-          totalBonusSets += Math.max(0, workingSets - tgt.targetSets);
-        } else {
-          totalDoneSets += workingSets;
-        }
-      }
-    }
+    const { plannedSets: totalPlannedSets, doneSets: totalDoneSets, bonusSets: totalBonusSets } =
+      summarizeSessionSets({
+        blocks: renderBlocks,
+        setsByExercise,
+        adHocSet,
+        getTarget: (exId) => ({ targetSets: getTargetFor(exId).targetSets }),
+      });
 
     setFinishSummary({
       duration: mmss(workoutElapsedSec),
@@ -1966,10 +1974,39 @@ export default function Logg() {
 
           <Card title={t("log.sessionCard")} style={{ borderColor: theme.accent, backgroundColor: theme.accent + "1F" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.duration")}</Text>
                 <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>{mmss(workoutElapsedSec)}</Text>
               </View>
+              {liveStats ? (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.liveSets")}</Text>
+                    <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>
+                      {liveStats.plannedSets > 0 ? `${liveStats.doneSets}/${liveStats.plannedSets}` : String(liveStats.doneSets)}
+                      {liveStats.bonusSets > 0 ? (
+                        <Text style={{ color: theme.accent, fontSize: 13 }}>{` +${liveStats.bonusSets}`}</Text>
+                      ) : null}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
+                      {t("log.liveVolume", { unit: wu.unitLabel() })}
+                    </Text>
+                    <Text style={{ color: theme.text, fontSize: 18, fontFamily: theme.mono }}>
+                      {Math.round(wu.toDisplay(liveStats.volumeKg)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}
+                    </Text>
+                  </View>
+                  {sessionPrExIdsRef.current.size > 0 ? (
+                    <View>
+                      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.livePrs")}</Text>
+                      <Text style={{ color: theme.accent, fontSize: 18, fontFamily: theme.mono }}>
+                        {sessionPrExIdsRef.current.size}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
             </View>
             {activeWorkoutId && activeGymId ? (
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>

@@ -1,4 +1,4 @@
-import { areAllPlannedSetsDone, type CompletionBlock } from "../workoutCompletion";
+import { areAllPlannedSetsDone, summarizeSessionSets, type CompletionBlock } from "../workoutCompletion";
 
 function target(targetSets: number) { return { targetSets }; }
 
@@ -143,5 +143,68 @@ describe("areAllPlannedSetsDone", () => {
       adHocSet: new Set(),
       getTarget: (id) => id === "press" ? target(2) : target(0),
     })).toBe(true);
+  });
+});
+
+describe("summarizeSessionSets", () => {
+  const w = { is_warmup: 0 };
+  const warm = { is_warmup: 1 };
+
+  it("returns zeros for empty blocks", () => {
+    expect(summarizeSessionSets({
+      blocks: [],
+      setsByExercise: {},
+      adHocSet: new Set(),
+      getTarget: noTargets,
+    })).toEqual({ plannedSets: 0, doneSets: 0, bonusSets: 0 });
+  });
+
+  it("counts done against planned, ignoring warmups", () => {
+    expect(summarizeSessionSets({
+      blocks: [{ type: "single", exId: "squat" }],
+      setsByExercise: { squat: [warm, w, w] },
+      adHocSet: new Set(),
+      getTarget: () => target(3),
+    })).toEqual({ plannedSets: 3, doneSets: 2, bonusSets: 0 });
+  });
+
+  it("caps done at target and routes the excess to bonus", () => {
+    expect(summarizeSessionSets({
+      blocks: [{ type: "single", exId: "squat" }],
+      setsByExercise: { squat: [w, w, w, w, w] },
+      adHocSet: new Set(),
+      getTarget: () => target(3),
+    })).toEqual({ plannedSets: 3, doneSets: 3, bonusSets: 2 });
+  });
+
+  it("counts sets on target-less exercises as done without inflating planned", () => {
+    expect(summarizeSessionSets({
+      blocks: [{ type: "single", exId: "squat" }],
+      setsByExercise: { squat: [w, w] },
+      adHocSet: new Set(),
+      getTarget: noTargets,
+    })).toEqual({ plannedSets: 0, doneSets: 2, bonusSets: 0 });
+  });
+
+  it("excludes ad-hoc exercises entirely", () => {
+    expect(summarizeSessionSets({
+      blocks: [
+        { type: "single", exId: "squat" },
+        { type: "single", exId: "curl" },
+      ],
+      setsByExercise: { squat: [w, w, w], curl: [w, w] },
+      adHocSet: new Set(["curl"]),
+      getTarget: () => target(3),
+    })).toEqual({ plannedSets: 3, doneSets: 3, bonusSets: 0 });
+  });
+
+  it("sums every slot of a 3-way superset", () => {
+    const blocks: CompletionBlock[] = [{ type: "superset", a: "ohp", b: "row", c: "curl" }];
+    expect(summarizeSessionSets({
+      blocks,
+      setsByExercise: { ohp: [w, w], row: [w], curl: [] },
+      adHocSet: new Set(),
+      getTarget: () => target(2),
+    })).toEqual({ plannedSets: 6, doneSets: 3, bonusSets: 0 });
   });
 });
