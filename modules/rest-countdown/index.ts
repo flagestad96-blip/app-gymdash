@@ -11,6 +11,8 @@ import { Platform } from "react-native";
 type RestCountdownNativeModule = {
   show(title: string, body: string, channelName: string, endsAtMs: number): void;
   hide(): void;
+  canScheduleExactAlarms(): boolean;
+  openExactAlarmSettings(): void;
 };
 
 const native =
@@ -39,5 +41,26 @@ export function showRestCountdown(args: {
 export function hideRestCountdown(): void {
   try {
     native?.hide();
+  } catch {}
+}
+
+/**
+ * Whether Android will honor exact alarms for this app (SCHEDULE_EXACT_ALARM
+ * is user-revocable and denied by default for fresh installs on Android 14+).
+ * Returns true when unknown (old binary, iOS/web) so callers only surface the
+ * "grant access" banner when we positively know access is missing.
+ */
+export function canScheduleExactAlarms(): boolean {
+  try {
+    return native?.canScheduleExactAlarms() ?? true;
+  } catch {
+    return true;
+  }
+}
+
+/** Opens the system "Alarms & reminders" screen for this app (Android 12+). */
+export function openExactAlarmSettings(): void {
+  try {
+    native?.openExactAlarmSettings();
   } catch {}
 }

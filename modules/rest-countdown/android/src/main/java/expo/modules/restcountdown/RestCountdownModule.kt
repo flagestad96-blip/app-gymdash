@@ -1,10 +1,14 @@
 package expo.modules.restcountdown
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -75,6 +79,27 @@ class RestCountdownModule : Module() {
 
     Function("hide") {
       notificationManager.cancel(NOTIFICATION_ID)
+    }
+
+    // SCHEDULE_EXACT_ALARM is user-revocable and denied by default for fresh
+    // installs on Android 14+. Without it every scheduled rest-done alert
+    // falls back to an inexact alarm that Doze can defer for minutes, so the
+    // app surfaces a banner (see ExactAlarmBanner) until access is granted.
+    Function("canScheduleExactAlarms") {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@Function true
+      val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      alarmManager.canScheduleExactAlarms()
+    }
+
+    // Opens the system "Alarms & reminders" screen for this app.
+    Function("openExactAlarmSettings") {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@Function
+      val intent = Intent(
+        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+        Uri.parse("package:" + context.packageName),
+      )
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      context.startActivity(intent)
     }
   }
 }

@@ -1,6 +1,12 @@
 # Gymdash Changelog
 
-## v0.14.0-beta — 2026-08-24
+## v0.14.1-beta — 2026-08-24
+
+> v0.14.0-beta ble aldri publisert: Play avviste AAB-en fordi USE_EXACT_ALARM
+> krever at appens kjernefunksjon er vekkerklokke/kalender. 0.14.1 bytter til
+> SCHEDULE_EXACT_ALARM (brukerinnvilget på Android 14+) med et banner i loggen
+> som åpner systemets «Alarmer og påminnelser»-innstilling, og inneholder alt
+> fra 0.14.0 under.
 
 ### Train smarter
 - **Warm-up ramp on the exercise card**: a "Warm-up" expander computes the classic ramp — empty bar ×10 (barbell/trapbar), then 40%×5 / 60%×3 / 80%×1 of today's working weight, rounded to the exercise increment. Each step logs with one tap as a true warmup set (no rest timer, no RPE, excluded from stats — the first UI path that actually writes `is_warmup`). Pure logic in `src/warmupRamp.ts` with tests; steps below the bar weight are impossible by construction.

@@ -19,7 +19,7 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
-    version: "0.14.0-beta",
+    version: "0.14.1-beta",
     date: "2026-08-24",
     changes: [
       { type: "new", key: "patchNotes.0_14_0.warmupRamp" },

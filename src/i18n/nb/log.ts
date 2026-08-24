@@ -68,6 +68,8 @@ const log: TranslationMap = {
   "log.lockedSwitchDay": "Avslutt \u00f8kten f\u00f8r du bytter dag.",
   "log.sessionCard": "\u00D8KT",
   "log.duration": "Varighet",
+  "log.exactAlarmBanner": "Android kan forsinke hvilevarslene dine. Gi Gymdash alarm\u002dtilgang for presise varsler.",
+  "log.exactAlarmOpen": "Åpne innstillinger",
   "log.warmupRamp": "Oppvarming",
   "log.warmupBarStep": "Stang ({weight})",
   "log.warmupLogStep": "Logg",

@@ -68,6 +68,8 @@ const log: TranslationMap = {
   "log.lockedSwitchDay": "End workout before switching day.",
   "log.sessionCard": "SESSION",
   "log.duration": "Duration",
+  "log.exactAlarmBanner": "Android may delay your rest alerts. Grant Gymdash alarm access for precise notifications.",
+  "log.exactAlarmOpen": "Open settings",
   "log.warmupRamp": "Warm-up",
   "log.warmupBarStep": "Bar ({weight})",
   "log.warmupLogStep": "Log",

@@ -44,6 +44,7 @@ import ProgressionStore, {
 import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import HintBanner from "../../src/components/HintBanner";
+import ExactAlarmBanner from "../../src/components/ExactAlarmBanner";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 import { setupNotificationHandler, cancelAllRestNotifications, ensureRestNotificationPermission } from "../../src/notifications";
 import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
@@ -2136,6 +2137,7 @@ export default function Logg() {
               {t("hint.logFirstSet")}
             </HintBanner>
           )}
+          {activeWorkoutId && <ExactAlarmBanner />}
           {activeWorkoutId && (
             <HintBanner hintKey="rest_timer" icon="timer">
               {t("hint.restTimer")}
