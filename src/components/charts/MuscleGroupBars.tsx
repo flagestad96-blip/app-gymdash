@@ -33,8 +33,14 @@ export type MuscleGroupRow = {
   group: string;
   count: number;
   delta: number;
-  status: string;
+  status: "low" | "ok" | "high";
 };
+
+// Push/pull split for the balance line. Shoulder work is predominantly
+// pressing in this library, so shoulders count as push; rear-delt rows land
+// under back/shoulders tags and keep the ratio honest enough for a guideline.
+const PUSH_GROUPS = new Set(["chest", "shoulders", "triceps"]);
+const PULL_GROUPS = new Set(["back", "biceps", "forearms"]);
 
 export type MuscleGroupBarsProps = {
   rows: MuscleGroupRow[];
@@ -54,11 +60,29 @@ function MuscleGroupBars({ rows, week }: MuscleGroupBarsProps) {
   // Compute max count for proportional bar width
   const maxCount = Math.max(...rows.map((r) => r.count), 1);
 
+  const statusColor = { low: theme.warn, ok: theme.success, high: theme.warn } as const;
+  const statusLabel = { low: t("analysis.tooLittle"), ok: t("analysis.ok"), high: t("analysis.tooMuch") } as const;
+
+  // Push/pull balance from this week's counts.
+  const pushSets = rows.filter((r) => PUSH_GROUPS.has(r.group)).reduce((a, r) => a + r.count, 0);
+  const pullSets = rows.filter((r) => PULL_GROUPS.has(r.group)).reduce((a, r) => a + r.count, 0);
+  let pushPullVerdict: string | null = null;
+  if (pushSets + pullSets >= 6) {
+    if (pushSets >= pullSets * 1.5) pushPullVerdict = t("analysis.pushPullMorePull");
+    else if (pullSets >= pushSets * 1.5) pushPullVerdict = t("analysis.pushPullMorePush");
+    else pushPullVerdict = t("analysis.pushPullBalanced");
+  }
+
   return (
     <View style={{ gap: 10 }}>
       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
         {t("analysis.weekFrom", { week })}
       </Text>
+      {pushPullVerdict ? (
+        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+          {t("analysis.pushPull", { push: pushSets, pull: pullSets })} · {pushPullVerdict}
+        </Text>
+      ) : null}
       {rows.map((r) => {
         const pct = Math.max(4, (r.count / maxCount) * 100); // min 4% so bar is always visible
         const deltaLabel = r.delta === 0 ? "" : r.delta > 0 ? ` +${r.delta}` : ` ${r.delta}`;
@@ -75,9 +99,16 @@ function MuscleGroupBars({ rows, week }: MuscleGroupBarsProps) {
               }}>
                 {r.group}
               </Text>
-              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
-                {r.count} {t("common.sets").toLowerCase()}{deltaLabel}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {r.group !== "other" ? (
+                  <Text style={{ color: statusColor[r.status], fontFamily: theme.mono, fontSize: 10 }}>
+                    {statusLabel[r.status]}
+                  </Text>
+                ) : null}
+                <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                  {r.count} {t("common.sets").toLowerCase()}{deltaLabel}
+                </Text>
+              </View>
             </View>
 
             {/* Bar track */}
@@ -106,6 +137,9 @@ function MuscleGroupBars({ rows, week }: MuscleGroupBarsProps) {
           </View>
         );
       })}
+      <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
+        {t("analysis.setRangeNote")}
+      </Text>
     </View>
   );
 }

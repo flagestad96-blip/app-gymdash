@@ -654,11 +654,13 @@ export default function Analysis() {
 
   const muscleStats = useMemo(() => {
     const bigGroups = new Set(["chest", "back", "quads", "hamstrings", "glutes", "shoulders"]);
-    const statusFor = (count: number, group: string) => {
+    // Status codes (translated + colored in the chart): weekly hard-set
+    // guideline of ~6–10 sets per muscle group, 8–12 for the big ones.
+    const statusFor = (count: number, group: string): "low" | "ok" | "high" => {
       const [low, high] = bigGroups.has(group) ? [8, 12] : [6, 10];
-      if (count < low) return t("analysis.tooLittle");
-      if (count > high) return t("analysis.tooMuch");
-      return t("analysis.ok");
+      if (count < low) return "low";
+      if (count > high) return "high";
+      return "ok";
     };
 
     const byWeek: Record<string, Record<string, number>> = {};
@@ -673,7 +675,7 @@ export default function Analysis() {
     }
 
     const weeks = Object.keys(byWeek).sort();
-    if (!weeks.length) return { week: "", rows: [] as { group: string; count: number; delta: number; status: string }[] };
+    if (!weeks.length) return { week: "", rows: [] as { group: string; count: number; delta: number; status: "low" | "ok" | "high" }[] };
 
     const latest = weeks[weeks.length - 1];
     const prev = weeks.length > 1 ? weeks[weeks.length - 2] : "";
@@ -681,7 +683,7 @@ export default function Analysis() {
     const prevMap = prev ? byWeek[prev] ?? {} : {};
 
     const allGroups = [...MUSCLE_GROUPS, "other"];
-    const rows: Array<{ group: string; count: number; delta: number; status: string }> = allGroups
+    const rows: Array<{ group: string; count: number; delta: number; status: "low" | "ok" | "high" }> = allGroups
       .map((g) => ({
         group: g,
         count: latestMap[g] ?? 0,
