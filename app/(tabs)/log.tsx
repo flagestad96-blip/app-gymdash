@@ -1506,18 +1506,25 @@ export default function Logg() {
     });
   }
 
-  async function addSetForExercise(exId: string, forcedIndex?: number, opts?: { skipRestTimer?: boolean }) {
+  async function addSetForExercise(
+    exId: string,
+    forcedIndex?: number,
+    opts?: { skipRestTimer?: boolean; weightKg?: number; reps?: number; isWarmup?: boolean },
+  ) {
     if (!activeWorkoutId) { Alert.alert(t("log.startWorkoutAlert"), t("log.startWorkoutMsg")); return; }
 
     const input = inputs[exId] ?? { weight: "", reps: "", rpe: "" };
     const isBw = isBodyweight(exId);
     const parsedWeight = parseFloat(input.weight);
-    const weight = Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
-    const reps = parseInt(input.reps, 10);
+    // Warm-up ramp rows pass an explicit weight/reps; everything else reads the inputs.
+    const weight = opts?.weightKg != null
+      ? opts.weightKg
+      : Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
+    const reps = opts?.reps != null ? opts.reps : parseInt(input.reps, 10);
 
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
 
-    const rpe = parseFloat(input.rpe);
+    const rpe = opts?.isWarmup ? NaN : parseFloat(input.rpe);
     const setIndex = Number.isFinite(forcedIndex) ? Number(forcedIndex) : (setsByExercise[exId]?.length ?? 0);
     const bwData = await computeBodyweightLoad(exId, isoDateOnly(), weight);
 
@@ -1533,7 +1540,7 @@ export default function Logg() {
     const row: SetRow = {
       id: uid("set"), workout_id: activeWorkoutId, exercise_name: displayNameFor(exId),
       set_index: setIndex, weight, reps, rpe: Number.isFinite(rpe) ? rpe : null,
-      created_at: isoNow(), exercise_id: exId, set_type: "normal", is_warmup: 0,
+      created_at: isoNow(), exercise_id: exId, set_type: opts?.isWarmup ? "warmup" : "normal", is_warmup: opts?.isWarmup ? 1 : 0,
       external_load_kg: bwData.external_load_kg, bodyweight_kg_used: bwData.bodyweight_kg_used,
       bodyweight_factor: bwData.bodyweight_factor, est_total_load_kg: bwData.est_total_load_kg,
       rest_seconds: restSeconds,
@@ -1818,6 +1825,8 @@ export default function Logg() {
     onApplyLastSet: applyLastSet,
     onAddSet: addSetForExercise,
     onAddSetMultiple: addSetMultiple,
+    onLogWarmupSet: (exId: string, weightKg: number, reps: number) =>
+      addSetForExercise(exId, undefined, { skipRestTimer: true, weightKg, reps, isWarmup: true }),
     onEditSet: openEditSet,
     onDeleteSet: deleteSet,
     onFocusExercise: (exId: string) => {

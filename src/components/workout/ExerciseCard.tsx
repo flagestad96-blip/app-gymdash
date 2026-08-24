@@ -15,6 +15,7 @@ import BackImpactDot from "../BackImpactDot";
 import type { SetRow } from "./SetEntryRow";
 import AddSetButton from "./AddSetButton";
 import SetTable from "./SetTable";
+import { warmupRamp, barWeightForEquipment } from "../../warmupRamp";
 import { SLOT_COLORS, SLOT_LABELS, workingCount, type SupersetSlotKey, type SupersetLogPhase } from "./superset";
 export type { SupersetSlotKey, SupersetLogPhase };
 import type { ExerciseTarget } from "../../progressionStore";
@@ -55,6 +56,7 @@ type ExerciseHalfProps = {
   hideAddSetButton?: boolean; // Hide the per-half "Add set" button (used in supersets — shared bottom button is the canonical action)
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
+  onLogWarmupSet: (exId: string, weightKg: number, reps: number) => void;
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
   onApplyWeightStep: (exId: string, delta: number) => void;
   onApplyLastSet: (exId: string) => void;
@@ -102,6 +104,7 @@ function ExerciseHalf({
   onApplyLastSet,
   onAddSet,
   onAddSetMultiple,
+  onLogWarmupSet,
   onEditSet,
   onDeleteSet,
   onFocusExercise,
@@ -127,6 +130,7 @@ function ExerciseHalf({
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySessions, setHistorySessions] = useState<ExerciseSession[] | null>(null);
+  const [warmupOpen, setWarmupOpen] = useState(false);
 
   const toggleHistory = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -147,6 +151,24 @@ function ExerciseHalf({
   const inc = target.incrementKg;
   const incD = wu.toDisplay(inc);
   const steps = [-incD, incD, incD * 2];
+
+  // Warm-up ramp for today's working weight: typed input first, then the
+  // comeback suggestion, then last session's weight.
+  const rampWorkingKg = useMemo(() => {
+    const typed = parseFloat(input.weight);
+    if (Number.isFinite(typed) && typed > 0) return wu.toKg(typed);
+    if (comebackWeightKg != null && comebackWeightKg > 0) return comebackWeightKg;
+    if (lastSet && lastSet.weight > 0) return lastSet.weight;
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input.weight, comebackWeightKg, lastSet, wu.unit]);
+  const warmupSteps = useMemo(() => {
+    if (rampWorkingKg == null) return [];
+    return warmupRamp(rampWorkingKg, {
+      incrementKg: inc,
+      barWeightKg: barWeightForEquipment(getExercise(exId)?.equipment),
+    });
+  }, [rampWorkingKg, inc, exId]);
 
   return (
     <View style={{ gap: 8 }}>
@@ -395,6 +417,80 @@ function ExerciseHalf({
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
             {t("log.hintLabel", { hint: coachHint })}
           </Text>
+        ) : null}
+        {warmupSteps.length > 0 ? (
+          <View style={{ gap: 6 }}>
+            <Pressable
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setWarmupOpen((prev) => !prev);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: warmupOpen }}
+              style={{
+                borderColor: theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: theme.glass,
+                alignSelf: "flex-start",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+                {warmupOpen ? "\u25BE" : "\u25B8"} {t("log.warmupRamp")}
+              </Text>
+            </Pressable>
+            {warmupOpen
+              ? warmupSteps.map((step, i) => (
+                  <View
+                    key={`wu_${i}`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: theme.radius.md,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      backgroundColor: theme.glass,
+                    }}
+                  >
+                    <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: theme.fontSize.sm }}>
+                      {step.isBar
+                        ? t("log.warmupBarStep", { weight: `${formatWeight(wu.toDisplay(step.weightKg))} ${wu.unitLabel()}` })
+                        : `${formatWeight(wu.toDisplay(step.weightKg))} ${wu.unitLabel()}`}
+                      {" \u00D7 "}
+                      {step.reps}
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        onLogWarmupSet(exId, step.weightKg, step.reps);
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => ({
+                        borderColor: theme.accent,
+                        borderWidth: 1,
+                        borderRadius: 999,
+                        paddingHorizontal: 14,
+                        paddingVertical: 4,
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                        {t("log.warmupLogStep")}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ))
+              : null}
+          </View>
         ) : null}
         {lastSet || comebackWeightKg != null ? (
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
@@ -673,6 +769,7 @@ function ExerciseHalf({
 
 export type ExerciseCardCallbacks = {
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
+  onLogWarmupSet: (exId: string, weightKg: number, reps: number) => void;
   onApplyWeightStep: (exId: string, delta: number) => void;
   onApplyLastSet: (exId: string) => void;
   onAddSet: (exId: string) => Promise<unknown>;
@@ -783,6 +880,7 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onExerciseNoteBlur={props.onExerciseNoteBlur}
         onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
+        onLogWarmupSet={props.onLogWarmupSet}
         onCreateSuperset={props.onCreateSuperset}
         comebackWeightKg={props.comebackWeightKg}
         workoutId={props.workoutId}
@@ -1425,6 +1523,7 @@ export function SupersetCard(props: SupersetCardProps) {
                       onExerciseNoteBlur={props.onExerciseNoteBlur}
                       onSetGoal={props.onSetGoal}
                       onOpenPlateCalc={props.onOpenPlateCalc}
+                      onLogWarmupSet={props.onLogWarmupSet}
                       workoutId={props.workoutId}
                       exerciseIndex={props.exerciseIndex}
                       gymId={props.gymId}
