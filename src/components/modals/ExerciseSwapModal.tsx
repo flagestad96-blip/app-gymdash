@@ -232,7 +232,12 @@ export default function ExerciseSwapModal({
                   <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
                     {t("log.selectEquipment")}
                   </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginHorizontal: -14 }}
+                    contentContainerStyle={{ gap: 6, paddingHorizontal: 14 }}
+                  >
                     {EQUIPMENT_OPTIONS.map((eq) => (
                       <Pressable
                         key={`eq_${eq}`}

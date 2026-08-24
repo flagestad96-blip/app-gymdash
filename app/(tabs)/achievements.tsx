@@ -285,7 +285,13 @@ export default function AchievementsScreen() {
           <Text style={{ color: theme.text, fontSize: theme.fontSize.md, fontFamily: theme.fontFamily.semibold }}>
             {t("achievements.filter")}
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          {/* Bleed to the screen edge so chips clip there, not at the content padding. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginHorizontal: -theme.space.lg }}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: theme.space.lg }}
+          >
             <Pressable
               onPress={() => {
                 setFilterTier("all");

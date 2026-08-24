@@ -1285,7 +1285,12 @@ export default function ProgramScreen() {
                 }}
               />
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -14 }}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: 14 }}
+              >
                 <Chip text="All" active={pickerTag === "all"} onPress={() => setPickerTag("all")} />
                 {EXERCISE_TAGS.map((tag) => (
                   <Chip key={tag} text={tag} active={pickerTag === tag} onPress={() => setPickerTag(tag)} />
@@ -1399,7 +1404,12 @@ export default function ProgramScreen() {
                 }}
               />
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -14 }}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: 14 }}
+              >
                 <Chip text="All" active={altTag === "all"} onPress={() => setAltTag("all")} />
                 {EXERCISE_TAGS.map((tag) => (
                   <Chip key={`alt_${tag}`} text={tag} active={altTag === tag} onPress={() => setAltTag(tag)} />
@@ -1686,7 +1696,12 @@ export default function ProgramScreen() {
 
             <View style={{ gap: 6 }}>
               <Text style={{ color: theme.muted }}>{t("program.equipment")}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -14 }}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: 14 }}
+              >
                 {(["barbell", "dumbbell", "machine", "cable", "bodyweight", "smith", "trapbar", "other"] as Equipment[]).map((eq) => (
                   <Chip key={eq} text={eq} active={customExEquipment === eq} onPress={() => setCustomExEquipment(eq)} />
                 ))}
@@ -1695,7 +1710,12 @@ export default function ProgramScreen() {
 
             <View style={{ gap: 6 }}>
               <Text style={{ color: theme.muted }}>{t("program.selectTags")}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -14 }}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: 14 }}
+              >
                 {EXERCISE_TAGS.map((tag) => (
                   <Chip
                     key={tag}
