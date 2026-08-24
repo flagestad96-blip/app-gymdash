@@ -605,9 +605,13 @@ type UndoToastProps = {
   undoLabel: string;
   onUndo: () => void;
   onDismiss: () => void;
+  /** Extra bottom offset, e.g. REST_BAR_CLEARANCE while the docked rest bar is
+   *  visible — the bar is root-mounted and always paints above screen content,
+   *  so the toast must move up rather than fight it with zIndex. */
+  bottomOffset?: number;
 };
 
-export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: UndoToastProps) {
+export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss, bottomOffset = 0 }: UndoToastProps) {
   const theme = useTheme();
   const translateY = React.useRef(new Animated.Value(100)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
@@ -659,7 +663,7 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss }: Un
     <Animated.View
       style={{
         position: "absolute",
-        bottom: 40,
+        bottom: 40 + bottomOffset,
         left: 16,
         right: 16,
         zIndex: 9999,

@@ -19,7 +19,10 @@ const WATERMARK = "AURORA";
 export function Screen({
   children,
   style,
-  edges = ["top", "left", "right"],
+  // "bottom" included: Android renders edge-to-edge (app.json edgeToEdgeEnabled),
+  // so without the bottom inset the system navigation bar overlaps the last
+  // rows of every scrolling screen.
+  edges = ["top", "left", "right", "bottom"],
 }: {
   children: React.ReactNode;
   style?: ViewStyle | ViewStyle[];

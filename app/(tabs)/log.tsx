@@ -103,6 +103,12 @@ type RenderBlock = MergeableBlock;
 // Module-level flag - persists across component remounts (tab switches)
 let _logTabInitialized = false;
 
+// Remembered pager position — drawer navigation remounts this screen, so without
+// this a detour to Settings mid-workout always lands back on the day's first
+// exercise. Cleared on real day changes; also persisted (logPagerAnchor setting)
+// while a workout is active so an app restart resumes in the right place too.
+let _pagerMemory: { day: number; anchorKey: string } | null = null;
+
 export default function Logg() {
   const theme = useTheme();
   const { t } = useI18n();
@@ -221,6 +227,11 @@ export default function Logg() {
   // Track which active workout we've already shown the auto-end prompt for
   // so we don't pester the user every time they add an extra set after.
   const endPromptShownForRef = useRef<string | null>(null);
+  // Pager restore: pending position captured at mount (from module memory, or
+  // seeded from the persisted setting for a resumed workout). Consumed exactly
+  // once by the restore effect below the pager.
+  const pagerRestoreRef = useRef(_pagerMemory);
+  const pagerDbSeedTriedRef = useRef(false);
 
   const openDrawer = useCallback(() => {
     const parent = (navigation as any)?.getParent?.();
@@ -384,6 +395,23 @@ export default function Logg() {
             if (Array.isArray(parsed)) restoredAdHoc = parsed;
           }
         } catch {}
+      }
+
+      // Restore the pager position for a resumed workout (app restart). Only
+      // tried once per mount — later silent refreshes must not yank the pager.
+      if (!pagerDbSeedTriedRef.current) {
+        pagerDbSeedTriedRef.current = true;
+        if (activeRow && !pagerRestoreRef.current) {
+          try {
+            const savedAnchor = await getSettingAsync("logPagerAnchor");
+            if (savedAnchor) {
+              const parsed = JSON.parse(savedAnchor);
+              if (parsed && typeof parsed.anchorKey === "string" && Number.isFinite(parsed.day)) {
+                pagerRestoreRef.current = { day: parsed.day, anchorKey: parsed.anchorKey };
+              }
+            }
+          } catch {}
+        }
       }
 
       // Load manual (mid-session) supersets
@@ -1198,11 +1226,33 @@ export default function Logg() {
 
   // ── Single-exercise pager: show one block (exercise/superset) at a time ──
   useEffect(() => {
+    // While a restore is pending (initial mount) the restore effect below owns
+    // the index; resetting here would wipe the remembered position first.
+    if (pagerRestoreRef.current) return;
+    _pagerMemory = null; // a real day change starts fresh
     setCurrentBlockIndex(0);
   }, [activeDayIndex]);
   useEffect(() => {
     setCurrentBlockIndex((i) => Math.max(0, Math.min(i, Math.max(0, renderBlocks.length - 1))));
   }, [renderBlocks.length]);
+  // Apply a remembered pager position once the remembered day's blocks are on
+  // screen (goToBlock also re-syncs focus for per-exercise rest settings).
+  useEffect(() => {
+    const pending = pagerRestoreRef.current;
+    if (!pending || !ready || renderBlocks.length === 0) return;
+    if (pending.day !== activeDayIndex) {
+      // The session resolved to another day — the remembered position is stale.
+      pagerRestoreRef.current = null;
+      _pagerMemory = null;
+      return;
+    }
+    pagerRestoreRef.current = null;
+    const idx = blockAnchorKeys.indexOf(pending.anchorKey);
+    if (idx >= 0) goToBlock(idx);
+    // goToBlock is a stable-enough function declaration (same reasoning as the
+    // superset merge-restore effect above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, activeDayIndex, blockAnchorKeys, renderBlocks.length]);
 
   function goToBlock(index: number) {
     if (renderBlocks.length === 0) return;
@@ -1213,6 +1263,12 @@ export default function Logg() {
       const primary = b.type === "single" ? b.exId : b.a;
       focusExercise(primary);
       restTimer.setFocusedExerciseId(primary);
+      // Remember the position so tab switches (remounts) and app restarts land
+      // back on this block instead of the day's first exercise.
+      _pagerMemory = { day: activeDayIndex, anchorKey: b.anchorKey };
+      if (activeWorkoutId) {
+        setSettingAsync("logPagerAnchor", JSON.stringify(_pagerMemory)).catch(() => {});
+      }
     }
     // Intentionally do NOT scroll — switching exercises should keep the
     // viewport stable so the user stays oriented on the set inputs.
@@ -1356,6 +1412,7 @@ export default function Logg() {
     await setSettingAsync("selectedAlternatives", "").catch(() => {});
     await setSettingAsync("adHocExercises", "").catch(() => {});
     await setSettingAsync("manualSupersets", "").catch(() => {});
+    await setSettingAsync("logPagerAnchor", "").catch(() => {});
     setAdHocExercises([]);
     setManualSupersets([]);
     setActiveWorkoutId(null);
@@ -2469,6 +2526,7 @@ export default function Logg() {
         undoLabel={t("log.undo")}
         onUndo={handleUndo}
         onDismiss={() => { setUndoVisible(false); setUndoSet(null); }}
+        bottomOffset={restTimer.restRunning ? REST_BAR_CLEARANCE : 0}
       />
 
       {/* Achievement Toast */}
