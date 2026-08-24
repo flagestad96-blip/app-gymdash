@@ -205,22 +205,52 @@ export async function cancelAllRestNotifications(): Promise<void> {
 }
 
 /**
- * Cancel only rest-timer notifications (not workout reminders or rest day checks).
- * Uses getAllScheduledNotificationsAsync to filter by data.type === "rest_timer".
+ * Cancel every scheduled notification with the given data.type. More robust
+ * than cancelling by stored id: ids get lost (cleared settings, reinstalls)
+ * while the OS keeps firing the schedule — cancelling by type always catches
+ * strays and duplicates.
  */
-export async function cancelAllRestTimerNotifications(): Promise<void> {
+export async function cancelAllNotificationsOfType(type: string): Promise<void> {
   if (Platform.OS === "web" || IS_EXPO_GO) return;
   try {
     const Notifications = await getNotifications();
     if (!Notifications) return;
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const notif of scheduled) {
-      if ((notif.content?.data as Record<string, unknown>)?.type === "rest_timer") {
+      if ((notif.content?.data as Record<string, unknown>)?.type === type) {
         await Notifications.cancelScheduledNotificationAsync(notif.identifier);
       }
     }
   } catch (e) {
-    console.error("[notifications] cancelAllRestTimerNotifications error:", e);
+    console.error(`[notifications] cancelAllNotificationsOfType(${type}) error:`, e);
+  }
+}
+
+/**
+ * Cancel only rest-timer notifications (not workout reminders or rest day checks).
+ */
+export async function cancelAllRestTimerNotifications(): Promise<void> {
+  await cancelAllNotificationsOfType("rest_timer");
+}
+
+/**
+ * Reconcile scheduled reminders with the persisted toggles, run once at app
+ * start. A recurring notification the toggle says is OFF gets cancelled — this
+ * is what clears orphans left by earlier versions that dropped the stored id
+ * without cancelling (observed in the wild: two daily "rest day check"
+ * notifications firing with the toggle off).
+ */
+export async function syncReminderNotifications(): Promise<void> {
+  if (Platform.OS === "web" || IS_EXPO_GO) return;
+  try {
+    // Lazy import, mirroring the repo's pattern for avoiding import cycles.
+    const { getSettingAsync } = await import("./db");
+    const reminderOn = (await getSettingAsync("reminderEnabled")) === "1";
+    const restDayOn = (await getSettingAsync("restDayEnabled")) === "1";
+    if (!reminderOn) await cancelAllNotificationsOfType("workout_reminder");
+    if (!restDayOn) await cancelAllNotificationsOfType("rest_day_check");
+  } catch (e) {
+    console.error("[notifications] syncReminderNotifications error:", e);
   }
 }
 

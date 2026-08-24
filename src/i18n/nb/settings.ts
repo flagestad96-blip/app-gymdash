@@ -29,7 +29,6 @@ const settings: TranslationMap = {
   "settings.restTimer.active": "Aktiv som standard",
   "settings.restTimer.vibrate": "Vibrer (kun i app)",
   "settings.restTimer.length": "Lengde (sekunder)",
-  "settings.restTimer.note": "(Expo Go: ingen \u00ABsikker\u00BB vibrering i bakgrunn/locked. Det tar vi i dev build senere.)",
   "settings.superset": "SUPERSET",
   "settings.superset.autoAlternate": "Auto annethvert sett",
   "settings.superset.desc": "N\u00e5r aktiv: + i supersett logger A, s\u00e5 B, s\u00e5 A, osv.",

@@ -216,6 +216,10 @@ export function RestTimerProvider({ children }: Props) {
           setRestRemaining(fallbackDuration);
           setSettingAsync("restEndsAt", "").catch(() => {});
           setSettingAsync("restDurationSec", "").catch(() => {});
+          // No timer to resume — clear any orphaned rest alert left behind by
+          // a killed app; Doze can otherwise deliver it hours later.
+          cancelAllRestTimerNotifications().catch(() => {});
+          hideRestCountdownNotification();
         }
 
         // Load active workout ID

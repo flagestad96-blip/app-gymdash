@@ -29,7 +29,6 @@ const settings: TranslationMap = {
   "settings.restTimer.active": "Active by default",
   "settings.restTimer.vibrate": "Vibrate (in-app only)",
   "settings.restTimer.length": "Duration (seconds)",
-  "settings.restTimer.note": "(Expo Go: no background vibration. Coming in dev build.)",
   "settings.superset": "SUPERSET",
   "settings.superset.autoAlternate": "Auto alternate sets",
   "settings.superset.desc": "When active: + in superset logs A, then B, then A, etc.",

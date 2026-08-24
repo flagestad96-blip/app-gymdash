@@ -33,9 +33,8 @@ import {
   requestNotificationPermissions,
   hasNotificationPermissions,
   scheduleWorkoutReminder,
-  cancelWorkoutReminder,
   scheduleRestDayCheck,
-  cancelRestDayCheck,
+  cancelAllNotificationsOfType,
 } from "../../src/notifications";
 import * as Clipboard from "expo-clipboard";
 import { SkeletonCard } from "../../src/components/Skeleton";
@@ -116,8 +115,6 @@ export default function Settings() {
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [restDayEnabled, setRestDayEnabled] = useState(false);
   const [notifPermission, setNotifPermission] = useState(false);
-  const [reminderNotifId, setReminderNotifId] = useState<string | null>(null);
-  const [restDayNotifId, setRestDayNotifId] = useState<string | null>(null);
 
   const [autoBackupOn, setAutoBackupOn] = useState(false);
   const [autoBackupDirUri, setAutoBackupDirUri] = useState<string | null>(null);
@@ -182,24 +179,22 @@ export default function Settings() {
     setNotifPermission(permGranted);
     const savedReminderEnabled = await getSettingAsync("reminderEnabled");
     const savedRestDayEnabled = await getSettingAsync("restDayEnabled");
-    const savedReminderNotifId = await getSettingAsync("reminderNotifId");
-    const savedRestDayNotifId = await getSettingAsync("restDayNotifId");
     if (permGranted) {
       setReminderEnabled(savedReminderEnabled === "1");
       setRestDayEnabled(savedRestDayEnabled === "1");
-      setReminderNotifId(savedReminderNotifId || null);
-      setRestDayNotifId(savedRestDayNotifId || null);
     } else {
       // Permission revoked — clean up
       setReminderEnabled(false);
       setRestDayEnabled(false);
-      setReminderNotifId(null);
-      setRestDayNotifId(null);
       if (savedReminderEnabled === "1" || savedRestDayEnabled === "1") {
         setSettingAsync("reminderEnabled", "0").catch(() => {});
         setSettingAsync("restDayEnabled", "0").catch(() => {});
         setSettingAsync("reminderNotifId", "").catch(() => {});
         setSettingAsync("restDayNotifId", "").catch(() => {});
+        // Actually cancel the OS schedules too — clearing only the stored ids
+        // left recurring notifications firing forever with the toggles off.
+        cancelAllNotificationsOfType("workout_reminder").catch(() => {});
+        cancelAllNotificationsOfType("rest_day_check").catch(() => {});
       }
     }
   }
@@ -318,18 +313,15 @@ export default function Settings() {
     }
     setReminderEnabled(enabled);
     if (enabled) {
+      // Cancel any strays first so re-enabling can never double-schedule.
+      await cancelAllNotificationsOfType("workout_reminder");
       // Schedule Mon-Fri at 17:00 (weekday 2=Mon through 6=Fri)
-      const id = await scheduleWorkoutReminder(2, 17, 0);
-      setReminderNotifId(id);
+      await scheduleWorkoutReminder(2, 17, 0);
       setSettingAsync("reminderEnabled", "1").catch(() => {});
-      setSettingAsync("reminderNotifId", id ?? "").catch(() => {});
     } else {
-      if (reminderNotifId) {
-        await cancelWorkoutReminder(reminderNotifId);
-      }
-      setReminderNotifId(null);
+      // By type, not stored id — ids get lost while the OS keeps the schedule.
+      await cancelAllNotificationsOfType("workout_reminder");
       setSettingAsync("reminderEnabled", "0").catch(() => {});
-      setSettingAsync("reminderNotifId", "").catch(() => {});
     }
   }
 
@@ -344,17 +336,13 @@ export default function Settings() {
     }
     setRestDayEnabled(enabled);
     if (enabled) {
-      const id = await scheduleRestDayCheck();
-      setRestDayNotifId(id);
+      // Cancel any strays first so re-enabling can never double-schedule.
+      await cancelAllNotificationsOfType("rest_day_check");
+      await scheduleRestDayCheck();
       setSettingAsync("restDayEnabled", "1").catch(() => {});
-      setSettingAsync("restDayNotifId", id ?? "").catch(() => {});
     } else {
-      if (restDayNotifId) {
-        await cancelRestDayCheck(restDayNotifId);
-      }
-      setRestDayNotifId(null);
+      await cancelAllNotificationsOfType("rest_day_check");
       setSettingAsync("restDayEnabled", "0").catch(() => {});
-      setSettingAsync("restDayNotifId", "").catch(() => {});
     }
   }
 
@@ -1176,9 +1164,6 @@ export default function Settings() {
             ))}
           </View>
 
-          <Text style={{ color: theme.muted }}>
-            {t("settings.restTimer.note")}
-          </Text>
         </Card>
 
         <Card title={t("settings.superset")}>

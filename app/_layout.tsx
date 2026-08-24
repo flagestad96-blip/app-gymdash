@@ -21,6 +21,7 @@ import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
 import { runAutoBackupIfDue } from "../src/autoBackup";
+import { syncReminderNotifications } from "../src/notifications";
 import RestSettingsHost from "../src/components/RestSettingsHost";
 import RestBar from "../src/components/workout/RestBar";
 import ErrorBoundary, { DARK_FALLBACK_COLORS } from "../src/components/ErrorBoundary";
@@ -276,6 +277,9 @@ function RootLayoutInner() {
       }
       // Daily automatic backup (throttled internally; no-op unless enabled).
       runAutoBackupIfDue().catch(() => {});
+      // Cancel reminder notifications whose toggle is off — clears orphaned
+      // recurring schedules left by earlier versions.
+      syncReminderNotifications().catch(() => {});
     });
 
     return () => task.cancel();
