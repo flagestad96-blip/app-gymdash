@@ -75,10 +75,14 @@ NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. List
 > utstyrsmerking, resume-banner på hjem, utstyrssortering i exercise-picker,
 > rep-max estimator i Historikk, ukentlig ryggbelastnings-score på hjem).
 
+> Gjennomgått 2026-08-24: «Første-økt tooltips» og «Comeback-ramp over flere
+> økter» er levert (v0.14-branchen), sammen med oppvarmingsramp på
+> øvelseskortet, muskelbalanse-vurdering i analysen, live øktstatistikk og
+> live hvile-nedtelling i varselfeltet (native modul — røyk-testes ved neste
+> EAS-build).
+
 ### Lav prioritet / utforsk videre
 1. **Fatigue-trend fra RPE-data** — Rullerende RPE-graf over tid per muskelgruppe. Overtrening-signal. (Delvis dekket av treningsstatus-kortet og progresjons-coachens RPE-logikk.)
-2. **Første-økt tooltips** — Kontekstuelle tips under første reelle logging (vis én gang).
-3. **Comeback-ramp over flere økter** — Coachen foreslår i dag én redusert startvekt; kan utvides til en 2–3-ukers opptrappingsplan.
 
 ## Ikke gjør
 
