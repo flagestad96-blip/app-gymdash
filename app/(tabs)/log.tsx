@@ -103,6 +103,18 @@ type RenderBlock = MergeableBlock;
 // Module-level flag - persists across component remounts (tab switches)
 let _logTabInitialized = false;
 
+// Exercises that hit a *genuine* new heaviest PR during this session (excludes
+// first-ever baseline sets). Module-level so a mid-workout detour to another
+// screen (remount) doesn't wipe the live PR counter or the end-of-workout
+// "PRs this session" list; persisted (sessionPrExIds setting) while a workout
+// is active so an app restart resumes with it too.
+let _sessionPrExIds = new Set<string>();
+
+function recordSessionPr(exId: string) {
+  _sessionPrExIds.add(exId);
+  setSettingAsync("sessionPrExIds", JSON.stringify([..._sessionPrExIds])).catch(() => {});
+}
+
 // Remembered pager position — drawer navigation remounts this screen, so without
 // this a detour to Settings mid-workout always lands back on the day's first
 // exercise. Cleared on real day changes; also persisted (logPagerAnchor setting)
@@ -146,10 +158,6 @@ export default function Logg() {
   const [prBanners, setPrBanners] = useState<Record<string, string>>({});
   const [lastAddedSetId, setLastAddedSetId] = useState<string | null>(null);
   const lastAddedAnim = useRef(new Animated.Value(0)).current;
-  // Exercises that hit a *genuine* new heaviest PR during this session (excludes
-  // first-ever baseline sets). Used to build the "PRs this session" summary so it
-  // only lists real records — not every exercise's all-time best.
-  const sessionPrExIdsRef = useRef<Set<string>>(new Set());
 
   const [finishSummary, setFinishSummary] = useState<{
     duration: string;
@@ -393,6 +401,20 @@ export default function Logg() {
           if (savedAdHoc) {
             const parsed = JSON.parse(savedAdHoc);
             if (Array.isArray(parsed)) restoredAdHoc = parsed;
+          }
+        } catch {}
+      }
+
+      // Restore session PRs for a resumed workout (app restart). A remount
+      // still has them in the module set, so this only fills an empty one.
+      if (activeRow && _sessionPrExIds.size === 0) {
+        try {
+          const savedPrs = await getSettingAsync("sessionPrExIds");
+          if (savedPrs) {
+            const parsed = JSON.parse(savedPrs);
+            if (Array.isArray(parsed)) {
+              for (const id of parsed) if (typeof id === "string") _sessionPrExIds.add(id);
+            }
           }
         } catch {}
       }
@@ -1318,7 +1340,8 @@ export default function Logg() {
     setWorkoutStartedAt(startedAt);
     setWorkoutSets([]);
     setWorkoutNotes("");
-    sessionPrExIdsRef.current = new Set();
+    _sessionPrExIds = new Set();
+    setSettingAsync("sessionPrExIds", "").catch(() => {});
   }
 
   async function endWorkout() {
@@ -1365,7 +1388,7 @@ export default function Logg() {
     // (so an edit-down/delete during the session correctly drops the PR).
     const workoutSetIds = new Set(workoutSets.map((s) => s.id));
     const prs: string[] = [];
-    for (const exId of sessionPrExIdsRef.current) {
+    for (const exId of _sessionPrExIds) {
       const rec = dbPrMap[exId]?.heaviest;
       if (rec && rec.setId && workoutSetIds.has(rec.setId)) {
         prs.push(`${displayNameFor(exId)}: ${formatWeight(wu.toDisplay(rec.value))} ${wu.unitLabel()}`);
@@ -1421,6 +1444,8 @@ export default function Logg() {
     await setSettingAsync("adHocExercises", "").catch(() => {});
     await setSettingAsync("manualSupersets", "").catch(() => {});
     await setSettingAsync("logPagerAnchor", "").catch(() => {});
+    await setSettingAsync("sessionPrExIds", "").catch(() => {});
+    _sessionPrExIds = new Set();
     setAdHocExercises([]);
     setManualSupersets([]);
     setActiveWorkoutId(null);
@@ -1554,7 +1579,7 @@ export default function Logg() {
     setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
 
     // Track genuine heaviest PRs so the finish summary lists only real records.
-    if (rawMsgs.some((m) => m.startsWith("heaviest:"))) sessionPrExIdsRef.current.add(exId);
+    if (rawMsgs.some((m) => m.startsWith("heaviest:"))) recordSessionPr(exId);
 
     // Convert coded messages to display strings
     const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
@@ -1735,7 +1760,7 @@ export default function Logg() {
         setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
 
         // Track genuine heaviest PRs from an in-session edit too.
-        if (rawMsgs.some((m) => m.startsWith("heaviest:"))) sessionPrExIdsRef.current.add(exId);
+        if (rawMsgs.some((m) => m.startsWith("heaviest:"))) recordSessionPr(exId);
 
         // Show banner if forward check found a new PR
         const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
@@ -1997,11 +2022,11 @@ export default function Logg() {
                       {Math.round(wu.toDisplay(liveStats.volumeKg)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}
                     </Text>
                   </View>
-                  {sessionPrExIdsRef.current.size > 0 ? (
+                  {_sessionPrExIds.size > 0 ? (
                     <View>
                       <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("log.livePrs")}</Text>
                       <Text style={{ color: theme.accent, fontSize: 18, fontFamily: theme.mono }}>
-                        {sessionPrExIdsRef.current.size}
+                        {_sessionPrExIds.size}
                       </Text>
                     </View>
                   ) : null}
