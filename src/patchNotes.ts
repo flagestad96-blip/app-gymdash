@@ -19,6 +19,21 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
+    version: "0.15.0-beta",
+    date: "2026-08-25",
+    changes: [
+      { type: "new", key: "patchNotes.0_15_0.supersetControl" },
+      { type: "new", key: "patchNotes.0_15_0.skipExercise" },
+      { type: "new", key: "patchNotes.0_15_0.swapAny" },
+      { type: "new", key: "patchNotes.0_15_0.fullHistory" },
+      { type: "new", key: "patchNotes.0_15_0.homeDayPick" },
+      { type: "improved", key: "patchNotes.0_15_0.firstSetSuggestion" },
+      { type: "improved", key: "patchNotes.0_15_0.restSettings" },
+      { type: "fix", key: "patchNotes.0_15_0.commaDecimal" },
+      { type: "fix", key: "patchNotes.0_15_0.uxFixes" },
+    ],
+  },
+  {
     version: "0.14.1-beta",
     date: "2026-08-24",
     changes: [

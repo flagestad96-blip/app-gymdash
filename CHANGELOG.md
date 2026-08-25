@@ -1,5 +1,29 @@
 # Gymdash Changelog
 
+## v0.15.0-beta — 2026-08-25
+
+Driven end to end by tester feedback (22 open items triaged: 12 fixed/built here, 9 already shipped in v0.13–v0.14, 1 needs re-verification).
+
+### Mid-workout superset control
+- **Split a program superset into singles for this session** (`splitProgramSupersets` in superset.ts): the link-off button now works on program-defined supersets too — the program is untouched, next session groups them again, and the pair can even be re-linked manually mid-session. Persisted per session, cleared on workout end/day change.
+- **Swap the slot order** (A/B → B/A, A/B/C → B/C/A) with the new swap button in the superset header (`applySupersetRotations`) — sets stay attached to their exercises, only the round logging order changes.
+
+### Log screen
+- **Skip an exercise with a reason**: new "Skip today" pill opens a reason prompt (optional), stores to the new `skipped_exercises` table, marks the card (undoable) and advances the pager. The session detail shows a "Skipped" section: exercise + "skipped because: …".
+- **Swap to ANY exercise**: the ALT picker gained a free-text search across the whole library; a pick is registered as a permanent alternative for the slot and swapped in.
+- **"See full history"** link in the exercise card's history panel deep-links to the History tab pre-filtered to that exercise, all time.
+- **"Add exercise" now jumps to the added exercise** — it used to append silently behind the single-exercise pager, which read as "search doesn't work".
+- **Exercise switching lands the card top at the top of the screen** (was: kept the old scroll offset, often starting mid-card).
+- **Weight suggestions use the FIRST working set of the last session** rather than the final set (often a lighter back-off), and never a warmup set.
+
+### Home
+- **Day switcher on the "Next workout" card**: chips for every program day preview that day's exercises; "Start this workout" opens the log on the chosen day (locked while a workout is active).
+
+### Input & settings
+- **Comma decimals**: "," and "." both parse in every weight field (`parseDecimal`).
+- **Rest timer settings overhauled**: plain-words explainer, scrollable content (was clipped), KeyboardAvoidingView (seconds fields were hidden behind the keyboard), presets shown as m:ss.
+- **Keyboard no longer covers bottom-sheet pickers** on Android: KAV behavior "height" is inert under edge-to-edge; switched to "padding" in the program pickers and the add-exercise modal.
+
 ## v0.14.1-beta — 2026-08-24
 
 > v0.14.0-beta ble aldri publisert: Play avviste AAB-en fordi USE_EXACT_ALARM

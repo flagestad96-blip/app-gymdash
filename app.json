@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gymdash",
     "slug": "gymdash",
-    "version": "0.14.1-beta",
+    "version": "0.15.0-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "gymdash",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.marius.gymdash",
-      "versionCode": 16,
+      "versionCode": 17,
       "adaptiveIcon": {
         "backgroundColor": "#1A0E2E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
