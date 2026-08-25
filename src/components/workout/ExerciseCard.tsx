@@ -1156,7 +1156,8 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   lastAddedAnim: Animated.Value;
   onLayout: (e: any) => void;
   onLogRoundSet: (args: SupersetLogArgs) => Promise<void> | void;
-  /** Present only for manual (mid-session) supersets — splits the group back into singles. */
+  /** Splits the group into singles: removes a manual (mid-session) superset,
+   *  or splits a program superset for the rest of this session only. */
   onUngroup?: () => void;
   workoutId: string | null;
   exerciseIndex: number;

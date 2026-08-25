@@ -3,6 +3,7 @@ import {
   SLOT_LABELS,
   SLOT_COLORS,
   mergeManualSupersets,
+  splitProgramSupersets,
   manualSupersetAnchorKey,
   type MergeableBlock,
 } from "../components/workout/superset";
@@ -107,5 +108,65 @@ describe("mergeManualSupersets", () => {
   it("returns blocks untouched with no groups", () => {
     const blocks = [single("bench"), single("row")];
     expect(mergeManualSupersets(blocks, [])).toEqual(blocks);
+  });
+});
+
+describe("splitProgramSupersets", () => {
+  const single = (exId: string, key: string): MergeableBlock => ({
+    type: "single", exId, baseExId: exId, anchorKey: key,
+  });
+  const ss: MergeableBlock = {
+    type: "superset", a: "ohp", b: "row", baseA: "ohp", baseB: "row", anchorKey: "ss_ohp_row_1",
+  };
+  const ss3: MergeableBlock = {
+    type: "superset", a: "ohp", b: "row", c: "curl",
+    baseA: "ohp", baseB: "row", baseC: "curl", anchorKey: "ss_ohp_row_curl_2",
+  };
+
+  it("is a no-op without split keys", () => {
+    const blocks = [single("squat", "ex_squat_0"), ss];
+    expect(splitProgramSupersets(blocks, [])).toBe(blocks);
+  });
+
+  it("splits a 2-way program superset into singles in place", () => {
+    const blocks = [single("squat", "ex_squat_0"), ss, single("dips", "ex_dips_2")];
+    expect(splitProgramSupersets(blocks, ["ss_ohp_row_1"])).toEqual([
+      single("squat", "ex_squat_0"),
+      { type: "single", exId: "ohp", baseExId: "ohp", anchorKey: "ss_ohp_row_1_a" },
+      { type: "single", exId: "row", baseExId: "row", anchorKey: "ss_ohp_row_1_b" },
+      single("dips", "ex_dips_2"),
+    ]);
+  });
+
+  it("splits all three slots of a 3-way superset", () => {
+    const out = splitProgramSupersets([ss3], ["ss_ohp_row_curl_2"]);
+    expect(out.map((b) => (b.type === "single" ? b.exId : "?"))).toEqual(["ohp", "row", "curl"]);
+    expect(out.map((b) => b.anchorKey)).toEqual([
+      "ss_ohp_row_curl_2_a", "ss_ohp_row_curl_2_b", "ss_ohp_row_curl_2_c",
+    ]);
+  });
+
+  it("keeps slot-level ALT swaps: exId differs from baseExId", () => {
+    const swapped: MergeableBlock = {
+      type: "superset", a: "ohp_smith", b: "row", baseA: "ohp", baseB: "row", anchorKey: "ss_ohp_row_1",
+    };
+    const out = splitProgramSupersets([swapped], ["ss_ohp_row_1"]);
+    expect(out[0]).toEqual({ type: "single", exId: "ohp_smith", baseExId: "ohp", anchorKey: "ss_ohp_row_1_a" });
+  });
+
+  it("never splits manual supersets (ungroup handles those)", () => {
+    const manual: MergeableBlock = {
+      type: "superset", a: "ohp", b: "row", baseA: "ohp", baseB: "row",
+      anchorKey: manualSupersetAnchorKey(["ohp", "row"]), manual: true,
+    };
+    expect(splitProgramSupersets([manual], [manual.anchorKey])).toEqual([manual]);
+  });
+
+  it("split singles can be re-merged manually afterwards", () => {
+    const split = splitProgramSupersets([ss], ["ss_ohp_row_1"]);
+    const merged = mergeManualSupersets(split, [["ohp", "row"]]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].type).toBe("superset");
+    expect((merged[0] as Extract<MergeableBlock, { type: "superset" }>).manual).toBe(true);
   });
 });

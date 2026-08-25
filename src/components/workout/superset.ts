@@ -47,6 +47,33 @@ export function manualSupersetAnchorKey(baseExIds: string[]): string {
 }
 
 /**
+ * Split program-defined supersets into single blocks for this session only.
+ *
+ * `splitKeys` holds the anchor keys of program superset blocks the user chose
+ * to run separately today (machine taken, stations far apart, …) — the
+ * program itself is untouched and the next session groups them again. Runs
+ * BEFORE mergeManualSupersets so a split pair can even be re-linked manually.
+ * Manual (mid-session) supersets are never split here; ungrouping handles those.
+ */
+export function splitProgramSupersets(blocks: MergeableBlock[], splitKeys: string[]): MergeableBlock[] {
+  if (splitKeys.length === 0) return blocks;
+  const keys = new Set(splitKeys);
+  const result: MergeableBlock[] = [];
+  for (const bl of blocks) {
+    if (bl.type !== "superset" || bl.manual || !keys.has(bl.anchorKey)) {
+      result.push(bl);
+      continue;
+    }
+    result.push({ type: "single", exId: bl.a, baseExId: bl.baseA, anchorKey: `${bl.anchorKey}_a` });
+    result.push({ type: "single", exId: bl.b, baseExId: bl.baseB, anchorKey: `${bl.anchorKey}_b` });
+    if (bl.c && bl.baseC) {
+      result.push({ type: "single", exId: bl.c, baseExId: bl.baseC, anchorKey: `${bl.anchorKey}_c` });
+    }
+  }
+  return result;
+}
+
+/**
  * Merge session-created superset groups into a render-block list.
  *
  * Each group holds 2–3 *base* exercise ids referring to single blocks (program

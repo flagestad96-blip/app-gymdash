@@ -61,7 +61,7 @@ import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
-import { mergeManualSupersets, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
+import { mergeManualSupersets, splitProgramSupersets, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
 import SupersetPickerModal from "../../src/components/modals/SupersetPickerModal";
 import { assessProgression, daysBetween, GAP_SHORT_DAYS, type ProgressionAdvice } from "../../src/progressionEngine";
 import { runAutoBackupIfDue } from "../../src/autoBackup";
@@ -188,6 +188,8 @@ export default function Logg() {
 
   // Manual supersets — groups of 2–3 base exercise ids merged mid-session.
   const [manualSupersets, setManualSupersets] = useState<string[][]>([]);
+  // Program supersets split into singles for THIS session only (anchor keys).
+  const [splitSupersets, setSplitSupersets] = useState<string[]>([]);
   const [supersetPickerBase, setSupersetPickerBase] = useState<string | null>(null);
   // Anchor key of a freshly merged block — consumed once renderBlocks contains it.
   const pendingBlockAnchorRef = useRef<string | null>(null);
@@ -309,10 +311,12 @@ export default function Logg() {
           await setSettingAsync("activeWorkoutId", "");
           await setSettingAsync("adHocExercises", "").catch(() => {});
           await setSettingAsync("manualSupersets", "").catch(() => {});
+          await setSettingAsync("splitSupersets", "").catch(() => {});
           setActiveWorkoutId(null);
           setWorkoutStartedAt(null);
           setAdHocExercises([]);
           setManualSupersets([]);
+          setSplitSupersets([]);
         }
       } else {
         setActiveWorkoutId(null);
@@ -451,6 +455,20 @@ export default function Logg() {
         } catch {}
       }
 
+      // Load per-session splits of program supersets
+      let restoredSplitSupersets: string[] = [];
+      if (activeRow) {
+        try {
+          const savedSplits = await getSettingAsync("splitSupersets");
+          if (savedSplits) {
+            const parsed = JSON.parse(savedSplits);
+            if (Array.isArray(parsed)) {
+              restoredSplitSupersets = parsed.filter((k: unknown) => typeof k === "string");
+            }
+          }
+        } catch {}
+      }
+
       // Batch all state updates together to avoid intermediate renders with stale selectedAlternatives
       setProgram(prog);
       setAlternatives(mergedAlts);
@@ -459,6 +477,7 @@ export default function Logg() {
       setSelectedAlternatives(restoredAlts);
       setAdHocExercises(restoredAdHoc);
       setManualSupersets(restoredManualSupersets);
+      setSplitSupersets(restoredSplitSupersets);
 
       // Load periodization
       try {
@@ -473,6 +492,7 @@ export default function Logg() {
       setAlternatives({});
       setSelectedAlternatives({});
       setManualSupersets([]);
+      setSplitSupersets([]);
       setSuggestedDayIndex(0);
       setActiveDayIndex(0);
       setPeriodization(null);
@@ -539,10 +559,10 @@ export default function Logg() {
     for (const exId of adHocExercises) {
       blocks.push({ type: "single", exId, baseExId: exId, anchorKey: `adhoc_${exId}` });
     }
-    // Apply mid-session superset merges last so both program singles and
-    // ad-hoc exercises can be combined.
-    return mergeManualSupersets(blocks, manualSupersets);
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets]);
+    // Session-only splits of program supersets first, then mid-session
+    // merges — so a split pair can even be re-linked manually.
+    return mergeManualSupersets(splitProgramSupersets(blocks, splitSupersets), manualSupersets);
+  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets, splitSupersets]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -591,6 +611,17 @@ export default function Logg() {
   function persistManualSupersets(next: string[][]) {
     setManualSupersets(next);
     setSettingAsync("manualSupersets", JSON.stringify(next)).catch(() => {});
+  }
+
+  // Split a PROGRAM superset into singles for the rest of this session. The
+  // program stays untouched; next session groups them again. Logged sets keep
+  // their exercise ids, so nothing is lost either way.
+  function splitProgramSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
+    const next = splitSupersets.includes(block.anchorKey)
+      ? splitSupersets
+      : [...splitSupersets, block.anchorKey];
+    setSplitSupersets(next);
+    setSettingAsync("splitSupersets", JSON.stringify(next)).catch(() => {});
   }
 
   function createManualSuperset(partnerBases: string[]) {
@@ -813,6 +844,8 @@ export default function Logg() {
     setSettingAsync("selectedAlternatives", "").catch(() => {});
     setManualSupersets([]);
     setSettingAsync("manualSupersets", "").catch(() => {});
+    setSplitSupersets([]);
+    setSettingAsync("splitSupersets", "").catch(() => {});
   }, [activeDayIndex, program?.id, activeWorkoutId, ready]);
 
   const refreshWorkoutSets = useCallback(() => {
@@ -1451,11 +1484,13 @@ export default function Logg() {
     await setSettingAsync("selectedAlternatives", "").catch(() => {});
     await setSettingAsync("adHocExercises", "").catch(() => {});
     await setSettingAsync("manualSupersets", "").catch(() => {});
+    await setSettingAsync("splitSupersets", "").catch(() => {});
     await setSettingAsync("logPagerAnchor", "").catch(() => {});
     await setSettingAsync("sessionPrExIds", "").catch(() => {});
     _sessionPrExIds = new Set();
     setAdHocExercises([]);
     setManualSupersets([]);
+    setSplitSupersets([]);
     setActiveWorkoutId(null);
     restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
     restTimer.setActiveWorkoutId(null);
@@ -2274,7 +2309,11 @@ export default function Logg() {
                     anchorLayoutRef.current[block.anchorKey] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
                   }}
                   onLogRoundSet={(args) => logSupersetSet(block, args)}
-                  onUngroup={block.manual ? () => ungroupManualSuperset(block) : undefined}
+                  onUngroup={
+                    block.manual
+                      ? () => ungroupManualSuperset(block)
+                      : () => splitProgramSuperset(block)
+                  }
                   {...cardCallbacks}
                 />
               );
