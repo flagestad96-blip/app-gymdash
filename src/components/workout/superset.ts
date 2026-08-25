@@ -74,6 +74,40 @@ export function splitProgramSupersets(blocks: MergeableBlock[], splitKeys: strin
 }
 
 /**
+ * Rotate superset slot order for this session (A/B → B/A, A/B/C → B/C/A, …).
+ *
+ * `rotations` maps a superset block's anchor key to how many left-rotations to
+ * apply. Sets stay attached to their exercises — only the slot order (and thus
+ * the round logging order) changes. Works for program and manual supersets.
+ */
+export function applySupersetRotations(
+  blocks: MergeableBlock[],
+  rotations: Record<string, number>,
+): MergeableBlock[] {
+  const keys = Object.keys(rotations);
+  if (keys.length === 0) return blocks;
+  return blocks.map((bl) => {
+    if (bl.type !== "superset") return bl;
+    const slotCount = bl.c ? 3 : 2;
+    const n = ((rotations[bl.anchorKey] ?? 0) % slotCount + slotCount) % slotCount;
+    if (n === 0) return bl;
+    const ex = [bl.a, bl.b, ...(bl.c ? [bl.c] : [])];
+    const base = [bl.baseA, bl.baseB, ...(bl.baseC ? [bl.baseC] : [])];
+    const rot = (arr: string[]) => arr.slice(n).concat(arr.slice(0, n));
+    const [a, b, c] = rot(ex);
+    const [baseA, baseB, baseC] = rot(base);
+    return {
+      ...bl,
+      a,
+      b,
+      baseA,
+      baseB,
+      ...(c ? { c, baseC } : {}),
+    };
+  });
+}
+
+/**
  * Merge session-created superset groups into a render-block list.
  *
  * Each group holds 2–3 *base* exercise ids referring to single blocks (program

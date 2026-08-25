@@ -1173,6 +1173,8 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
   /** Splits the group into singles: removes a manual (mid-session) superset,
    *  or splits a program superset for the rest of this session only. */
   onUngroup?: () => void;
+  /** Rotates the slot order (A/B → B/A) for this session. */
+  onRotate?: () => void;
   workoutId: string | null;
   exerciseIndex: number;
   gymId?: string | null;
@@ -1468,6 +1470,20 @@ export function SupersetCard(props: SupersetCardProps) {
                 }}
               />
             ))}
+            {props.onRotate ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  props.onRotate!();
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t("log.rotateSuperset")}
+                style={{ marginLeft: 8 }}
+              >
+                <MaterialIcons name="swap-vert" size={18} color={theme.muted} />
+              </Pressable>
+            ) : null}
             {props.onUngroup ? (
               <Pressable
                 onPress={() => {

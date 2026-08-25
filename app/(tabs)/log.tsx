@@ -61,7 +61,7 @@ import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
-import { mergeManualSupersets, splitProgramSupersets, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
+import { mergeManualSupersets, splitProgramSupersets, applySupersetRotations, manualSupersetAnchorKey, type MergeableBlock } from "../../src/components/workout/superset";
 import SupersetPickerModal from "../../src/components/modals/SupersetPickerModal";
 import { assessProgression, daysBetween, GAP_SHORT_DAYS, type ProgressionAdvice } from "../../src/progressionEngine";
 import { runAutoBackupIfDue } from "../../src/autoBackup";
@@ -190,6 +190,8 @@ export default function Logg() {
   const [manualSupersets, setManualSupersets] = useState<string[][]>([]);
   // Program supersets split into singles for THIS session only (anchor keys).
   const [splitSupersets, setSplitSupersets] = useState<string[]>([]);
+  // Per-session slot-order rotations for superset blocks (anchorKey → steps).
+  const [supersetRotations, setSupersetRotations] = useState<Record<string, number>>({});
   const [supersetPickerBase, setSupersetPickerBase] = useState<string | null>(null);
   // Anchor key of a freshly merged block — consumed once renderBlocks contains it.
   const pendingBlockAnchorRef = useRef<string | null>(null);
@@ -327,11 +329,13 @@ export default function Logg() {
           await setSettingAsync("adHocExercises", "").catch(() => {});
           await setSettingAsync("manualSupersets", "").catch(() => {});
           await setSettingAsync("splitSupersets", "").catch(() => {});
+          await setSettingAsync("supersetRotations", "").catch(() => {});
           setActiveWorkoutId(null);
           setWorkoutStartedAt(null);
           setAdHocExercises([]);
           setManualSupersets([]);
           setSplitSupersets([]);
+          setSupersetRotations({});
         }
       } else {
         setActiveWorkoutId(null);
@@ -470,6 +474,22 @@ export default function Logg() {
         } catch {}
       }
 
+      // Load per-session superset slot rotations
+      let restoredRotations: Record<string, number> = {};
+      if (activeRow) {
+        try {
+          const savedRot = await getSettingAsync("supersetRotations");
+          if (savedRot) {
+            const parsed = JSON.parse(savedRot);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              for (const [k, v] of Object.entries(parsed)) {
+                if (typeof v === "number" && Number.isFinite(v)) restoredRotations[k] = v;
+              }
+            }
+          }
+        } catch {}
+      }
+
       // Load per-session splits of program supersets
       let restoredSplitSupersets: string[] = [];
       if (activeRow) {
@@ -493,6 +513,7 @@ export default function Logg() {
       setAdHocExercises(restoredAdHoc);
       setManualSupersets(restoredManualSupersets);
       setSplitSupersets(restoredSplitSupersets);
+      setSupersetRotations(restoredRotations);
 
       // Load periodization
       try {
@@ -508,6 +529,7 @@ export default function Logg() {
       setSelectedAlternatives({});
       setManualSupersets([]);
       setSplitSupersets([]);
+      setSupersetRotations({});
       setSuggestedDayIndex(0);
       setActiveDayIndex(0);
       setPeriodization(null);
@@ -575,9 +597,13 @@ export default function Logg() {
       blocks.push({ type: "single", exId, baseExId: exId, anchorKey: `adhoc_${exId}` });
     }
     // Session-only splits of program supersets first, then mid-session
-    // merges — so a split pair can even be re-linked manually.
-    return mergeManualSupersets(splitProgramSupersets(blocks, splitSupersets), manualSupersets);
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets, splitSupersets]);
+    // merges — so a split pair can even be re-linked manually. Slot rotations
+    // last, so both program and manual supersets can be reordered.
+    return applySupersetRotations(
+      mergeManualSupersets(splitProgramSupersets(blocks, splitSupersets), manualSupersets),
+      supersetRotations,
+    );
+  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets, splitSupersets, supersetRotations]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -629,6 +655,13 @@ export default function Logg() {
   function persistManualSupersets(next: string[][]) {
     setManualSupersets(next);
     setSettingAsync("manualSupersets", JSON.stringify(next)).catch(() => {});
+  }
+
+  // Rotate the slot order of a superset (A/B → B/A) for this session.
+  function rotateSuperset(block: Extract<RenderBlock, { type: "superset" }>) {
+    const next = { ...supersetRotations, [block.anchorKey]: (supersetRotations[block.anchorKey] ?? 0) + 1 };
+    setSupersetRotations(next);
+    setSettingAsync("supersetRotations", JSON.stringify(next)).catch(() => {});
   }
 
   // Split a PROGRAM superset into singles for the rest of this session. The
@@ -864,6 +897,8 @@ export default function Logg() {
     setSettingAsync("manualSupersets", "").catch(() => {});
     setSplitSupersets([]);
     setSettingAsync("splitSupersets", "").catch(() => {});
+    setSupersetRotations({});
+    setSettingAsync("supersetRotations", "").catch(() => {});
   }, [activeDayIndex, program?.id, activeWorkoutId, ready]);
 
   const refreshWorkoutSets = useCallback(() => {
@@ -1553,12 +1588,14 @@ export default function Logg() {
     await setSettingAsync("adHocExercises", "").catch(() => {});
     await setSettingAsync("manualSupersets", "").catch(() => {});
     await setSettingAsync("splitSupersets", "").catch(() => {});
+    await setSettingAsync("supersetRotations", "").catch(() => {});
     await setSettingAsync("logPagerAnchor", "").catch(() => {});
     await setSettingAsync("sessionPrExIds", "").catch(() => {});
     _sessionPrExIds = new Set();
     setAdHocExercises([]);
     setManualSupersets([]);
     setSplitSupersets([]);
+    setSupersetRotations({});
     setActiveWorkoutId(null);
     restTimer.stopRestTimer(); // Cancel any running rest timer + clear scheduled notification
     restTimer.setActiveWorkoutId(null);
@@ -2382,6 +2419,7 @@ export default function Logg() {
                       ? () => ungroupManualSuperset(block)
                       : () => splitProgramSuperset(block)
                   }
+                  onRotate={() => rotateSuperset(block)}
                   {...cardCallbacks}
                 />
               );

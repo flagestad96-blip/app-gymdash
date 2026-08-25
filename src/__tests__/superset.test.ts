@@ -4,6 +4,7 @@ import {
   SLOT_COLORS,
   mergeManualSupersets,
   splitProgramSupersets,
+  applySupersetRotations,
   manualSupersetAnchorKey,
   type MergeableBlock,
 } from "../components/workout/superset";
@@ -168,5 +169,42 @@ describe("splitProgramSupersets", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].type).toBe("superset");
     expect((merged[0] as Extract<MergeableBlock, { type: "superset" }>).manual).toBe(true);
+  });
+});
+
+describe("applySupersetRotations", () => {
+  const ss2: MergeableBlock = {
+    type: "superset", a: "ohp", b: "row", baseA: "ohp_base", baseB: "row_base", anchorKey: "ss_1",
+  };
+  const ss3: MergeableBlock = {
+    type: "superset", a: "ohp", b: "row", c: "curl",
+    baseA: "ohp", baseB: "row", baseC: "curl", anchorKey: "ss_2",
+  };
+
+  it("is a no-op with no rotations", () => {
+    const blocks = [ss2];
+    expect(applySupersetRotations(blocks, {})).toBe(blocks);
+  });
+
+  it("swaps a 2-way superset and keeps base ids attached to their slots", () => {
+    const [out] = applySupersetRotations([ss2], { ss_1: 1 }) as [Extract<MergeableBlock, { type: "superset" }>];
+    expect([out.a, out.b]).toEqual(["row", "ohp"]);
+    expect([out.baseA, out.baseB]).toEqual(["row_base", "ohp_base"]);
+  });
+
+  it("a 2-way superset is back to normal after two rotations", () => {
+    const [out] = applySupersetRotations([ss2], { ss_1: 2 }) as [Extract<MergeableBlock, { type: "superset" }>];
+    expect([out.a, out.b]).toEqual(["ohp", "row"]);
+  });
+
+  it("rotates a 3-way superset one step left", () => {
+    const [out] = applySupersetRotations([ss3], { ss_2: 1 }) as [Extract<MergeableBlock, { type: "superset" }>];
+    expect([out.a, out.b, out.c]).toEqual(["row", "curl", "ohp"]);
+  });
+
+  it("leaves other blocks and unmatched keys alone", () => {
+    const single: MergeableBlock = { type: "single", exId: "squat", baseExId: "squat", anchorKey: "ex_1" };
+    const out = applySupersetRotations([single, ss2], { nope: 1 });
+    expect(out).toEqual([single, ss2]);
   });
 });
