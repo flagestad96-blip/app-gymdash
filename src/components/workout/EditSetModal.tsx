@@ -13,6 +13,7 @@ import { View, Text, Pressable, Modal, TextInput, Alert } from "react-native";
 import { getDb, computeBodyweightLoad } from "../../db";
 import { isoDateOnly } from "../../storage";
 import { useTheme } from "../../theme";
+import { parseDecimal } from "../../format";
 import { useI18n } from "../../i18n";
 import { TextField, Btn } from "../../ui";
 import { useWeightUnit } from "../../units";
@@ -49,7 +50,7 @@ export default function EditSetModal({ visible, set, programId, onClose, onChang
   async function save() {
     if (!set) return;
     const isBw = set.exercise_id ? isBodyweight(set.exercise_id) : false;
-    const parsedWeight = parseFloat(weight);
+    const parsedWeight = parseDecimal(weight);
     const weightKg = Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
     const repsN = parseInt(reps, 10);
     const rpeN = parseFloat(rpe);

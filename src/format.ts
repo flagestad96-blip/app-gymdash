@@ -4,6 +4,16 @@ export function formatWeight(n: number) {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
+/**
+ * Parse a user-typed decimal number, accepting both "," and "." as the
+ * decimal separator (Norwegian keyboards default to comma). NaN when empty
+ * or unparsable — same contract as parseFloat.
+ */
+export function parseDecimal(input: string | null | undefined): number {
+  if (input == null) return NaN;
+  return parseFloat(String(input).trim().replace(",", "."));
+}
+
 export function mmss(totalSec: number) {
   const s = Math.max(0, Math.floor(totalSec));
   const m = Math.floor(s / 60);

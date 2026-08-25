@@ -8,7 +8,7 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
-import { formatWeight } from "../../format";
+import { formatWeight, parseDecimal } from "../../format";
 import { epley1RM } from "../../metrics";
 import { displayNameFor, getExercise, isPerSideExercise, type Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
@@ -155,7 +155,7 @@ function ExerciseHalf({
   // Warm-up ramp for today's working weight: typed input first, then the
   // comeback suggestion, then last session's weight.
   const rampWorkingKg = useMemo(() => {
-    const typed = parseFloat(input.weight);
+    const typed = parseDecimal(input.weight);
     if (Number.isFinite(typed) && typed > 0) return wu.toKg(typed);
     if (comebackWeightKg != null && comebackWeightKg > 0) return comebackWeightKg;
     if (lastSet && lastSet.weight > 0) return lastSet.weight;

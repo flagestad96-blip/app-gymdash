@@ -58,7 +58,7 @@ export default function ExerciseAddModal({ visible, onClose, onSelect, existingE
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         style={{ flex: 1 }}
       >
       <Pressable

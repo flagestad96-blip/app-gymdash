@@ -78,7 +78,7 @@ import ExerciseAddModal from "../../src/components/modals/ExerciseAddModal";
 import { shareWorkoutSummary } from "../../src/sharing";
 import { uid, isoDateOnly, isoNow } from "../../src/storage";
 import { epley1RM, round1 } from "../../src/metrics";
-import { formatWeight, shortLabel, parseTimeMs, clampInt } from "../../src/format";
+import { formatWeight, shortLabel, parseTimeMs, clampInt, parseDecimal } from "../../src/format";
 import { areAllPlannedSetsDone, summarizeSessionSets } from "../../src/workoutCompletion";
 import { withTimeout } from "../../src/asyncUtils";
 
@@ -584,6 +584,9 @@ export default function Logg() {
     setAdHocExercises(next);
     setSettingAsync("adHocExercises", JSON.stringify(next)).catch(() => {});
     setAddExerciseModalOpen(false);
+    // Jump the pager to the new exercise — without this the single-exercise
+    // pager stays put and adding looks like a silent no-op.
+    pendingBlockAnchorRef.current = `adhoc_${exId}`;
   }
 
   // ── Manual supersets (merge exercises mid-session) ──
@@ -958,17 +961,27 @@ export default function Logg() {
 
       // Per-exercise lookup: a single LIMIT across all exercises drops history
       // for ad-hoc exercises whose last log is older than the program rotation.
+      //
+      // "Last" means the FIRST working set of the most recent session with the
+      // exercise (tester feedback): the opening set is the honest baseline for
+      // today's suggestion — the final set is often a lighter back-off. Warmup
+      // sets are excluded outright (the warm-up ramp logs those now).
       for (const exId of exerciseIds) {
         let found = false;
         if (activeGymId) {
           const gymRow = db.getFirstSync<SetRow>(
             `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at
              FROM sets s
-             JOIN workouts w ON s.workout_id = w.id
-             WHERE s.exercise_id = ? AND w.gym_id = ?
-             ORDER BY s.created_at DESC
+             WHERE s.exercise_id = ? AND s.is_warmup IS NOT 1
+               AND s.workout_id = (
+                 SELECT s2.workout_id FROM sets s2
+                 JOIN workouts w ON s2.workout_id = w.id
+                 WHERE s2.exercise_id = ? AND s2.is_warmup IS NOT 1 AND w.gym_id = ?
+                 ORDER BY s2.created_at DESC LIMIT 1
+               )
+             ORDER BY s.set_index ASC, s.created_at ASC
              LIMIT 1`,
-            [exId, activeGymId]
+            [exId, exId, activeGymId]
           );
           if (gymRow) {
             last[exId] = { weight: gymRow.weight, reps: gymRow.reps, rpe: gymRow.rpe ?? null, created_at: gymRow.created_at, workout_id: gymRow.workout_id };
@@ -977,10 +990,16 @@ export default function Logg() {
           }
           const fallback = db.getFirstSync<SetRow>(
             `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-             FROM sets WHERE exercise_id = ?
-             ORDER BY created_at DESC
+             FROM sets
+             WHERE exercise_id = ? AND is_warmup IS NOT 1
+               AND workout_id = (
+                 SELECT workout_id FROM sets
+                 WHERE exercise_id = ? AND is_warmup IS NOT 1
+                 ORDER BY created_at DESC LIMIT 1
+               )
+             ORDER BY set_index ASC, created_at ASC
              LIMIT 1`,
-            [exId]
+            [exId, exId]
           );
           if (fallback) {
             last[exId] = { weight: fallback.weight, reps: fallback.reps, rpe: fallback.rpe ?? null, created_at: fallback.created_at, workout_id: fallback.workout_id, fromOtherGym: true };
@@ -989,10 +1008,16 @@ export default function Logg() {
         } else {
           const row = db.getFirstSync<SetRow>(
             `SELECT workout_id, exercise_id, exercise_name, weight, reps, rpe, created_at
-             FROM sets WHERE exercise_id = ?
-             ORDER BY created_at DESC
+             FROM sets
+             WHERE exercise_id = ? AND is_warmup IS NOT 1
+               AND workout_id = (
+                 SELECT workout_id FROM sets
+                 WHERE exercise_id = ? AND is_warmup IS NOT 1
+                 ORDER BY created_at DESC LIMIT 1
+               )
+             ORDER BY set_index ASC, created_at ASC
              LIMIT 1`,
-            [exId]
+            [exId, exId]
           );
           if (row) {
             last[exId] = { weight: row.weight, reps: row.reps, rpe: row.rpe ?? null, created_at: row.created_at, workout_id: row.workout_id };
@@ -1130,7 +1155,7 @@ export default function Logg() {
   }
 
   function applyWeightStep(exId: string, delta: number) {
-    const current = parseFloat(inputs[exId]?.weight ?? "");
+    const current = parseDecimal(inputs[exId]?.weight ?? "");
     const next = Number.isFinite(current) ? current + delta : delta;
     setInput(exId, "weight", formatWeight(Math.max(0, next)));
   }
@@ -1354,8 +1379,10 @@ export default function Logg() {
         setSettingAsync("logPagerAnchor", JSON.stringify(_pagerMemory)).catch(() => {});
       }
     }
-    // Intentionally do NOT scroll — switching exercises should keep the
-    // viewport stable so the user stays oriented on the set inputs.
+    // Land the exercise at the top of the screen (tester feedback: switching
+    // used to keep the old scroll position, so the new card often started far
+    // below the fold). 16px breathing room above the pager header.
+    scrollRef.current?.scrollTo({ y: Math.max(0, blocksWrapperOffsetRef.current - 16), animated: true });
   }
 
   function goToBlockByAnchorKey(key: string) {
@@ -1558,7 +1585,7 @@ export default function Logg() {
 
     const input = inputs[exId] ?? { weight: "", reps: "", rpe: "" };
     const isBw = isBodyweight(exId);
-    const parsedWeight = parseFloat(input.weight);
+    const parsedWeight = parseDecimal(input.weight);
     // Warm-up ramp rows pass an explicit weight/reps; everything else reads the inputs.
     const weight = opts?.weightKg != null
       ? opts.weightKg
@@ -1770,7 +1797,7 @@ export default function Logg() {
   async function saveEditSet() {
     if (!editSet) return;
     const isBw = editSet.exercise_id ? isBodyweight(editSet.exercise_id) : false;
-    const parsedWeight = parseFloat(editWeight);
+    const parsedWeight = parseDecimal(editWeight);
     const weight = Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
     const reps = parseInt(editReps, 10);
     const rpe = parseFloat(editRpe);
@@ -2632,7 +2659,7 @@ export default function Logg() {
               </Pressable>
               <Pressable
                 onPress={async () => {
-                  const target = parseFloat(goalTarget);
+                  const target = parseDecimal(goalTarget);
                   if (!target || target <= 0) { Alert.alert(t("common.error"), t("analysis.invalidGoalValue")); return; }
                   const programId = program?.id;
                   if (!programId || !goalExId) return;

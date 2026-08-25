@@ -68,6 +68,7 @@ const log: TranslationMap = {
   "log.lockedSwitchDay": "End workout before switching day.",
   "log.sessionCard": "SESSION",
   "log.duration": "Duration",
+  "log.restSettingsHint": "The rest timer starts automatically when you log a set, and alerts you when the break is over. Pick a default below — or a per\u002dexercise time at the bottom.",
   "log.exactAlarmBanner": "Android may delay your rest alerts. Grant Gymdash alarm access for precise notifications.",
   "log.exactAlarmOpen": "Open settings",
   "log.warmupRamp": "Warm-up",

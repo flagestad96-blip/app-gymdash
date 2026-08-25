@@ -1,6 +1,6 @@
 // src/components/workout/RestTimer.tsx
 import React, { useState } from "react";
-import { View, Text, Pressable, Switch, Modal, Alert, TextInput } from "react-native";
+import { View, Text, Pressable, Switch, Modal, Alert, TextInput, ScrollView, KeyboardAvoidingView } from "react-native";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { Btn } from "../../ui";
@@ -123,6 +123,7 @@ export default function RestSettingsModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={onClose}>
         <View
           onStartShouldSetResponder={() => true}
@@ -142,6 +143,16 @@ export default function RestSettingsModal({
           }}
         >
           <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.restTimerTitle")}</Text>
+
+          <ScrollView
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={{ gap: 14 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+          <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>
+            {t("log.restSettingsHint")}
+          </Text>
 
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={{ color: theme.text }}>{t("log.restActive")}</Text>
@@ -189,7 +200,7 @@ export default function RestSettingsModal({
                     fontFamily: theme.mono,
                     fontSize: 13,
                   }}>
-                    {sec}s
+                    {mmss(sec)}
                   </Text>
                 </View>
               </Pressable>
@@ -305,12 +316,15 @@ export default function RestSettingsModal({
             </View>
           ) : null}
 
+          </ScrollView>
+
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Btn label={t("common.close")} onPress={onClose} />
             <Btn label={t("log.reset")} onPress={onReset} />
           </View>
         </View>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

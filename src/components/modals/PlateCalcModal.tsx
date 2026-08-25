@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, Pressable, Modal, ScrollView, TextInput, Alert } from "react-native";
 import { useTheme } from "../../theme";
+import { parseDecimal } from "../../format";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import {
@@ -70,7 +71,7 @@ export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId
 
   async function handleAddCustomBar() {
     const name = newBarName.trim();
-    const weightVal = parseFloat(newBarWeight);
+    const weightVal = parseDecimal(newBarWeight);
     if (!name) return;
     if (!Number.isFinite(weightVal) || weightVal < 0) return;
 
@@ -119,7 +120,7 @@ export default function PlateCalcModal({ visible, onClose, weightStr, exerciseId
   const selectedBar = allBars.find((b) => b.id === selectedBarId) ?? BUILT_IN_BARS[0];
   const barKg = selectedBar.kg;
 
-  const displayVal = parseFloat(weightStr);
+  const displayVal = parseDecimal(weightStr);
   const targetKg = Number.isFinite(displayVal) ? wu.toKg(displayVal) : 0;
   const result = calculatePlates(targetKg, barKg, gymPlates ?? undefined);
 
