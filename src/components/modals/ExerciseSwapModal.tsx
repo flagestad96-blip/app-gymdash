@@ -6,7 +6,7 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { useWeightUnit } from "../../units";
 import { TextField, Btn } from "../../ui";
-import { displayNameFor, getExercise, tagsFor } from "../../exerciseLibrary";
+import { displayNameFor, getExercise, tagsFor, searchExercises } from "../../exerciseLibrary";
 import type { Equipment, ExerciseTag } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 import { formatWeight } from "../../format";
@@ -39,6 +39,9 @@ export type ExerciseSwapModalProps = {
   resolvedExId: string | null;
   /** Called when user picks an alternative */
   onChoose: (baseExId: string, exId: string) => void;
+  /** Called when the user picks an exercise from the free search (outside the
+   *  curated alternatives) — the handler adds it as an alternative and swaps. */
+  onChooseAny?: (baseExId: string, exId: string) => void;
   /** Called when user wants to make the current selection the new default */
   onSetDefault?: (baseExId: string, newDefaultExId: string) => void;
   /** Called when user creates a new custom exercise from the picker */
@@ -56,6 +59,7 @@ export default function ExerciseSwapModal({
   alternativeIds,
   resolvedExId,
   onChoose,
+  onChooseAny,
   onSetDefault,
   onCreateCustom,
   lastSets,
@@ -66,6 +70,7 @@ export default function ExerciseSwapModal({
   const wu = useWeightUnit();
 
   const [creating, setCreating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [newEquipment, setNewEquipment] = useState<Equipment>("machine");
   const [newTags, setNewTags] = useState<ExerciseTag[]>([]);
@@ -96,8 +101,17 @@ export default function ExerciseSwapModal({
   // Reset form when modal closes
   function handleClose() {
     resetForm();
+    setSearchQuery("");
     onClose();
   }
+
+  // Free search across the whole library (tester feedback: swapping should
+  // not be limited to the curated near-identical alternatives).
+  const searchResults = searchQuery.trim()
+    ? searchExercises(searchQuery)
+        .filter((e) => e.id !== baseExId && !alternativeIds.includes(e.id))
+        .slice(0, 15)
+    : [];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
@@ -194,6 +208,57 @@ export default function ExerciseSwapModal({
                 </Pressable>
               );
             })}
+
+            {/* Free search across all exercises */}
+            {onChooseAny && baseExId ? (
+              <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: theme.glassBorder, paddingTop: 12 }}>
+                <TextField
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder={t("log.swapSearchAll")}
+                  placeholderTextColor={theme.muted}
+                  style={{
+                    color: theme.text,
+                    backgroundColor: theme.panel2,
+                    borderColor: theme.line,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    padding: 10,
+                    fontSize: 14,
+                    fontFamily: theme.mono,
+                  }}
+                />
+                {searchResults.map((res) => (
+                  <Pressable
+                    key={`swap_any_${res.id}`}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onChooseAny(baseExId, res.id);
+                    }}
+                    style={({ pressed }) => ({
+                      padding: 12,
+                      borderRadius: theme.radius.lg,
+                      borderWidth: 1,
+                      borderColor: theme.glassBorder,
+                      backgroundColor: pressed ? theme.accent + "1F" : theme.glass,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    })}
+                  >
+                    <Text style={{ color: theme.text, fontSize: 14, flex: 1 }} numberOfLines={1}>
+                      {res.displayName}
+                    </Text>
+                    {(() => {
+                      const eq = getExercise(res.id)?.equipment;
+                      return eq ? (
+                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>{eq}</Text>
+                      ) : null;
+                    })()}
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
 
             {/* Create new custom exercise */}
             {onCreateCustom && baseExId ? (

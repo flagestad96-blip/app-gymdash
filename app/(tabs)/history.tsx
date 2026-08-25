@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, FlatList, Modal, Alert } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { ensureDb, getDb, deleteWorkout } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
@@ -82,6 +82,17 @@ export default function HistoryScreen() {
   // ── State ──────────────────────────────────────────────────────────────
 
   const [mode, setMode] = useState<Mode>("workouts");
+  // Deep link from an exercise card's history panel: open the Sets mode
+  // pre-filtered to that exercise, all time.
+  const { exerciseId: exerciseIdParam } = useLocalSearchParams<{ exerciseId?: string }>();
+  useEffect(() => {
+    if (typeof exerciseIdParam !== "string" || !exerciseIdParam) return;
+    setMode("sets");
+    setExerciseFilter(exerciseIdParam);
+    setExerciseFilterLabel(displayNameFor(exerciseIdParam));
+    setTimePeriod("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exerciseIdParam]);
   const [ready, setReady] = useState(false);
 
   // Shared filter

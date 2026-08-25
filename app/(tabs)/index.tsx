@@ -13,7 +13,7 @@ import { GradientButton } from "../../src/ui/modern";
 import { displayNameFor, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { useWeightUnit } from "../../src/units";
-import { getNextWorkoutPreview } from "../../src/programStore";
+import { getNextWorkoutPreview, getProgram } from "../../src/programStore";
 import { getPendingSuggestions, applySuggestion, dismissSuggestion, parseSuggestionReason, type ProgressionSuggestion } from "../../src/progressionStore";
 import { isoDateOnly } from "../../src/storage";
 import { getActiveGym } from "../../src/gymStore";
@@ -73,6 +73,10 @@ export default function HomeScreen() {
   const [recentPRs, setRecentPRs] = useState<PrRow[]>([]);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [nextWorkout, setNextWorkout] = useState<{ dayName: string; exercises: string[] } | null>(null);
+  // All program days for the quick day-switcher on the next-workout card.
+  const [programDays, setProgramDays] = useState<{ index: number; name: string }[]>([]);
+  const [previewDayIndex, setPreviewDayIndex] = useState(0);
+  const [previewProgramId, setPreviewProgramId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<ProgressionSuggestion[]>([]);
   const [backupDaysAgo, setBackupDaysAgo] = useState<number | null>(null);
   const [backupDismissed, setBackupDismissed] = useState(false);
@@ -231,7 +235,19 @@ export default function HomeScreen() {
             const parsed = parseInt(nextIdxStr ?? "", 10);
             const nextIdx = Number.isFinite(parsed) ? parsed : 0;
             const preview = await getNextWorkoutPreview(programId, nextIdx);
-            if (alive) setNextWorkout(preview);
+            if (alive) {
+              setNextWorkout(preview);
+              setPreviewDayIndex(nextIdx);
+              setPreviewProgramId(programId);
+            }
+            // Day list for the switcher (tester feedback: switching to
+            // another session from the home screen should be easy).
+            try {
+              const prog = await getProgram(programId);
+              if (alive && prog) {
+                setProgramDays(prog.days.map((d, i) => ({ index: i, name: d.name || `Dag ${i + 1}` })));
+              }
+            } catch {}
           }
         }
       } catch {}
@@ -488,6 +504,42 @@ export default function HomeScreen() {
             <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 17, marginBottom: 8 }}>
               {nextWorkout.dayName}
             </Text>
+            {programDays.length > 1 ? (
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                {programDays.map((d) => (
+                  <Pressable
+                    key={`day_${d.index}`}
+                    onPress={() => {
+                      if (d.index === previewDayIndex || !previewProgramId) return;
+                      setPreviewDayIndex(d.index);
+                      getNextWorkoutPreview(previewProgramId, d.index)
+                        .then((p) => { if (p) setNextWorkout(p); })
+                        .catch(() => {});
+                    }}
+                    accessibilityRole="button"
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: d.index === previewDayIndex ? theme.accent : theme.glassBorder,
+                      backgroundColor: d.index === previewDayIndex ? theme.accent + "22" : theme.glass,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: d.index === previewDayIndex ? theme.accent : theme.muted,
+                        fontFamily: theme.mono,
+                        fontSize: 11,
+                      }}
+                    >
+                      {d.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
             <View style={{ gap: 5 }}>
               {nextWorkout.exercises.slice(0, 5).map((exId, idx) => (
                 <View key={`${exId}_${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -507,7 +559,7 @@ export default function HomeScreen() {
             <View style={{ marginTop: 12 }}>
               <GradientButton
                 text={t("home.startThisWorkout")}
-                onPress={() => router.push("/log")}
+                onPress={() => router.push({ pathname: "/log", params: { day: String(previewDayIndex) } })}
                 icon="play-arrow"
               />
             </View>

@@ -68,6 +68,8 @@ const log: TranslationMap = {
   "log.lockedSwitchDay": "Avslutt \u00f8kten f\u00f8r du bytter dag.",
   "log.sessionCard": "\u00D8KT",
   "log.duration": "Varighet",
+  "log.fullHistory": "Se full historikk",
+  "log.swapSearchAll": "Eller søk i alle øvelser …",
   "log.restSettingsHint": "Hviletimeren starter automatisk når du logger et sett, og varsler når pausen er over. Velg standardtid under — eller egen tid for enkeltøvelser nederst.",
   "log.exactAlarmBanner": "Android kan forsinke hvilevarslene dine. Gi Gymdash alarm\u002dtilgang for presise varsler.",
   "log.exactAlarmOpen": "Åpne innstillinger",

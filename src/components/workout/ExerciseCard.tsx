@@ -1,6 +1,7 @@
 // src/components/workout/ExerciseCard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, Animated, Modal, LayoutAnimation } from "react-native";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -126,6 +127,7 @@ function ExerciseHalf({
   const theme = useTheme();
   const { t } = useI18n();
   const wu = useWeightUnit();
+  const router = useRouter();
   const [rpeHelperOpen, setRpeHelperOpen] = useState(false);
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -411,6 +413,18 @@ function ExerciseHalf({
                 );
               })
             )}
+            {historySessions && historySessions.length > 0 ? (
+              <Pressable
+                onPress={() => router.push({ pathname: "/history", params: { exerciseId: exId } })}
+                accessibilityRole="button"
+                hitSlop={8}
+                style={{ alignSelf: "flex-start", paddingVertical: 4 }}
+              >
+                <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 11 }}>
+                  {t("log.fullHistory")} {"→"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         )}
         {coachHint ? (

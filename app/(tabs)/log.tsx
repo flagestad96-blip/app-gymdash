@@ -15,7 +15,7 @@ import {
   Animated,
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -224,6 +224,21 @@ export default function Logg() {
 
   const navigation = useNavigation();
   const router = useRouter();
+  // Day picked on the home screen's next-workout card. Only honored while no
+  // workout is active — mid-workout the day is locked to the session.
+  const { day: dayParam } = useLocalSearchParams<{ day?: string }>();
+  const consumedDayParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof dayParam !== "string" || !dayParam) return;
+    if (consumedDayParamRef.current === dayParam) return;
+    if (!ready || activeWorkoutId) return;
+    const idx = parseInt(dayParam, 10);
+    const dayCount = program?.days.length ?? 0;
+    if (!Number.isFinite(idx) || idx < 0 || dayCount === 0 || idx >= dayCount) return;
+    consumedDayParamRef.current = dayParam;
+    setActiveDayIndex(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayParam, ready, activeWorkoutId, program?.id]);
   const scrollRef = useRef<ScrollView | null>(null);
   const anchorPositionsRef = useRef<Record<string, number>>({});
   const anchorLayoutRef = useRef<Record<string, { y: number; height: number }>>({});
@@ -1187,6 +1202,32 @@ export default function Logg() {
     });
     setAltPickerOpen(false);
     setAltPickerBase(null);
+  }
+
+  // Free-search pick from the swap modal: register the exercise as an
+  // alternative for the base (so resolveSelectedExId accepts it and it shows
+  // up in the list next time), then swap to it for this session.
+  async function handleChooseAnyFromAlt(baseExId: string, exId: string) {
+    const currentAlts = alternatives[activeDayIndex]?.[baseExId] ?? [];
+    if (!currentAlts.includes(exId) && exId !== baseExId) {
+      // Update in-memory first (keeps library-derived alternatives merged in).
+      setAlternatives((prev) => ({
+        ...prev,
+        [activeDayIndex]: {
+          ...(prev[activeDayIndex] ?? {}),
+          [baseExId]: [...currentAlts, exId],
+        },
+      }));
+      if (program?.id) {
+        ProgramStore.setAlternatives({
+          programId: program.id,
+          dayIndex: activeDayIndex,
+          exerciseId: baseExId,
+          alternatives: [...currentAlts, exId],
+        }).catch(() => {});
+      }
+    }
+    chooseAlternative(baseExId, exId);
   }
 
   async function handleCreateCustomFromAlt(baseExId: string, name: string, equipment: Equipment, tags: ExerciseTag[], isPerSide: boolean = false) {
@@ -2425,6 +2466,7 @@ export default function Logg() {
         })()}
         resolvedExId={altPickerBase ? resolveSelectedExId(altPickerBase) : null}
         onChoose={chooseAlternative}
+        onChooseAny={handleChooseAnyFromAlt}
         onSetDefault={handleSetAlternativeAsDefault}
         onCreateCustom={handleCreateCustomFromAlt}
         lastSets={lastSets}
