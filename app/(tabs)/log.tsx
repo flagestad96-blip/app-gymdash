@@ -192,6 +192,11 @@ export default function Logg() {
   const [splitSupersets, setSplitSupersets] = useState<string[]>([]);
   // Per-session slot-order rotations for superset blocks (anchorKey → steps).
   const [supersetRotations, setSupersetRotations] = useState<Record<string, number>>({});
+  // Exercises skipped this session (exId → reason), persisted in the
+  // skipped_exercises table so they show up in the workout's history.
+  const [skippedMap, setSkippedMap] = useState<Record<string, string>>({});
+  const [skipModalExId, setSkipModalExId] = useState<string | null>(null);
+  const [skipReasonDraft, setSkipReasonDraft] = useState("");
   const [supersetPickerBase, setSupersetPickerBase] = useState<string | null>(null);
   // Anchor key of a freshly merged block — consumed once renderBlocks contains it.
   const pendingBlockAnchorRef = useRef<string | null>(null);
@@ -779,6 +784,54 @@ export default function Logg() {
   useEffect(() => {
     if (!activeWorkoutId) endPromptShownForRef.current = null;
   }, [activeWorkoutId]);
+
+  // Load this workout's skipped exercises (survives tab switches + resume).
+  useEffect(() => {
+    if (!activeWorkoutId) { setSkippedMap({}); return; }
+    try {
+      const rows = getDb().getAllSync<{ exercise_id: string; reason: string | null }>(
+        `SELECT exercise_id, reason FROM skipped_exercises WHERE workout_id = ?`,
+        [activeWorkoutId],
+      );
+      const map: Record<string, string> = {};
+      for (const r of rows ?? []) map[r.exercise_id] = r.reason ?? "";
+      setSkippedMap(map);
+    } catch {
+      setSkippedMap({});
+    }
+  }, [activeWorkoutId]);
+
+  async function confirmSkipExercise() {
+    const exId = skipModalExId;
+    if (!exId || !activeWorkoutId) { setSkipModalExId(null); return; }
+    const reason = skipReasonDraft.trim();
+    try {
+      await getDb().runAsync(
+        `INSERT INTO skipped_exercises(id, workout_id, exercise_id, reason, created_at) VALUES(?, ?, ?, ?, ?)`,
+        [uid("skip"), activeWorkoutId, exId, reason || null, isoNow()],
+      );
+      setSkippedMap((prev) => ({ ...prev, [exId]: reason }));
+    } catch {}
+    setSkipModalExId(null);
+    setSkipReasonDraft("");
+    // Move on to the next block — skipping means "not this one today".
+    if (currentBlockIndex < renderBlocks.length - 1) goToBlock(currentBlockIndex + 1);
+  }
+
+  async function undoSkipExercise(exId: string) {
+    if (!activeWorkoutId) return;
+    try {
+      await getDb().runAsync(
+        `DELETE FROM skipped_exercises WHERE workout_id = ? AND exercise_id = ?`,
+        [activeWorkoutId, exId],
+      );
+    } catch {}
+    setSkippedMap((prev) => {
+      const next = { ...prev };
+      delete next[exId];
+      return next;
+    });
+  }
 
   // Auto-prompt: when every planned (non-ad-hoc) exercise has hit its
   // target_sets, ask the user whether to wrap up the session. Fires once per
@@ -1975,6 +2028,10 @@ export default function Logg() {
     onAddSetMultiple: addSetMultiple,
     onLogWarmupSet: (exId: string, weightKg: number, reps: number) =>
       addSetForExercise(exId, undefined, { skipRestTimer: true, weightKg, reps, isWarmup: true }),
+    onSkipExercise: activeWorkoutId
+      ? (exId: string) => { setSkipReasonDraft(""); setSkipModalExId(exId); }
+      : undefined,
+    onUndoSkip: (exId: string) => { void undoSkipExercise(exId); },
     onEditSet: openEditSet,
     onDeleteSet: deleteSet,
     onFocusExercise: (exId: string) => {
@@ -2351,6 +2408,7 @@ export default function Logg() {
                         ? exerciseAdvice[exId]?.suggestedWeightKg
                         : undefined
                     }
+                    skippedReason={skippedMap[exId]}
                     onCreateSuperset={
                       activeWorkoutId && renderBlocks.some((b) => b.type === "single" && b.baseExId !== block.baseExId)
                         ? (base) => setSupersetPickerBase(base)
@@ -2759,6 +2817,50 @@ export default function Logg() {
               >
                 <Text style={{ color: "#fff", fontFamily: theme.fontFamily.bold }}>{t("common.save")}</Text>
               </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Skip exercise: reason prompt */}
+      <Modal visible={skipModalExId !== null} transparent animationType="fade" onRequestClose={() => setSkipModalExId(null)}>
+        <Pressable
+          onPress={() => setSkipModalExId(null)}
+          style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{
+              backgroundColor: theme.modalGlass,
+              borderColor: theme.glassBorder,
+              borderWidth: 1,
+              borderRadius: theme.radius.xl,
+              padding: 18,
+              gap: 12,
+            }}
+          >
+            <Text style={{ color: theme.text, fontFamily: theme.fontFamily.semibold, fontSize: 16 }}>
+              {t("log.skipReasonTitle", { name: skipModalExId ? displayNameFor(skipModalExId) : "" })}
+            </Text>
+            <TextField
+              value={skipReasonDraft}
+              onChangeText={setSkipReasonDraft}
+              placeholder={t("log.skipReasonPlaceholder")}
+              placeholderTextColor={theme.muted}
+              autoFocus
+              style={{
+                color: theme.text,
+                backgroundColor: theme.glass,
+                borderColor: theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 10,
+                fontSize: 14,
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Btn label={t("common.cancel")} onPress={() => setSkipModalExId(null)} />
+              <Btn label={t("log.skipConfirm")} tone="accent" onPress={() => { void confirmSkipExercise(); }} />
             </View>
           </View>
         </Pressable>

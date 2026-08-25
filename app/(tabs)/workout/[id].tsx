@@ -58,6 +58,8 @@ export default function WorkoutDetailScreen() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
 
+  const [skipped, setSkipped] = useState<{ exerciseId: string; reason: string }[]>([]);
+
   const load = useCallback(async () => {
     if (!workoutId) {
       setReady(true);
@@ -99,6 +101,16 @@ export default function WorkoutDetailScreen() {
       map.get(key)!.sets.push(s);
     }
     setGroups(Array.from(map.values()));
+
+    try {
+      const skipRows = db.getAllSync<{ exercise_id: string; reason: string | null }>(
+        `SELECT exercise_id, reason FROM skipped_exercises WHERE workout_id = ? ORDER BY created_at ASC`,
+        [workoutId],
+      );
+      setSkipped((skipRows ?? []).map((r) => ({ exerciseId: r.exercise_id, reason: r.reason ?? "" })));
+    } catch {
+      setSkipped([]);
+    }
     setReady(true);
   }, [workoutId]);
 
@@ -195,6 +207,31 @@ export default function WorkoutDetailScreen() {
       <FlatList
         data={groups}
         keyExtractor={(g) => g.exerciseId ?? `name:${g.displayName}`}
+        ListFooterComponent={
+          skipped.length > 0 ? (
+            <View
+              style={{
+                padding: 14,
+                borderRadius: theme.radius.lg,
+                borderWidth: 1,
+                borderColor: theme.glassBorder,
+                backgroundColor: theme.glass,
+                gap: 6,
+                marginTop: 4,
+              }}
+            >
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
+                {t("history.skippedSection")}
+              </Text>
+              {skipped.map((sk) => (
+                <Text key={sk.exerciseId} style={{ color: theme.text, fontSize: 13 }}>
+                  {displayNameFor(sk.exerciseId)}
+                  {sk.reason ? ` — ${t("history.skippedBecause", { reason: sk.reason })}` : ""}
+                </Text>
+              ))}
+            </View>
+          ) : null
+        }
         contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}
         ListHeaderComponent={
           <View

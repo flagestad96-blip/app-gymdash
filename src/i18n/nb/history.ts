@@ -2,6 +2,8 @@ import type { TranslationMap } from "../types";
 
 const history: TranslationMap = {
   "history.title": "Historikk",
+  "history.skippedSection": "Hoppet over",
+  "history.skippedBecause": "hoppet over pga: {reason}",
   "history.subtitle": "Søk i treningshistorikk",
   "history.exercise": "Øvelse",
   "history.searchPlaceholder": "Søk etter øvelse...",

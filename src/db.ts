@@ -371,6 +371,15 @@ export async function initDb() {
         FOREIGN KEY (achievement_id) REFERENCES achievements(id)
       );
 
+      CREATE TABLE IF NOT EXISTS skipped_exercises (
+        id TEXT PRIMARY KEY NOT NULL,
+        workout_id TEXT NOT NULL,
+        exercise_id TEXT NOT NULL,
+        reason TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_skipped_workout ON skipped_exercises(workout_id);
+
       CREATE INDEX IF NOT EXISTS idx_sets_workout ON sets(workout_id);
       CREATE INDEX IF NOT EXISTS idx_sets_exercise ON sets(exercise_id);
       CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);

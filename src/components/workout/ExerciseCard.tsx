@@ -58,6 +58,10 @@ type ExerciseHalfProps = {
   lastAddedSetId: string | null;
   lastAddedAnim: Animated.Value;
   onLogWarmupSet: (exId: string, weightKg: number, reps: number) => void;
+  /** Skipped-this-session state for single cards (undefined = not skipped). */
+  skippedReason?: string;
+  onSkipExercise?: (exId: string) => void;
+  onUndoSkip?: (exId: string) => void;
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
   onApplyWeightStep: (exId: string, delta: number) => void;
   onApplyLastSet: (exId: string) => void;
@@ -106,6 +110,9 @@ function ExerciseHalf({
   onAddSet,
   onAddSetMultiple,
   onLogWarmupSet,
+  skippedReason,
+  onSkipExercise,
+  onUndoSkip,
   onEditSet,
   onDeleteSet,
   onFocusExercise,
@@ -431,6 +438,53 @@ function ExerciseHalf({
           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
             {t("log.hintLabel", { hint: coachHint })}
           </Text>
+        ) : null}
+        {skippedReason !== undefined ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              borderColor: theme.warn,
+              borderWidth: 1,
+              borderRadius: theme.radius.md,
+              padding: 10,
+              backgroundColor: theme.warn + "14",
+            }}
+          >
+            <MaterialIcons name="skip-next" size={18} color={theme.warn} />
+            <Text style={{ color: theme.warn, fontSize: 12, flex: 1 }} numberOfLines={2}>
+              {skippedReason
+                ? t("log.skippedWithReason", { reason: skippedReason })
+                : t("log.skippedNoReason")}
+            </Text>
+            {onUndoSkip ? (
+              <Pressable onPress={() => onUndoSkip(exId)} hitSlop={8} accessibilityRole="button">
+                <Text style={{ color: theme.warn, fontFamily: theme.fontFamily.semibold, fontSize: 12 }}>
+                  {t("log.undo")}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {onSkipExercise && skippedReason === undefined ? (
+          <Pressable
+            onPress={() => onSkipExercise(exId)}
+            accessibilityRole="button"
+            style={{
+              borderColor: theme.glassBorder,
+              borderWidth: 1,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              backgroundColor: theme.glass,
+              alignSelf: "flex-start",
+            }}
+          >
+            <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11 }}>
+              {t("log.skipExercise")}
+            </Text>
+          </Pressable>
         ) : null}
         {warmupSteps.length > 0 ? (
           <View style={{ gap: 6 }}>
@@ -784,6 +838,8 @@ function ExerciseHalf({
 export type ExerciseCardCallbacks = {
   onSetInput: (exId: string, field: keyof InputState, value: string) => void;
   onLogWarmupSet: (exId: string, weightKg: number, reps: number) => void;
+  onSkipExercise?: (exId: string) => void;
+  onUndoSkip?: (exId: string) => void;
   onApplyWeightStep: (exId: string, delta: number) => void;
   onApplyLastSet: (exId: string) => void;
   onAddSet: (exId: string) => Promise<unknown>;
@@ -806,6 +862,7 @@ export type SingleExerciseCardProps = ExerciseCardCallbacks & {
   exId: string;
   baseExId: string;
   anchorKey: string;
+  skippedReason?: string;
   input: InputState;
   sets: SetRow[];
   target: ExerciseTarget;
@@ -895,6 +952,9 @@ export function SingleExerciseCard(props: SingleExerciseCardProps) {
         onSetGoal={props.onSetGoal}
         onOpenPlateCalc={props.onOpenPlateCalc}
         onLogWarmupSet={props.onLogWarmupSet}
+        skippedReason={props.skippedReason}
+        onSkipExercise={props.onSkipExercise}
+        onUndoSkip={props.onUndoSkip}
         onCreateSuperset={props.onCreateSuperset}
         comebackWeightKg={props.comebackWeightKg}
         workoutId={props.workoutId}
@@ -1555,6 +1615,8 @@ export function SupersetCard(props: SupersetCardProps) {
                       onSetGoal={props.onSetGoal}
                       onOpenPlateCalc={props.onOpenPlateCalc}
                       onLogWarmupSet={props.onLogWarmupSet}
+                      onSkipExercise={undefined}
+                      onUndoSkip={undefined}
                       workoutId={props.workoutId}
                       exerciseIndex={props.exerciseIndex}
                       gymId={props.gymId}
