@@ -95,6 +95,11 @@ export function useRestTimer() {
   return ctx;
 }
 
+/** Like useRestTimer, but returns null outside the provider (for shared UI like Screen). */
+export function useRestTimerOptional(): RestTimerContextValue | null {
+  return useContext(RestTimerContext);
+}
+
 type Props = { children: React.ReactNode };
 
 export function RestTimerProvider({ children }: Props) {

@@ -13,6 +13,8 @@ import {
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
+import { useRestTimerOptional } from "../restTimerContext";
+import { REST_BAR_CLEARANCE } from "../components/workout/RestBar";
 
 const WATERMARK = "AURORA";
 
@@ -28,8 +30,19 @@ export function Screen({
   style?: ViewStyle | ViewStyle[];
   edges?: Edge[];
 }) {
+  // While a rest runs, the root-rendered RestBar docks over the bottom of every
+  // screen. Reserve space for it here so no screen's last row/button is covered.
+  const rest = useRestTimerOptional();
+  const restClearance = rest?.restRunning ? REST_BAR_CLEARANCE : 0;
   return (
-    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: "transparent" }, style]}>
+    <SafeAreaView
+      edges={edges}
+      style={[
+        { flex: 1, backgroundColor: "transparent" },
+        restClearance ? { paddingBottom: restClearance } : null,
+        style,
+      ]}
+    >
       {children}
     </SafeAreaView>
   );

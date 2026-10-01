@@ -2136,10 +2136,8 @@ export default function Logg() {
           contentContainerStyle={{
             padding: theme.space.lg,
             gap: theme.space.md,
-            // While the docked rest bar is visible it floats over the bottom of the
-            // scroll content — clear it so the last buttons (add exercise / end
-            // workout) stay reachable.
-            paddingBottom: restTimer.restRunning ? REST_BAR_CLEARANCE + theme.space.xl : theme.space.xl,
+            // Rest-bar clearance is handled globally by the Screen wrapper.
+            paddingBottom: theme.space.xl,
           }}
         >
           <TopBar
