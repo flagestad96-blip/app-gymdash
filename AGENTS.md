@@ -1,0 +1,102 @@
+# Gymdash — AGENTS.md
+
+> Denne filen leses automatisk av Codex ved hver samtale.
+> Hold den oppdatert med prosjektregler, beslutninger og backlog.
+
+## Prosjekt
+
+Gymdash er en privacy-first, 100% offline treningsapp bygget med React Native, Expo SDK 54, Expo Router, SQLite og TypeScript. Se `CONTEXT.md` for full arkitektur og funksjonalitet.
+
+## Regler
+
+- **Les CONTEXT.md** ved starten av hver sesjon for å forstå nåværende tilstand
+- **Aldri** bruk `elevation` på elementer med transparent/semi-transparent bakgrunn (Android)
+- **Vekter**: lagres alltid i kg internt. Bruk `useWeightUnit()` for display/input
+- **i18n**: alle UI-strenger via `t("key")`, legg til i `src/i18n.ts` (nb + en)
+- **expo-file-system**: `import * as FileSystem from "expo-file-system/src/legacy"`
+- **UI-komponenter**: `src/ui/index.tsx` (base) + `src/ui/modern.tsx` (glassmorphism)
+- **Sirkulær import**: db.ts ↔ exerciseLibrary.ts bruker lazy `require()`
+- **Verifisering**: `npm run verify` etter alle endringer (tsc + jest + lint)
+- **Unngå falske features**: hver funksjon må genuint hjelpe noen å trene bedre
+
+## Agent-team
+
+Gymdash har et komplett agent-team i `.Codex/agents/`. Bruk dem via pipeline:
+
+```
+DISCOVERY → PLANNING → BUILD → QUALITY → OPS
+@scout → @architect → @prompt-builder → @verify → @session-closer
+@brainstorm → @db-designer → → @code-reviewer
+@ux-critic → @task-splitter → → @tester
+@bug-hunter
+@codebase-scanner
+@gemini-research
+```
+
+Output lagres i `docs/` (ideas/, plans/, prompts/, research/, reviews/, sessions/).
+
+## Utgivelse (EAS Build → Play Store)
+
+Appen publiseres til Play via **EAS Build + EAS Submit (auto-submit)**. Full guide: `docs/RELEASE.md`.
+
+**Oppsett (ferdig per juni 2026):**
+- Tjenestekonto `eas-submit@gymdash.iam.gserviceaccount.com` — satt opp i Play (13 tillatelser på appen), Google Cloud (**Android Publisher API enabled**, prosjekt «Gymdash») og lagret i EAS. Lokal nøkkel i `credentials/google-play-service-account.json` (git-ignorert).
+- GitHub koblet til EAS-prosjektet (`flagestad96-blip/app-gymdash`, base `/`).
+- Aktivt spor: **lukket testing «alpha»**. `eas.json` submit → track `alpha`, releaseStatus `completed`.
+- `appVersionSource: "local"` — app.json er fasit for `versionCode`. Bumpes via `scripts/bump-version.js`, **ikke** EAS auto-increment (koblet til patch notes + håndhevet av `check-version`).
+
+**Per release (kjerneflyt):**
+1. `npm run bump-version <patch|minor|major>` (bumper app.json/package.json + patchNotes-placeholder)
+2. Fyll inn ekte patch notes i `src/patchNotes.ts` + i18n (`src/i18n/{en,nb}/patchNotes.ts`) + `## vX.Y.Z` i `CHANGELOG.md`
+3. `npm run verify`
+4. `npm run release:android` → bygger + auto-submitter til alpha **og** setter «Hva er nytt» automatisk. Testerne får auto-oppdatering når Google er ferdig å prosessere (minutter–timer).
+
+**Play «Hva er nytt» (release notes) — automatisert:**
+EAS Submit setter ikke release notes selv. Det gjør `scripts/set-release-notes.js` (kjøres av `npm run release:android`): leser nyeste `patchNotes.ts`-entry + i18n-tekstene og setter «Hva er nytt» via **Play Developer API** (gjenbruker tjenestekonto-nøkkelen). Forhåndsvis uten å publisere: `node scripts/set-release-notes.js --dry-run`.
+NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. Listingen har foreløpig **kun `en-US`**, så butikk-notatene blir engelske (norsk tekst genereres, men brukes først når du legger til norsk som listing-språk i Play).
+
+**Sjekkliste til neste økt:**
+- `versionCode` MÅ økes hver release, ellers avviser Play (duplikat).
+- Play «Hva er nytt» settes automatisk av `release:android` (`set-release-notes.js` via Play API). Store-listingen er `en-US` only — legg til norsk listing-språk i Play hvis du vil ha norske notater.
+- **Produksjon** (åpen for alle): krever fortsatt 12 testere i 14 dager (har 2). Bytt `track` til `production` i eas.json når innvilget.
+- **Tag-push-workflow** (`.eas/workflows/release-android.yml`): for at den skal trigge må branchen + workflow-fila pushes til GitHub, og `serviceAccountKeyPath` fjernes fra `eas.json` (serverne bruker EAS-lagret nøkkel, ikke lokal fil).
+- 🔐 Vurder å rullere Play-tjenestekontonøkkelen i Google Cloud (den lå i en chat-logg under oppsettet).
+
+## Pågående arbeid
+
+- **v0.13-syklus** (branch `develop/v0.13-polish-expansion`, fra v0.12.0-beta-releasen): finpuss + nye funksjoner. Gjort så langt: lint 159→0, RestBar-clearance globalt (Screen-wrapper), død kode slettet (Expo-template-rester, ThemeMode-shims, RestTimerInline), rep-max estimator i Analyse, utstyrsfilter i programbyggerens pickers.
+- **Release-pipeline**: EAS auto-submit til alpha er live (se «Utgivelse» over). Workflow-finalisering gjenstår om ønskelig.
+
+## Ferdig fra backlog (ikke planlegg på nytt)
+
+- ~~Edit/delete sett → PR-rekalkulering~~ — `EditSetModal` + `recomputePRForExercise` + «Reparer PRs» i Settings.
+- ~~Gym locations UI~~ — GymPickerModal i logg, GymLocationsCard i settings, utstyrssjekk i logg.
+- ~~Workout resume-indikator~~ — resume-banner på hjem-skjermen.
+- ~~Utstyrsfilter i exercise-picker~~ — i logg/swap (gym-aware) og programbyggerens begge pickers («Kun tilgjengelig utstyr»-chip).
+- ~~Rep-max estimator~~ — 1/3/5/10RM-kort i Analyse (invers Epley, `src/repMax.ts`).
+
+## Backlog (prioritert)
+
+### Medium prioritet
+1. **Fatigue-trend fra RPE-data** — Rullerende RPE-graf over tid per muskelgruppe. Overtrening-signal.
+2. **Warmup-sett inn i beregninger** — lagres i dag men ignoreres i PR/volum/strength index. Tillitssak.
+3. **Analyse: program-filter** — filtrer analysen per program.
+
+### Lav prioritet / utforsk videre
+4. **Første-økt tooltips** — Kontekstuelle tips under første reelle logging (vis én gang).
+5. **Ukentlig ryggbelastnings-score** — Summer ukens volum vektet med backImpact-nivå. (Nedprioritert juni 2026 — rygg skal ikke ha mye fokus.)
+
+## Ikke gjør
+
+- **Treningsvideoer** — For stort innholdsprosjekt, bedre med eksterne lenker
+- **Kardio-tracking** — Annet domene, ville utvannet styrkefokuset
+- **Sosiale features / leaderboards** — Strider mot privacy-first-filosofien
+- **Web-plattform** — DB er deaktivert, verdien er på mobil
+
+## Sessjonslogger
+
+Se `docs/sessions/` for full historikk over alle utviklingssesjoner.
+
+## Imported Claude Cowork project instructions
+
+Her skal du hjelpe meg bygge en profesjonell loggings-app for trening

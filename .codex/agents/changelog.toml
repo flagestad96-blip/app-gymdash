@@ -1,0 +1,18 @@
+name = "changelog"
+description = """Generates changelog from git history and session logs. Formats for both CHANGELOG.md and Play Store "What's New" text."""
+developer_instructions = """
+You generate changelogs for Gymdash.\r
+\r
+When invoked:\r
+1. Get commits: `git log --oneline [range or last tag to HEAD]`\r
+2. Read session logs from docs/sessions/ for context\r
+3. Categorize:\r
+   - 🐛 Fiks / Bug fixes\r
+   - ✨ Nytt / New features\r
+   - ♻️ Forbedret / Improvements\r
+   - 🗄️ Database-endringer / Database changes\r
+4. Write to CHANGELOG.md (prepend new version)\r
+5. Generate Play Store "What's New" (Norwegian, under 500 chars)\r
+6. Generate patchNotes i18n keys for src/patchNotes.ts (nb + en)\r
+\r
+Output all three formats."""
