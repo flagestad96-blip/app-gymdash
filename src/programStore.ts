@@ -170,9 +170,12 @@ const PPL5_BRYSTFOKUS_DESCRIPTION =
   "RESTITUSJON:\n" +
   "- Deload hver 6–10 uke ved behov.";
 
+// Renamed from "PPL 5-dagers (Brystfokus)" (ensurePrograms migrates old installs).
+export const PPL5_BRYSTFOKUS_LEGACY_NAME = "PPL 5-dagers (Brystfokus)";
+
 export const PPL5_BRYSTFOKUS_PROGRAM: Program = {
   id: PPL5_BRYSTFOKUS_ID,
-  name: "PPL 5-dagers (Brystfokus)",
+  name: "Marius sin muskeloppskrift",
   description: PPL5_BRYSTFOKUS_DESCRIPTION,
   createdAt: isoNow(),
   updatedAt: isoNow(),
@@ -281,6 +284,350 @@ const PPL5_BRYSTFOKUS_TARGETS: Record<
   close_grip_bench: { repMin: 6, repMax: 10, targetSets: 4 },
   flat_db_press: { repMin: 8, repMax: 12, targetSets: 4 },
   lat_pulldown: { repMin: 8, repMax: 12, targetSets: 4 },
+};
+
+// ── Flere ferdige programmer (ulike mål) ───────────────────────────────────
+
+export const NYBEGYNNER3_ID = "nybegynner3_fullkropp_v1";
+
+const NYBEGYNNER3_DESCRIPTION =
+  "FOR DEG SOM ER NY:\n" +
+  "- 3 økter i uka med en hviledag mellom.\n" +
+  "- Lær teknikken først — vekten kommer av seg selv.\n" +
+  "- Stopp 2–3 reps før utmattelse (RPE 7–8).\n\n" +
+  "PROGRESJON:\n" +
+  "- Treffer du øvre reps på alle sett → øk litt neste gang.\n\n" +
+  "PAUSER:\n" +
+  "- 1,5–2 min mellom settene.";
+
+export const NYBEGYNNER3_PROGRAM: Program = {
+  id: NYBEGYNNER3_ID,
+  name: "Nybegynner 3-dagers (Fullkropp)",
+  description: NYBEGYNNER3_DESCRIPTION,
+  createdAt: isoNow(),
+  updatedAt: isoNow(),
+  days: [
+    createDay("Dag 1 – Fullkropp A", [
+      { type: "single", exId: "leg_press" },
+      { type: "single", exId: "machine_chest_press" },
+      { type: "single", exId: "lat_pulldown" },
+      { type: "single", exId: "lateral_raise" },
+      { type: "single", exId: "plank" },
+    ]),
+    createDay("Dag 2 – Fullkropp B", [
+      { type: "single", exId: "goblet_squat" },
+      { type: "single", exId: "db_shoulder_press" },
+      { type: "single", exId: "cable_row" },
+      { type: "single", exId: "lying_leg_curl" },
+      { type: "single", exId: "cable_crunch" },
+    ]),
+    createDay("Dag 3 – Fullkropp C", [
+      { type: "single", exId: "leg_extension" },
+      { type: "single", exId: "flat_db_press" },
+      { type: "single", exId: "machine_row" },
+      { type: "single", exId: "face_pull" },
+      { type: "superset", a: "db_curl", b: "triceps_pushdown" },
+    ]),
+  ],
+};
+
+const NYBEGYNNER3_ALTERNATIVES: AlternativesMap = {
+  0: {
+    leg_press: ["goblet_squat", "hack_squat"],
+    machine_chest_press: ["flat_db_press", "push_up"],
+  },
+  1: {
+    goblet_squat: ["leg_press"],
+    cable_row: ["machine_row", "lat_pulldown"],
+  },
+};
+
+const NYBEGYNNER3_TARGETS: Record<
+  string,
+  { repMin: number; repMax: number; targetSets: number }
+> = {
+  leg_press: { repMin: 10, repMax: 15, targetSets: 3 },
+  machine_chest_press: { repMin: 8, repMax: 12, targetSets: 3 },
+  lat_pulldown: { repMin: 8, repMax: 12, targetSets: 3 },
+  lateral_raise: { repMin: 12, repMax: 15, targetSets: 2 },
+  plank: { repMin: 1, repMax: 1, targetSets: 3 },
+  goblet_squat: { repMin: 8, repMax: 12, targetSets: 3 },
+  db_shoulder_press: { repMin: 8, repMax: 12, targetSets: 3 },
+  cable_row: { repMin: 8, repMax: 12, targetSets: 3 },
+  lying_leg_curl: { repMin: 10, repMax: 15, targetSets: 3 },
+  cable_crunch: { repMin: 10, repMax: 15, targetSets: 3 },
+  leg_extension: { repMin: 12, repMax: 15, targetSets: 3 },
+  flat_db_press: { repMin: 8, repMax: 12, targetSets: 3 },
+  machine_row: { repMin: 8, repMax: 12, targetSets: 3 },
+  face_pull: { repMin: 12, repMax: 15, targetSets: 2 },
+  db_curl: { repMin: 10, repMax: 12, targetSets: 2 },
+  triceps_pushdown: { repMin: 10, repMax: 12, targetSets: 2 },
+};
+
+export const STYRKE4_ID = "styrke4_ou_v1";
+
+const STYRKE4_DESCRIPTION =
+  "STYRKEFOKUS:\n" +
+  "- Baseløftene (knebøy, benk, markløft, press) kjøres tungt: 3–5 reps, RPE 8.\n" +
+  "- Assistanse støtter baseløftene: 6–10 reps.\n\n" +
+  "PROGRESJON:\n" +
+  "- Klarer du alle sett på øvre reps → øk 2,5 kg (overkropp) / 5 kg (underkropp).\n\n" +
+  "PAUSER:\n" +
+  "- Baseløft: 3–5 min. Assistanse: 2 min.\n\n" +
+  "RESTITUSJON:\n" +
+  "- Deload hver 5–8 uke: samme øvelser, −20 % vekt.";
+
+export const STYRKE4_PROGRAM: Program = {
+  id: STYRKE4_ID,
+  name: "Styrke 4-dagers (Over/Under)",
+  description: STYRKE4_DESCRIPTION,
+  createdAt: isoNow(),
+  updatedAt: isoNow(),
+  days: [
+    createDay("Dag 1 – Underkropp A", [
+      { type: "single", exId: "back_squat" },
+      { type: "single", exId: "romanian_deadlift" },
+      { type: "single", exId: "leg_press" },
+      { type: "single", exId: "standing_calf_raise" },
+      { type: "single", exId: "plank" },
+    ]),
+    createDay("Dag 2 – Overkropp A", [
+      { type: "single", exId: "bench_press" },
+      { type: "single", exId: "barbell_row" },
+      { type: "single", exId: "overhead_press" },
+      { type: "single", exId: "lat_pulldown" },
+      { type: "superset", a: "triceps_pushdown", b: "db_curl" },
+    ]),
+    createDay("Dag 3 – Underkropp B", [
+      { type: "single", exId: "deadlift" },
+      { type: "single", exId: "front_squat" },
+      { type: "single", exId: "lying_leg_curl" },
+      { type: "single", exId: "cable_crunch" },
+    ]),
+    createDay("Dag 4 – Overkropp B", [
+      { type: "single", exId: "incline_barbell_press" },
+      { type: "single", exId: "pull_up" },
+      { type: "single", exId: "close_grip_bench" },
+      { type: "single", exId: "face_pull" },
+      { type: "single", exId: "ez_bar_curl" },
+    ]),
+  ],
+};
+
+const STYRKE4_ALTERNATIVES: AlternativesMap = {
+  0: {
+    back_squat: ["hack_squat", "leg_press"],
+  },
+  2: {
+    deadlift: ["rack_pull", "romanian_deadlift"],
+    front_squat: ["hack_squat", "goblet_squat"],
+  },
+  3: {
+    incline_barbell_press: ["incline_db_press"],
+    pull_up: ["lat_pulldown"],
+  },
+};
+
+const STYRKE4_TARGETS: Record<
+  string,
+  { repMin: number; repMax: number; targetSets: number }
+> = {
+  back_squat: { repMin: 3, repMax: 5, targetSets: 4 },
+  romanian_deadlift: { repMin: 6, repMax: 8, targetSets: 3 },
+  leg_press: { repMin: 8, repMax: 10, targetSets: 3 },
+  standing_calf_raise: { repMin: 8, repMax: 12, targetSets: 3 },
+  plank: { repMin: 1, repMax: 1, targetSets: 3 },
+  bench_press: { repMin: 3, repMax: 5, targetSets: 4 },
+  barbell_row: { repMin: 5, repMax: 8, targetSets: 4 },
+  overhead_press: { repMin: 6, repMax: 8, targetSets: 3 },
+  lat_pulldown: { repMin: 8, repMax: 10, targetSets: 3 },
+  triceps_pushdown: { repMin: 8, repMax: 12, targetSets: 2 },
+  db_curl: { repMin: 8, repMax: 12, targetSets: 2 },
+  deadlift: { repMin: 3, repMax: 5, targetSets: 3 },
+  front_squat: { repMin: 5, repMax: 8, targetSets: 3 },
+  lying_leg_curl: { repMin: 8, repMax: 10, targetSets: 3 },
+  cable_crunch: { repMin: 10, repMax: 15, targetSets: 3 },
+  incline_barbell_press: { repMin: 5, repMax: 8, targetSets: 4 },
+  pull_up: { repMin: 5, repMax: 8, targetSets: 4 },
+  close_grip_bench: { repMin: 6, repMax: 10, targetSets: 3 },
+  face_pull: { repMin: 12, repMax: 15, targetSets: 3 },
+  ez_bar_curl: { repMin: 8, repMax: 12, targetSets: 3 },
+};
+
+export const HYPERTROFI4_ID = "hypertrofi4_ou_v1";
+
+const HYPERTROFI4_DESCRIPTION =
+  "MUSKELVEKST:\n" +
+  "- 8–15 reps, kontrollert senking, nær utmattelse på siste sett.\n" +
+  "- Maskiner og kabler kan kjøres til failure; frivekter stopp ved RPE 8–9.\n\n" +
+  "PROGRESJON:\n" +
+  "- Flere reps først, så mer vekt når du treffer øvre reps.\n\n" +
+  "PAUSER:\n" +
+  "- Store løft: 2–3 min. Isolasjon: 60–90 sek.\n\n" +
+  "RESTITUSJON:\n" +
+  "- Deload hver 6–10 uke ved behov.";
+
+export const HYPERTROFI4_PROGRAM: Program = {
+  id: HYPERTROFI4_ID,
+  name: "Hypertrofi 4-dagers (Over/Under)",
+  description: HYPERTROFI4_DESCRIPTION,
+  createdAt: isoNow(),
+  updatedAt: isoNow(),
+  days: [
+    createDay("Dag 1 – Overkropp (Push-fokus)", [
+      { type: "single", exId: "incline_db_press" },
+      { type: "single", exId: "machine_chest_press" },
+      { type: "single", exId: "cable_fly" },
+      { type: "single", exId: "lateral_raise" },
+      { type: "superset", a: "overhead_triceps_ext", b: "rope_pushdown" },
+    ]),
+    createDay("Dag 2 – Underkropp (Framside-fokus)", [
+      { type: "single", exId: "hack_squat" },
+      { type: "single", exId: "leg_press" },
+      { type: "single", exId: "bulgarian_split_squat" },
+      { type: "single", exId: "leg_extension" },
+      { type: "single", exId: "standing_calf_raise" },
+      { type: "single", exId: "cable_crunch" },
+    ]),
+    createDay("Dag 3 – Overkropp (Pull-fokus)", [
+      { type: "single", exId: "lat_pulldown" },
+      { type: "single", exId: "chest_supported_row" },
+      { type: "single", exId: "one_arm_db_row" },
+      { type: "superset", a: "rear_delt_fly", b: "face_pull" },
+      { type: "superset", a: "ez_bar_curl", b: "hammer_curl" },
+    ]),
+    createDay("Dag 4 – Underkropp (Bakside-fokus)", [
+      { type: "single", exId: "romanian_deadlift" },
+      { type: "single", exId: "hip_thrust_barbell" },
+      { type: "single", exId: "seated_leg_curl" },
+      { type: "single", exId: "walking_lunge" },
+      { type: "single", exId: "seated_calf_raise" },
+      { type: "single", exId: "plank" },
+    ]),
+  ],
+};
+
+const HYPERTROFI4_ALTERNATIVES: AlternativesMap = {
+  0: {
+    incline_db_press: ["incline_barbell_press", "flat_db_press"],
+    cable_fly: ["pec_deck", "db_fly"],
+  },
+  1: {
+    hack_squat: ["back_squat", "goblet_squat"],
+  },
+  2: {
+    lat_pulldown: ["pull_up"],
+    chest_supported_row: ["cable_row", "barbell_row"],
+  },
+  3: {
+    hip_thrust_barbell: ["hip_thrust_machine"],
+    walking_lunge: ["reverse_lunge", "bulgarian_split_squat"],
+  },
+};
+
+const HYPERTROFI4_TARGETS: Record<
+  string,
+  { repMin: number; repMax: number; targetSets: number }
+> = {
+  incline_db_press: { repMin: 8, repMax: 12, targetSets: 4 },
+  machine_chest_press: { repMin: 10, repMax: 12, targetSets: 3 },
+  cable_fly: { repMin: 12, repMax: 15, targetSets: 3 },
+  lateral_raise: { repMin: 12, repMax: 15, targetSets: 4 },
+  overhead_triceps_ext: { repMin: 10, repMax: 12, targetSets: 3 },
+  rope_pushdown: { repMin: 12, repMax: 15, targetSets: 3 },
+  hack_squat: { repMin: 8, repMax: 12, targetSets: 4 },
+  leg_press: { repMin: 10, repMax: 15, targetSets: 3 },
+  bulgarian_split_squat: { repMin: 8, repMax: 12, targetSets: 3 },
+  leg_extension: { repMin: 12, repMax: 15, targetSets: 3 },
+  standing_calf_raise: { repMin: 12, repMax: 20, targetSets: 4 },
+  cable_crunch: { repMin: 10, repMax: 15, targetSets: 3 },
+  lat_pulldown: { repMin: 8, repMax: 12, targetSets: 4 },
+  chest_supported_row: { repMin: 8, repMax: 12, targetSets: 4 },
+  one_arm_db_row: { repMin: 10, repMax: 12, targetSets: 3 },
+  rear_delt_fly: { repMin: 12, repMax: 15, targetSets: 3 },
+  face_pull: { repMin: 12, repMax: 15, targetSets: 3 },
+  ez_bar_curl: { repMin: 8, repMax: 12, targetSets: 3 },
+  hammer_curl: { repMin: 10, repMax: 12, targetSets: 3 },
+  romanian_deadlift: { repMin: 8, repMax: 12, targetSets: 4 },
+  hip_thrust_barbell: { repMin: 6, repMax: 10, targetSets: 4 },
+  seated_leg_curl: { repMin: 10, repMax: 15, targetSets: 3 },
+  walking_lunge: { repMin: 10, repMax: 12, targetSets: 3 },
+  seated_calf_raise: { repMin: 12, repMax: 20, targetSets: 4 },
+  plank: { repMin: 1, repMax: 1, targetSets: 3 },
+};
+
+export const HJEMME3_ID = "hjemme3_manualer_v1";
+
+const HJEMME3_DESCRIPTION =
+  "HJEMMETRENING:\n" +
+  "- Alt du trenger er manualer (og helst en benk).\n" +
+  "- Justerbare manualer? Sett vekten så øvre reps så vidt ryker.\n\n" +
+  "PROGRESJON:\n" +
+  "- Flere reps først. Når settene blir lette: tyngre manual,\n" +
+  "  saktere senking eller kortere pause.\n\n" +
+  "PAUSER:\n" +
+  "- 60–120 sek mellom settene.";
+
+export const HJEMME3_PROGRAM: Program = {
+  id: HJEMME3_ID,
+  name: "Hjemme 3-dagers (Manualer)",
+  description: HJEMME3_DESCRIPTION,
+  createdAt: isoNow(),
+  updatedAt: isoNow(),
+  days: [
+    createDay("Dag 1 – Press", [
+      { type: "single", exId: "flat_db_press" },
+      { type: "single", exId: "db_shoulder_press" },
+      { type: "single", exId: "db_fly" },
+      { type: "single", exId: "lateral_raise" },
+      { type: "single", exId: "overhead_db_extension" },
+      { type: "single", exId: "push_up" },
+    ]),
+    createDay("Dag 2 – Bein", [
+      { type: "single", exId: "goblet_squat" },
+      { type: "single", exId: "bulgarian_split_squat" },
+      { type: "single", exId: "single_leg_rdl" },
+      { type: "single", exId: "reverse_lunge" },
+      { type: "single", exId: "plank" },
+    ]),
+    createDay("Dag 3 – Rygg & armer", [
+      { type: "single", exId: "one_arm_db_row" },
+      { type: "single", exId: "db_pullover" },
+      { type: "superset", a: "db_curl", b: "overhead_db_extension" },
+      { type: "single", exId: "hammer_curl" },
+    ]),
+  ],
+};
+
+const HJEMME3_ALTERNATIVES: AlternativesMap = {
+  0: {
+    flat_db_press: ["push_up"],
+  },
+  1: {
+    goblet_squat: ["reverse_lunge"],
+    bulgarian_split_squat: ["walking_lunge"],
+  },
+};
+
+const HJEMME3_TARGETS: Record<
+  string,
+  { repMin: number; repMax: number; targetSets: number }
+> = {
+  flat_db_press: { repMin: 8, repMax: 12, targetSets: 4 },
+  db_shoulder_press: { repMin: 8, repMax: 12, targetSets: 3 },
+  db_fly: { repMin: 12, repMax: 15, targetSets: 3 },
+  lateral_raise: { repMin: 12, repMax: 15, targetSets: 3 },
+  overhead_db_extension: { repMin: 10, repMax: 12, targetSets: 3 },
+  push_up: { repMin: 8, repMax: 20, targetSets: 3 },
+  goblet_squat: { repMin: 8, repMax: 12, targetSets: 4 },
+  bulgarian_split_squat: { repMin: 8, repMax: 12, targetSets: 3 },
+  single_leg_rdl: { repMin: 10, repMax: 12, targetSets: 3 },
+  reverse_lunge: { repMin: 10, repMax: 12, targetSets: 3 },
+  plank: { repMin: 1, repMax: 1, targetSets: 3 },
+  one_arm_db_row: { repMin: 8, repMax: 12, targetSets: 4 },
+  db_pullover: { repMin: 10, repMax: 15, targetSets: 3 },
+  db_curl: { repMin: 8, repMax: 12, targetSets: 3 },
+  hammer_curl: { repMin: 10, repMax: 12, targetSets: 3 },
 };
 
 async function seedProgramAlternativesIfMissing(programId: string, alts: AlternativesMap) {
@@ -464,9 +811,19 @@ async function loadProgramFromTables(programId: string, row?: ProgramRow): Promi
       blocks: blocksByDay[d.day_index ?? 0] ?? [],
     }));
 
+  // The description lives only in the json blob (guidance text on templates).
+  let description: string | undefined;
+  if (programRow.json) {
+    try {
+      const parsed = JSON.parse(programRow.json) as { description?: string };
+      if (typeof parsed.description === "string" && parsed.description) description = parsed.description;
+    } catch {}
+  }
+
   return {
     id: programRow.id,
     name: programRow.name,
+    description,
     days,
     createdAt: programRow.created_at ?? isoNow(),
     updatedAt: programRow.updated_at ?? programRow.created_at ?? isoNow(),
@@ -517,9 +874,28 @@ export async function ensurePrograms() {
   await insertDefaultIfMissing("normal", DEFAULT_STANDARD_PROGRAM);
   await insertDefaultIfMissing("back", DEFAULT_BACK_PROGRAM);
   await insertDefaultIfMissing("normal", PPL5_BRYSTFOKUS_PROGRAM);
+  await insertDefaultIfMissing("normal", NYBEGYNNER3_PROGRAM);
+  await insertDefaultIfMissing("normal", STYRKE4_PROGRAM);
+  await insertDefaultIfMissing("normal", HYPERTROFI4_PROGRAM);
+  await insertDefaultIfMissing("normal", HJEMME3_PROGRAM);
+
+  // One-time rename on installs seeded before the rename; a user-chosen name
+  // (anything other than the old default) is left alone.
+  await getDb().runAsync(
+    `UPDATE programs SET name = ? WHERE id = ? AND name = ?`,
+    [PPL5_BRYSTFOKUS_PROGRAM.name, PPL5_BRYSTFOKUS_ID, PPL5_BRYSTFOKUS_LEGACY_NAME]
+  );
 
   await seedProgramAlternativesIfMissing(PPL5_BRYSTFOKUS_ID, PPL5_BRYSTFOKUS_ALTERNATIVES);
   await seedProgramTargetsIfMissing(PPL5_BRYSTFOKUS_PROGRAM, PPL5_BRYSTFOKUS_TARGETS);
+  await seedProgramAlternativesIfMissing(NYBEGYNNER3_ID, NYBEGYNNER3_ALTERNATIVES);
+  await seedProgramTargetsIfMissing(NYBEGYNNER3_PROGRAM, NYBEGYNNER3_TARGETS);
+  await seedProgramAlternativesIfMissing(STYRKE4_ID, STYRKE4_ALTERNATIVES);
+  await seedProgramTargetsIfMissing(STYRKE4_PROGRAM, STYRKE4_TARGETS);
+  await seedProgramAlternativesIfMissing(HYPERTROFI4_ID, HYPERTROFI4_ALTERNATIVES);
+  await seedProgramTargetsIfMissing(HYPERTROFI4_PROGRAM, HYPERTROFI4_TARGETS);
+  await seedProgramAlternativesIfMissing(HJEMME3_ID, HJEMME3_ALTERNATIVES);
+  await seedProgramTargetsIfMissing(HJEMME3_PROGRAM, HJEMME3_TARGETS);
 
   await ensureProgramTablesForAll();
 

@@ -839,6 +839,14 @@ export default function ProgramScreen() {
                     </View>
                   </View>
                   <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>{t("common.days")}: {p.days.length}</Text>
+                  {p.description ? (
+                    <Text
+                      style={{ color: theme.muted, fontSize: 12, marginTop: 4, lineHeight: 17 }}
+                      numberOfLines={isActive ? undefined : 2}
+                    >
+                      {p.description}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}
