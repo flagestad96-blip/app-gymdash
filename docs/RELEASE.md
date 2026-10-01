@@ -179,3 +179,39 @@ notes brukerne faktisk ser. Derfor er `appVersionSource: "local"` satt i
 For å gå til produksjon senere: endre `track` i `eas.json` til `production`
 (eller kjør submit med `--track production`) etter at produksjonstilgang er
 innvilget.
+
+---
+
+## iOS (oppsett klart, krever Apple-konto)
+
+Konfigurasjonen for iOS-bygg er på plass (sept 2026):
+
+- `app.json`: `ios.bundleIdentifier` (`com.marius.gymdash`), `ios.buildNumber`
+  (følger `versionCode` i lås — bumpes av `bump-version.js`, håndheves av
+  `check-version`), kamera-/bibliotektekster via `expo-image-picker`-pluginen,
+  og `ITSAppUsesNonExemptEncryption: false` (appen er offline; slipper
+  krypterings-spørsmålet ved hver opplasting).
+- `eas.json`: `preview` bygger iOS-simulator-build, `production` bygger
+  store-build.
+- Native kompatibilitet: `modules/rest-countdown` er deklarert
+  `platforms: ["android"]` (autolinkes ikke på iOS; JS-siden er no-op via
+  `requireOptionalNativeModule`), ExactAlarmBanner er Platform-gated, og
+  auto-backup bruker dokumentmappen på iOS.
+
+**Gjenstår (krever Apple Developer-konto, 99 USD/år):**
+
+```bash
+# 1. Opprett/registrer Apple-konto og logg inn
+npx eas credentials -p ios        # setter opp signering (EAS håndterer certs)
+
+# 2. Simulator-build (gratis å teste i Xcode Simulator på en Mac)
+npx eas build -p ios --profile preview
+
+# 3. Store-build + TestFlight
+npx eas build -p ios --profile production
+npx eas submit -p ios             # krever App Store Connect-app opprettet først
+```
+
+NB: Røyk-test spesielt på iOS før TestFlight: hvilevarsler (uten native
+nedtellings-modul), filbasert backup/eksport (share sheet), haptics, og
+safe-area på skjermer med dynamic island.

@@ -81,6 +81,8 @@ if (mode === "sync") {
 if (mode !== "sync") {
   app.expo.version = nextVersion;
   app.expo.android.versionCode = (app.expo.android.versionCode || 0) + 1;
+  // iOS buildNumber tracks versionCode so both stores bump in lockstep.
+  if (app.expo.ios) app.expo.ios.buildNumber = String(app.expo.android.versionCode);
   writeJson("app.json", app);
 }
 

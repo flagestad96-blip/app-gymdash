@@ -9,7 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.marius.gymdash",
+      "buildNumber": "17",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.marius.gymdash",
@@ -46,7 +51,14 @@
       "expo-sqlite",
       "expo-localization",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Gymdash uses your photo library so you can attach progress photos to body measurements.",
+          "cameraPermission": "Gymdash uses the camera so you can take progress photos for body measurements."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

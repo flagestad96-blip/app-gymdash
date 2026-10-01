@@ -54,6 +54,15 @@ const versionCode = app?.expo?.android?.versionCode;
 if (!appVersion) fail("app.json: expo.version is missing");
 if (!Number.isInteger(versionCode)) fail("app.json: expo.android.versionCode is missing or not an integer");
 
+// 1b. iOS buildNumber tracks android versionCode (both bump via bump-version.js)
+const buildNumber = app?.expo?.ios?.buildNumber;
+if (buildNumber != null && buildNumber !== String(versionCode)) {
+  fail(
+    `iOS buildNumber (${buildNumber}) ≠ android versionCode (${versionCode}).\n` +
+      `  Run: npm run bump-version <patch|minor|major>   (or align app.json manually)`,
+  );
+}
+
 // 2. package.json must match
 const pkg = readJson("package.json");
 if (pkg.version !== appVersion) {
