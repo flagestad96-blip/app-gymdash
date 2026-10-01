@@ -25,12 +25,12 @@ export default function RpeHistogram({ data }: RpeHistogramProps) {
   const theme = useTheme();
   const { t } = useI18n();
 
-  const rows: Array<{
+  const rows: {
     labelKey: string;
     pct: number;
     color: string;
     range: { min: number; max: number };
-  }> = [
+  }[] = [
     { labelKey: "analysis.rpeLight",    pct: data.light,    color: theme.success,              range: HEALTHY_RANGES.light },
     { labelKey: "analysis.rpeModerate", pct: data.moderate, color: theme.warn, range: HEALTHY_RANGES.moderate },
     { labelKey: "analysis.rpeHard",     pct: data.hard,     color: theme.danger,               range: HEALTHY_RANGES.hard },

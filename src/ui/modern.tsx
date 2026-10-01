@@ -655,7 +655,7 @@ export function UndoToast({ visible, message, undoLabel, onUndo, onDismiss, bott
       translateY.setValue(100);
       opacity.setValue(0);
     }
-  }, [visible]);
+  }, [visible, translateY, opacity, theme.animation.fast, theme.animation.normal, theme.animation.spring.damping, theme.animation.spring.stiffness]);
 
   if (!visible) return null;
 

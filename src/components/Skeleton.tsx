@@ -1,6 +1,6 @@
 // src/components/Skeleton.tsx — Skeleton loading placeholders
 import React, { useEffect, useRef } from "react";
-import { View, Animated, StyleSheet } from "react-native";
+import { View, Animated } from "react-native";
 import { useTheme } from "../theme";
 
 /**

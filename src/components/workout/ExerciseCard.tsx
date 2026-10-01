@@ -18,9 +18,9 @@ import AddSetButton from "./AddSetButton";
 import SetTable from "./SetTable";
 import { warmupRamp, barWeightForEquipment } from "../../warmupRamp";
 import { SLOT_COLORS, SLOT_LABELS, workingCount, type SupersetSlotKey, type SupersetLogPhase } from "./superset";
-export type { SupersetSlotKey, SupersetLogPhase };
 import type { ExerciseTarget } from "../../progressionStore";
 import { getRecentSessions, type ExerciseSession } from "../../exerciseHistory";
+export type { SupersetSlotKey, SupersetLogPhase };
 
 export type InputState = {
   weight: string;

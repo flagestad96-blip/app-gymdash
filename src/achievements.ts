@@ -4,7 +4,7 @@
 // Lazy import to avoid circular dependency during db initialization
 function getDbHelpers() {
   // Dynamic import happens at runtime, not module load time
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require breaks the achievements ↔ db cycle
   return require("./db") as typeof import("./db");
 }
 
@@ -689,7 +689,6 @@ export async function getAchievementProgress(): Promise<{
   byTier: Record<AchievementTier, { total: number; unlocked: number }>;
 }> {
   await getDbHelpers().ensureDb();
-  const db = getDbHelpers().getDb();
 
   const all = await getAllAchievements();
   const unlocked = await getUserAchievements();

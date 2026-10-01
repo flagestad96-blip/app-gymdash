@@ -5,7 +5,6 @@ import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { listTemplates, deleteTemplate, type WorkoutTemplate } from "../../templates";
 import { displayNameFor } from "../../exerciseLibrary";
-import { Btn } from "../../ui";
 
 type Props = {
   visible: boolean;

@@ -10,20 +10,17 @@ import {
   Keyboard,
   Platform,
   Modal,
-  Switch,
   Alert,
   Animated,
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../../src/theme";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync, computeBodyweightLoad } from "../../src/db";
 import {
   displayNameFor,
-  defaultIncrementFor,
   tagsFor,
   alternativesFor,
   getExercise,
@@ -31,23 +28,19 @@ import {
   type ExerciseTag,
   type Equipment,
   isBodyweight,
-  bodyweightFactorFor,
   isPerSideExercise,
 } from "../../src/exerciseLibrary";
-import ProgramStore from "../../src/programStore";
-import type { Program, ProgramBlock, AlternativesMap } from "../../src/programStore";
-import ProgressionStore, {
-  defaultTargetForExercise,
-  type ExerciseTarget,
-  type TargetsByDay,
-} from "../../src/progressionStore";
+import * as ProgramStore from "../../src/programStore";
+import type { Program, AlternativesMap } from "../../src/programStore";
+import * as ProgressionStore from "../../src/progressionStore";
+import type { ExerciseTarget, TargetsByDay } from "../../src/progressionStore";
 import { SkeletonExerciseCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import HintBanner from "../../src/components/HintBanner";
 import ExactAlarmBanner from "../../src/components/ExactAlarmBanner";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
-import { setupNotificationHandler, cancelAllRestNotifications, ensureRestNotificationPermission } from "../../src/notifications";
-import { useRestTimer, mmss, recommendedRestSeconds } from "../../src/restTimerContext";
+import { setupNotificationHandler, ensureRestNotificationPermission } from "../../src/notifications";
+import { useRestTimer, mmss } from "../../src/restTimerContext";
 import { checkAndUnlockAchievements, type Achievement } from "../../src/achievements";
 import { loadPrRecords, checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, type PrMap } from "../../src/prEngine";
 import { getAllNotes, setNote, deleteNote } from "../../src/exerciseNotes";
@@ -57,7 +50,6 @@ import type { GymLocation } from "../../src/gymStore";
 import GymPickerModal from "../../src/components/modals/GymPickerModal";
 import { useI18n } from "../../src/i18n";
 import { useWeightUnit } from "../../src/units";
-import { calculatePlates } from "../../src/plateCalculator";
 
 // Extracted components
 import { SingleExerciseCard, SupersetCard } from "../../src/components/workout/ExerciseCard";
@@ -71,7 +63,7 @@ import type { InputState, LastSetInfo } from "../../src/components/workout/Exerc
 import type { SetRow } from "../../src/components/workout/SetEntryRow";
 import PlateCalcModal from "../../src/components/modals/PlateCalcModal";
 import ExerciseSwapModal from "../../src/components/modals/ExerciseSwapModal";
-import { advanceWeek, getPeriodization, isDeloadWeek, deloadWeight, type Periodization } from "../../src/periodization";
+import { advanceWeek, getPeriodization, isDeloadWeek, type Periodization } from "../../src/periodization";
 import { saveWorkoutAsTemplate } from "../../src/templates";
 import TemplatePickerModal from "../../src/components/modals/TemplatePickerModal";
 import ExerciseAddModal from "../../src/components/modals/ExerciseAddModal";
@@ -527,7 +519,7 @@ export default function Logg() {
       } catch {
         setPeriodization(null);
       }
-    } catch (err) {
+    } catch {
       setProgramMode("normal");
       setProgram(ProgramStore.DEFAULT_STANDARD_PROGRAM);
       setAlternatives({});
@@ -562,17 +554,21 @@ export default function Logg() {
       // Skip if not ready yet (initial load handles it)
       if (!ready) return () => {};
       // Silently refresh data on tab re-focus without resetting ready state
-      let alive = true;
       loadSession().catch(() => {});
-      return () => {
-        alive = false;
-      };
+      return () => {};
     }, [ready, loadSession])
   );
 
   const dayPlan = useMemo(() => {
     return program?.days[activeDayIndex] ?? null;
   }, [program, activeDayIndex]);
+
+  const resolveSelectedExId = useCallback((baseExId: string) => {
+    const altList = alternatives[activeDayIndex]?.[baseExId] ?? [];
+    const selected = selectedAlternatives[baseExId];
+    if (selected && (selected === baseExId || altList.includes(selected))) return selected;
+    return baseExId;
+  }, [alternatives, selectedAlternatives, activeDayIndex]);
 
   const renderBlocks = useMemo<RenderBlock[]>(() => {
     const blocks: RenderBlock[] = [];
@@ -608,7 +604,7 @@ export default function Logg() {
       mergeManualSupersets(splitProgramSupersets(blocks, splitSupersets), manualSupersets),
       supersetRotations,
     );
-  }, [dayPlan, alternatives, selectedAlternatives, activeDayIndex, adHocExercises, manualSupersets, splitSupersets, supersetRotations]);
+  }, [dayPlan, resolveSelectedExId, adHocExercises, manualSupersets, splitSupersets, supersetRotations]);
 
   const exerciseIds = useMemo(() => {
     const list: string[] = [];
@@ -1224,32 +1220,20 @@ export default function Logg() {
       }
       return next;
     });
-  }, [lastSets]);
+  }, [lastSets, wu]);
 
   const isDeload = periodization ? isDeloadWeek(periodization) : false;
 
   function getTargetFor(exId: string) {
     const target = targets[activeDayIndex]?.[exId];
-    const base = target ?? { programId: program?.id ?? "", exerciseId: exId, dayIndex: activeDayIndex, repMin: defaultTargetForExercise(exId).repMin, repMax: defaultTargetForExercise(exId).repMax, targetSets: defaultTargetForExercise(exId).targetSets, incrementKg: defaultTargetForExercise(exId).incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
+    const fallbackTarget = ProgressionStore.defaultTargetForExercise(exId);
+    const base = target ?? { programId: program?.id ?? "", exerciseId: exId, dayIndex: activeDayIndex, repMin: fallbackTarget.repMin, repMax: fallbackTarget.repMax, targetSets: fallbackTarget.targetSets, incrementKg: fallbackTarget.incrementKg, updatedAt: "", autoProgress: false } as ExerciseTarget;
     if (isDeload) {
       return { ...base, targetSets: Math.max(1, base.targetSets - 1) };
     }
     return base;
   }
 
-  function getIncrementForExercise(exId: string) {
-    const target = targets[activeDayIndex]?.[exId];
-    if (target && target.incrementKg > 0) return target.incrementKg;
-    const inc = defaultIncrementFor(exId);
-    return inc > 0 ? inc : 2.5;
-  }
-
-  function resolveSelectedExId(baseExId: string) {
-    const altList = alternatives[activeDayIndex]?.[baseExId] ?? [];
-    const selected = selectedAlternatives[baseExId];
-    if (selected && (selected === baseExId || altList.includes(selected))) return selected;
-    return baseExId;
-  }
 
   function setInput(exId: string, field: keyof InputState, value: string) {
     setInputs((prev) => {
@@ -2026,7 +2010,9 @@ export default function Logg() {
   }
 
   // ── Shared callbacks for exercise cards ──
-  const cardCallbacks = useMemo(() => ({
+  // Plain object on purpose: the handlers it wraps are redefined every render
+  // and ExerciseCard isn't memo()'d, so a useMemo here never cached anything.
+  const cardCallbacks = {
     onSetInput: setInput,
     onApplyWeightStep: applyWeightStep,
     onApplyLastSet: applyLastSet,
@@ -2085,9 +2071,7 @@ export default function Logg() {
         });
       } else { setGoalExGoals([]); }
     },
-  }), [setInput, applyWeightStep, applyLastSet, addSetForExercise, addSetMultiple,
-       openEditSet, deleteSet, focusExercise, restTimer, openAltPicker,
-       handleSetAlternativeAsDefault, exerciseNotes, program?.id]);
+  };
 
   const activeGymEquipment = useMemo(() => {
     if (!activeGymId) return null;

@@ -1,22 +1,21 @@
-﻿// app/(tabs)/analysis.tsx
+// app/(tabs)/analysis.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, ScrollView, Modal, FlatList, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
-import { LinearGradient } from "expo-linear-gradient";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync, listBodyMetrics, type BodyMetricRow } from "../../src/db";
 import LineChart from "../../src/components/charts/LineChart";
 import MuscleGroupBars, { MUSCLE_GROUPS, primaryMuscleGroups } from "../../src/components/charts/MuscleGroupBars";
 import RpeHistogram from "../../src/components/charts/RpeHistogram";
-import { getStandard, getStandardExerciseIds, hasStandard, getTargetWeights, type StrengthLevel, type Gender } from "../../src/strengthStandards";
+import { getStandard, hasStandard, type StrengthLevel, type Gender } from "../../src/strengthStandards";
 import RadarChart, { type RadarDataPoint } from "../../src/components/charts/RadarChart";
 import { getGoalsForExercise, createGoal, deleteGoal, getCurrentValueForGoal, type ExerciseGoal, type GoalType } from "../../src/goals";
 import { displayNameFor, EXERCISES, searchExercises, resolveExerciseId, isBodyweight, isPerSideExercise } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, SegButton, IconButton, TextField, ListRow, Chip } from "../../src/ui";
-import { useWeightUnit, unitLabel } from "../../src/units";
+import { useWeightUnit } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
 import { addDays, parseLocalDate, weekStartKey, monthKey, fmtRest } from "../../src/analysisHelpers";
 import { epley1RM } from "../../src/metrics";
@@ -84,6 +83,20 @@ function weightForSet(row: RowSet): number | null {
 // Module-level flag - persists across component remounts (tab switches)
 let _analysisTabInitialized = false;
 
+// ── Strength Standards constants ──
+const STRENGTH_LIFT_IDS = ["bench_press", "back_squat", "deadlift", "overhead_press", "barbell_row"] as const;
+const STANDARD_EXERCISE_MAP: Record<string, string> = { back_squat: "squat" };
+
+// ── Muscle Balance Radar constants ──
+const RADAR_GROUPS = ["chest", "back", "shoulders", "biceps", "triceps", "forearms", "quads", "hamstrings"] as const;
+
+// Ideal weekly distribution (target %) — should sum to 100
+const TARGET_PCT: Record<string, number> = {
+  chest: 16, back: 18, shoulders: 14,
+  quads: 16, hamstrings: 14,
+  biceps: 10, triceps: 12, forearms: 4,
+};
+
 export default function Analysis() {
   const theme = useTheme();
   const { t } = useI18n();
@@ -126,7 +139,6 @@ export default function Analysis() {
   const [prevPeriodData, setPrevPeriodData] = useState<{ workouts: number; sets: number; volume: number; bestE1rm: number }>({ workouts: 0, sets: 0, volume: 0, bestE1rm: 0 });
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatusResult | null>(null);
   const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
-  const [analysisProgramId, setAnalysisProgramId] = useState<string | null>(null);
   const [deloadToast, setDeloadToast] = useState(false);
   const deloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (deloadTimerRef.current) clearTimeout(deloadTimerRef.current); }, []);
@@ -176,7 +188,6 @@ export default function Analysis() {
       try {
         const mode = (await getSettingAsync("programMode")) || "normal";
         const progId = await getSettingAsync(`activeProgramId_${mode}`);
-        if (alive) setAnalysisProgramId(progId);
         const result = await computeTrainingStatus(progId);
         if (alive) setTrainingStatus(result);
       } catch {}
@@ -467,7 +478,6 @@ export default function Analysis() {
     const avgReps = filtered.reduce((sum, s) => sum + s.reps, 0) / filtered.length;
 
     // 4-week trend: compare avg e1RM of first 2 weeks vs last 2 weeks
-    const now = new Date();
     const d28 = new Date(); d28.setDate(d28.getDate() - 28);
     const d14 = new Date(); d14.setDate(d14.getDate() - 14);
     const iso28 = isoDateOnly(d28);
@@ -683,7 +693,7 @@ export default function Analysis() {
     const prevMap = prev ? byWeek[prev] ?? {} : {};
 
     const allGroups = [...MUSCLE_GROUPS, "other"];
-    const rows: Array<{ group: string; count: number; delta: number; status: "low" | "ok" | "high" }> = allGroups
+    const rows: { group: string; count: number; delta: number; status: "low" | "ok" | "high" }[] = allGroups
       .map((g) => ({
         group: g,
         count: latestMap[g] ?? 0,
@@ -760,7 +770,7 @@ export default function Analysis() {
       setsByWorkout[row.workout_id].push(row);
     }
 
-    const eligible: Array<{ date: string; avg: number }> = [];
+    const eligible: { date: string; avg: number }[] = [];
     for (const w of workouts) {
       const rows = setsByWorkout[w.id] ?? [];
       if (!rows.length) continue;
@@ -856,9 +866,6 @@ export default function Analysis() {
   }, [sets, workouts]);
 
   // ── Strength Standards ──────────────────────────────────────────────
-  const STRENGTH_LIFT_IDS = ["bench_press", "back_squat", "deadlift", "overhead_press", "barbell_row"] as const;
-  const STANDARD_EXERCISE_MAP: Record<string, string> = { back_squat: "squat" };
-
   const strengthStandardsData = useMemo(() => {
     return STRENGTH_LIFT_IDS.map((exId) => {
       const standardId = STANDARD_EXERCISE_MAP[exId] ?? exId;
@@ -894,15 +901,6 @@ export default function Analysis() {
   }, [bodyMetrics90]);
 
   // ── Muscle Balance Radar (Relative Distribution) ──────────────────
-  const RADAR_GROUPS = ["chest", "back", "shoulders", "biceps", "triceps", "forearms", "quads", "hamstrings"] as const;
-
-  // Ideal weekly distribution (target %) — should sum to 100
-  const TARGET_PCT: Record<string, number> = {
-    chest: 16, back: 18, shoulders: 14,
-    quads: 16, hamstrings: 14,
-    biceps: 10, triceps: 12, forearms: 4,
-  };
-
   const radarData = useMemo((): RadarDataPoint[] => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 7);

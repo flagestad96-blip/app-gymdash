@@ -92,7 +92,6 @@ export default function HistoryScreen() {
     setExerciseFilter(exerciseIdParam);
     setExerciseFilterLabel(displayNameFor(exerciseIdParam));
     setTimePeriod("all");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exerciseIdParam]);
   const [ready, setReady] = useState(false);
 

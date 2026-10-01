@@ -1,4 +1,6 @@
 // Mock DB before imports
+import { getNote, getAllNotes, setNote, deleteNote } from "../exerciseNotes";
+
 const mockGetFirstSync = jest.fn((): any => null);
 const mockGetAllSync = jest.fn((): any[] => []);
 const mockRunAsync = jest.fn(async () => ({ changes: 0, lastInsertRowId: 0 }));
@@ -10,8 +12,6 @@ jest.mock("../db", () => ({
     runAsync: mockRunAsync,
   }),
 }));
-
-import { getNote, getAllNotes, setNote, deleteNote } from "../exerciseNotes";
 
 beforeEach(() => {
   mockGetFirstSync.mockReset().mockReturnValue(null);

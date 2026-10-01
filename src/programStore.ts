@@ -823,7 +823,7 @@ const DURATION_MAX_PLAUSIBLE_MIN = 3 * 60;
 const DURATION_MIN_SAMPLE_SIZE = 2;
 
 export function estimateDurationFromSessions(
-  sessions: Array<{ started_at: string | null; ended_at: string | null }>,
+  sessions: { started_at: string | null; ended_at: string | null }[],
 ): string | null {
   const minutes: number[] = [];
   for (const r of sessions) {

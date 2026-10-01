@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Drawer } from "expo-router/drawer";
 import { usePathname, useRouter } from "expo-router";
 import { DrawerContentScrollView } from "@react-navigation/drawer";
@@ -8,15 +8,15 @@ import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text, View, InteractionManager } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useFonts } from "@expo-google-fonts/inter";
-import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
+import { useFonts , Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
+
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { initDb, getSettingAsync } from "../src/db";
 import { ThemeProvider, useTheme, setPalette, setGlassIntensity, PALETTE_LIST } from "../src/theme";
 import { I18nProvider, loadLocale, useI18n } from "../src/i18n";
 import { AppBackground } from "../src/components/AppBackground";
 import GymdashLogo from "../src/components/GymdashLogo";
-import ProgramStore from "../src/programStore";
+import * as ProgramStore from "../src/programStore";
 import { loadWeightUnit } from "../src/units";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";

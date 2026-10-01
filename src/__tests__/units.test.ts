@@ -1,7 +1,7 @@
 // expo-localization has native bindings; stub it so importing units.ts works in node.
-jest.mock("expo-localization", () => ({ getLocales: () => [{ regionCode: "NO" }] }));
-
 import { toDisplay, toKg, formatWeight, unitLabel } from "../units";
+
+jest.mock("expo-localization", () => ({ getLocales: () => [{ regionCode: "NO" }] }));
 
 describe("weight unit conversion", () => {
   it("toDisplay keeps kg and converts to lbs (1 decimal)", () => {

@@ -1,6 +1,6 @@
 // app/(tabs)/program.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Switch, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, Pressable, ScrollView, FlatList, Modal, Alert, Switch, KeyboardAvoidingView } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
@@ -11,13 +11,14 @@ import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db"
 import { validateImport } from "../../src/programImport";
 import {
   displayNameFor, searchExercises, EXERCISES, EXERCISE_TAGS,
-  type ExerciseTag, type Equipment, type ExerciseDef,
+  type ExerciseTag, type Equipment,
   isCustomExercise, getCustomExercises, createCustomExercise, deleteCustomExercise,
 } from "../../src/exerciseLibrary";
 import BackImpactDot from "../../src/components/BackImpactDot";
-import ProgramStore, { getEstimatedDuration } from "../../src/programStore";
+import * as ProgramStore from "../../src/programStore";
 import type { Program, ProgramBlock, ProgramDay } from "../../src/programStore";
-import ProgressionStore, { defaultTargetForExercise, type TargetsByDay } from "../../src/progressionStore";
+import * as ProgressionStore from "../../src/progressionStore";
+import type { TargetsByDay } from "../../src/progressionStore";
 import { collectDayExercisePairs } from "../../src/programExercises";
 import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, toggleManualDeload, type Periodization } from "../../src/periodization";
 import { shareFile, saveBackupFile } from "../../src/fileSystem";
@@ -245,6 +246,9 @@ export default function ProgramScreen() {
     return activeProgram.days[editingDayIndex] ?? activeProgram.days[0] ?? null;
   }, [activeProgram, editingDayIndex]);
 
+  // customExRefresh is a counter bumped when custom exercises change; it forces
+  // re-reading the module-level cache in getCustomExercises().
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const allExList = useMemo(() => [...EXERCISES, ...getCustomExercises()], [customExRefresh]);
 
   const filteredExercises = useMemo(() => {
@@ -399,7 +403,7 @@ export default function ProgramScreen() {
   function openTargetEditor(exId: string, dayIndex: number) {
     if (!ensureUnlocked()) return;
     const current = targets[dayIndex]?.[exId];
-    const fallback = defaultTargetForExercise(exId);
+    const fallback = ProgressionStore.defaultTargetForExercise(exId);
     setTargetExerciseId(exId);
     setTargetDayIndex(dayIndex);
     setTargetRepMin(current?.repMin ?? fallback.repMin);
@@ -425,7 +429,7 @@ export default function ProgramScreen() {
       repMin,
       repMax,
       targetSets: sets,
-      incrementKg: incrementKg || defaultTargetForExercise(targetExerciseId).incrementKg,
+      incrementKg: incrementKg || ProgressionStore.defaultTargetForExercise(targetExerciseId).incrementKg,
       autoProgress: targetAutoProgress,
     });
     const targetMap = await ProgressionStore.getTargets(activeProgram.id);
@@ -863,7 +867,7 @@ export default function ProgramScreen() {
                     setPreviewDayIdx(idx);
                     setPreviewDuration(null);
                     if (activeProgramId) {
-                      getEstimatedDuration(activeProgramId, idx).then(setPreviewDuration).catch(() => {});
+                      ProgramStore.getEstimatedDuration(activeProgramId, idx).then(setPreviewDuration).catch(() => {});
                     }
                   }}
                   style={{ gap: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.glassBorder, backgroundColor: theme.panel2 }}
@@ -991,7 +995,6 @@ export default function ProgramScreen() {
           <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalGlass, borderRadius: 18, borderWidth: 1, borderColor: theme.glassBorder, padding: 18, gap: 12, maxHeight: "80%" }}>
             {previewDayIdx != null && activeProgram?.days[previewDayIdx] ? (() => {
               const day = activeProgram.days[previewDayIdx];
-              const altMap = alternatives[previewDayIdx] ?? {};
               return (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>

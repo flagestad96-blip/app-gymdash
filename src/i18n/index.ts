@@ -1,18 +1,18 @@
 // src/i18n/index.ts — Re-exports everything so existing imports keep working
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState } from "react";
 import * as Localization from "expo-localization";
 import { getSettingAsync, setSettingAsync } from "../db";
 import { nb, en } from "./merge";
+import type { Locale } from "./types";
 
 export type { TranslationMap } from "./types";
 export type { Locale } from "./types";
-import type { Locale } from "./types";
 
 const translations: Record<Locale, Record<string, string>> = { nb, en };
 
 // ── State ──
 let currentLocale: Locale = "en";
-let listeners: Array<() => void> = [];
+let listeners: (() => void)[] = [];
 
 export function getLocale(): Locale {
   return currentLocale;

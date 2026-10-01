@@ -1,4 +1,4 @@
-﻿// app/(tabs)/calendar.tsx
+// app/(tabs)/calendar.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, ScrollView, Modal, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -79,7 +79,7 @@ export default function CalendarScreen() {
   const [dayMarks, setDayMarks] = useState<Record<string, DayMark>>({});
 
   // Day summary data: exercises + best set per exercise for each workout
-  const [daySummaries, setDaySummaries] = useState<Record<string, Array<{ exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }>>>({});
+  const [daySummaries, setDaySummaries] = useState<Record<string, { exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }[]>>({});
   const [volumeByDate, setVolumeByDate] = useState<Record<string, number>>({});
 
   // Detail modal state
@@ -146,14 +146,14 @@ export default function CalendarScreen() {
       const allSets = await db.getAllAsync<{ workout_id: string; exercise_id: string; weight: number; reps: number }>(
         `SELECT workout_id, exercise_id, weight, reps FROM sets WHERE is_warmup IS NOT 1 ORDER BY workout_id`
       );
-      const byWorkout = new Map<string, Array<{ exercise_id: string; weight: number; reps: number }>>();
+      const byWorkout = new Map<string, { exercise_id: string; weight: number; reps: number }[]>();
       for (const s of allSets ?? []) {
         if (!byWorkout.has(s.workout_id)) byWorkout.set(s.workout_id, []);
         byWorkout.get(s.workout_id)!.push(s);
       }
 
       const typeMap: Record<string, WorkoutType> = {};
-      const summaryMap: Record<string, Array<{ exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }>> = {};
+      const summaryMap: Record<string, { exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }[]> = {};
       const volMap: Record<string, number> = {};
 
       // Group workouts by date for summary
@@ -189,7 +189,7 @@ export default function CalendarScreen() {
         typeMap[date] = classifyWorkout(uniqueIds);
 
         // Build summary: best set per exercise
-        const summary: Array<{ exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }> = [];
+        const summary: { exId: string; name: string; bestWeight: number; bestReps: number; best1rm: number }[] = [];
         for (const [exId, best] of exBest) {
           summary.push({
             exId,
@@ -327,7 +327,7 @@ export default function CalendarScreen() {
 
   // Group detail sets by exercise (preserves execution order from created_at sorting)
   const exerciseGroups = useMemo(() => {
-    const groups: Array<{ exId: string; name: string; sets: SetRow[]; orderNum: number; prevOrderNum: number | null }> = [];
+    const groups: { exId: string; name: string; sets: SetRow[]; orderNum: number; prevOrderNum: number | null }[] = [];
     const map = new Map<string, SetRow[]>();
     const order: string[] = [];
     for (const s of detailSets) {
@@ -386,7 +386,7 @@ export default function CalendarScreen() {
     const first = startOfMonth(year, monthIdx);
     const startOffset = (first.getDay() + 6) % 7; // monday first
 
-    const cells: Array<{ date: string | null; label: string }> = [];
+    const cells: { date: string | null; label: string }[] = [];
     for (let i = 0; i < startOffset; i += 1) cells.push({ date: null, label: "" });
     for (let d = 1; d <= count; d += 1) {
       const date = new Date(year, monthIdx, d);

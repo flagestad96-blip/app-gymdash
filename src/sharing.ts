@@ -1,5 +1,5 @@
 // src/sharing.ts — Social sharing utilities
-import { Share, Platform } from "react-native";
+import { Share } from "react-native";
 import { ensureDb, getDb, formatDuration } from "./db";
 import { displayNameFor, isPerSideExercise } from "./exerciseLibrary";
 import { t } from "./i18n";

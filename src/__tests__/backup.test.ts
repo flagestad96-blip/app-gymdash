@@ -1,4 +1,6 @@
 // Mock DB before imports
+import { exportFullBackup, importBackup, CURRENT_SCHEMA_VERSION } from "../backup";
+
 const mockGetAllAsync = jest.fn(async (): Promise<any[]> => []);
 const mockGetFirstAsync = jest.fn(async (): Promise<any> => null);
 const mockRunAsync = jest.fn(async () => ({ changes: 0, lastInsertRowId: 0 }));
@@ -18,8 +20,6 @@ jest.mock("../exerciseLibrary", () => ({
   displayNameFor: (id: string) => id,
   resolveExerciseId: (name: string) => name,
 }));
-
-import { exportFullBackup, importBackup, CURRENT_SCHEMA_VERSION } from "../backup";
 
 beforeEach(() => {
   mockGetAllAsync.mockReset().mockResolvedValue([]);

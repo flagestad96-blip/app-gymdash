@@ -1,6 +1,12 @@
 // src/exerciseLibrary.ts
 import { uid } from "./storage";
 
+// Lazy-imported to avoid require cycle: exerciseLibrary -> db -> exerciseLibrary
+function getDbModule() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require breaks the db ↔ exerciseLibrary cycle
+  return require("./db") as typeof import("./db");
+}
+
 export type ExerciseTag =
   | "chest"
   | "back"
@@ -1907,7 +1913,7 @@ export async function _loadCustomExercisesFromDb(db: any): Promise<void> {
 }
 
 export async function loadCustomExercises(): Promise<void> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
+  const { ensureDb, getDb } = getDbModule();
   await ensureDb();
   await _loadCustomExercisesFromDb(getDb());
 }
@@ -1921,7 +1927,7 @@ export async function createCustomExercise(args: {
   bodyweightFactor?: number;
   isPerSide?: boolean;
 }): Promise<string> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
+  const { ensureDb, getDb } = getDbModule();
   await ensureDb();
   const id = uid("custom");
   await getDb().runAsync(
@@ -1955,7 +1961,7 @@ export async function updateCustomExercise(
     isPerSide?: boolean;
   }
 ): Promise<void> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
+  const { ensureDb, getDb } = getDbModule();
   await ensureDb();
   const db = getDb();
   const cols = [
@@ -1976,7 +1982,7 @@ export async function updateCustomExercise(
 }
 
 export async function deleteCustomExercise(id: string): Promise<{ ok: boolean; reason?: string }> {
-  const { ensureDb, getDb } = require("./db") as typeof import("./db");
+  const { ensureDb, getDb } = getDbModule();
   await ensureDb();
   const db = getDb();
   // Check usage in programs

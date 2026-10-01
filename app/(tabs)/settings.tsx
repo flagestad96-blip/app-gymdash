@@ -1,4 +1,4 @@
-﻿// app/(tabs)/settings.tsx
+// app/(tabs)/settings.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -18,8 +18,8 @@ import GymLocationsCard from "../../src/components/settings/GymLocationsCard";
 import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import { useRestTimer } from "../../src/restTimerContext";
-import ProgramStore from "../../src/programStore";
-import { displayNameFor, resolveExerciseId } from "../../src/exerciseLibrary";
+import * as ProgramStore from "../../src/programStore";
+import { displayNameFor } from "../../src/exerciseLibrary";
 import { exportFullBackup, importBackup, exportCsv, type ImportMode } from "../../src/backup";
 import { saveBackupFile, shareFile, pickBackupFile } from "../../src/fileSystem";
 import {
@@ -40,7 +40,7 @@ import * as Clipboard from "expo-clipboard";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
-import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNotes";
+import { patchNotes, CURRENT_VERSION } from "../../src/patchNotes";
 import { uid, isoDateOnly } from "../../src/storage";
 import { clampInt } from "../../src/format";
 import { listGyms, createGym, updateGym, deleteGym, type GymLocation } from "../../src/gymStore";
@@ -201,6 +201,8 @@ export default function Settings() {
 
   useEffect(() => {
     loadSettings().then(() => setReady(true));
+    // Run once on mount; loadSettings is a plain component function and stable enough for that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Notification permission is now loaded inside loadSettings()
@@ -260,7 +262,7 @@ export default function Settings() {
       const uri = await saveBackupFile(json);
       await shareFile(uri);
       Alert.alert(t("settings.backupComplete"));
-    } catch (err) {
+    } catch {
       Alert.alert(t("common.error"), t("settings.couldNotExport"));
     } finally {
       setBackupBusy(false);
@@ -368,7 +370,7 @@ export default function Settings() {
       const json = await exportFullBackup();
       setBackupText(json);
       setBackupOpen("export");
-    } catch (err) {
+    } catch {
       Alert.alert(t("common.error"), t("settings.couldNotExport"));
     } finally {
       setBackupBusy(false);
@@ -390,7 +392,7 @@ export default function Settings() {
         [program.id]
       );
 
-      const altList: Array<{ dayIndex: number; exerciseId: string; alternatives: string[] }> = [];
+      const altList: { dayIndex: number; exerciseId: string; alternatives: string[] }[] = [];
       for (const dayKey of Object.keys(alternatives)) {
         const diParsed = parseInt(dayKey, 10);
         const di = Number.isFinite(diParsed) ? diParsed : 0;

@@ -4,7 +4,6 @@ import { View, Text, ScrollView, Pressable } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { ensureDb, getDb, getSettingAsync, formatDuration } from "../../src/db";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
@@ -83,7 +82,6 @@ export default function HomeScreen() {
   const [activeGymName, setActiveGymName] = useState<string | null>(null);
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatusResult | null>(null);
   const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
-  const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
   const [deloadToast, setDeloadToast] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState<{ id: string; startedAt: string | null; dayLabel: string } | null>(null);
 
@@ -335,7 +333,6 @@ export default function HomeScreen() {
       try {
         const mode = (await getSettingAsync("programMode")) || "normal";
         const progId = await getSettingAsync(`activeProgramId_${mode}`);
-        if (alive) setActiveProgramId(progId);
         const result = await computeTrainingStatus(progId);
         if (alive) setTrainingStatus(result);
       } catch {}

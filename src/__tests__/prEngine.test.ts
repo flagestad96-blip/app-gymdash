@@ -1,4 +1,6 @@
 // Mock DB before imports
+import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, recomputeVolumePRForExercise } from "../prEngine";
+
 const mockGetAllSync = jest.fn((): any[] => []);
 const mockGetFirstSync = jest.fn((): any => null);
 const mockRunAsync = jest.fn(async () => ({ changes: 0, lastInsertRowId: 0 }));
@@ -17,8 +19,6 @@ jest.mock("../exerciseLibrary", () => ({
   isBodyweight: (id: string) => id === "pull_up",
   isPerSideExercise: (id: string) => id === "dumbbell_curl",
 }));
-
-import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, recomputeVolumePRForExercise } from "../prEngine";
 
 beforeEach(() => {
   mockGetAllSync.mockReset().mockReturnValue([]);

@@ -1,6 +1,6 @@
 // src/components/charts/RadarChart.tsx — SVG radar/spider chart for muscle balance
 import React from "react";
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import Svg, { Polygon, Line, Circle, Text as SvgText } from "react-native-svg";
 import { useTheme } from "../../theme";
 

@@ -481,7 +481,7 @@ export async function importBackup(
 
     await db.execAsync("COMMIT");
     return { success: true };
-  } catch (err) {
+  } catch {
     try {
       const db = getDb();
       await db.execAsync("ROLLBACK");

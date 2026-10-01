@@ -3,7 +3,7 @@ import * as SQLite from "expo-sqlite";
 import { Platform } from "react-native";
 // Lazy-imported to avoid require cycle: db -> exerciseLibrary -> db
 function getExerciseLibrary() {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require breaks the db ↔ exerciseLibrary cycle
   return require("./exerciseLibrary") as typeof import("./exerciseLibrary");
 }
 
@@ -34,14 +34,6 @@ export type ProgramMode = "normal" | "back";
 export type BodyMetricRow = { date: string; weight_kg: number; note?: string | null; photo_uri?: string | null };
 
 let _inited = globalState.inited;
-
-function parseDayIndexFromKey(key?: string | null): number | null {
-  if (!key) return null;
-  const match = String(key).match(/day_(\d+)/i);
-  if (!match) return null;
-  const n = Number(match[1]) - 1;
-  return Number.isFinite(n) ? n : null;
-}
 
 function parseIsoMs(iso?: string | null): number {
   if (!iso) return NaN;
@@ -168,11 +160,6 @@ function runSplitWorkoutRepairOnce() {
 
 function setWebInfo(persistent: boolean, note: string) {
   globalState.webInfo = { persistent, note };
-}
-
-function disableOpfs(note: string) {
-  (globalState as unknown as { __gymdash_opfs_disabled__?: boolean }).__gymdash_opfs_disabled__ = true;
-  setWebInfo(false, note);
 }
 
 function createNoopDb(): SQLite.SQLiteDatabase {
@@ -847,6 +834,7 @@ export async function deleteWorkout(workoutId: string): Promise<void> {
   // Re-compute PRs for affected exercises. Lazy require avoids the
   // db.ts ↔ prEngine circular import (prEngine imports getDb from here).
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require breaks the db ↔ prEngine cycle
     const { recomputePRForExercise } = require("./prEngine") as typeof import("./prEngine");
     for (const r of affected ?? []) {
       if (r.exercise_id && r.program_id) {

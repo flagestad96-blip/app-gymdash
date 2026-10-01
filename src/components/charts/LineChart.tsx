@@ -89,7 +89,7 @@ function LineChart({
       indices.push(Math.round((i * (labels.length - 1)) / (xLabelCount - 1)));
     }
     return indices;
-  }, [labels.length, xLabelCount]);
+  }, [labels, xLabelCount]);
 
   if (values.length === 0) {
     return (

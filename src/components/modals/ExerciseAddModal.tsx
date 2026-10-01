@@ -1,11 +1,11 @@
 // src/components/modals/ExerciseAddModal.tsx — Add ad-hoc exercise to workout
 import React, { useState, useMemo, useEffect } from "react";
-import { View, Text, Pressable, Modal, FlatList, Keyboard, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, Pressable, Modal, FlatList, Keyboard, KeyboardAvoidingView } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme";
 import { useI18n } from "../../i18n";
 import { TextField } from "../../ui";
-import { searchExercises, displayNameFor, getExercise } from "../../exerciseLibrary";
+import { searchExercises, getExercise } from "../../exerciseLibrary";
 import type { Equipment } from "../../exerciseLibrary";
 import BackImpactDot from "../BackImpactDot";
 

@@ -111,7 +111,6 @@ export function RestTimerProvider({ children }: Props) {
   const [restDurationSec, setRestDurationSec] = useState<number>(120);
   const [restVibrate, setRestVibrateState] = useState(false);
   const [restHaptics, setRestHapticsState] = useState(true);
-  const [restNotificationId, setRestNotificationId] = useState<string | null>(null);
   const [exerciseRestOverrides, setExerciseRestOverrides] = useState<Record<string, number>>({});
   const [restPresets, setRestPresets] = useState<number[]>([60, 90, 120, 150, 180]);
   const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
@@ -259,7 +258,6 @@ export function RestTimerProvider({ children }: Props) {
         restDoneRef.current = true;
         setRestRunning(false);
         setRestEndsAt(null);
-        setRestNotificationId(null);
         setRestPhase("normal");
         setRestPhaseLabel(null);
         setSettingAsync("restEndsAt", "").catch(() => {});
@@ -290,7 +288,6 @@ export function RestTimerProvider({ children }: Props) {
             restDoneRef.current = true;
             setRestRunning(false);
             setRestEndsAt(null);
-            setRestNotificationId(null);
             setRestPhase("normal");
             setRestPhaseLabel(null);
             setSettingAsync("restEndsAt", "").catch(() => {});
@@ -410,7 +407,6 @@ export function RestTimerProvider({ children }: Props) {
         hideRestCountdownNotification();
       })
       .catch(() => {});
-    setRestNotificationId(null);
   }, [restSeconds]);
 
   const startRestTimer = useCallback(
@@ -446,8 +442,7 @@ export function RestTimerProvider({ children }: Props) {
           if (seq !== notifSeqRef.current) return;
           await cancelAllRestTimerNotifications();
           if (seq !== notifSeqRef.current) return;
-          const notificationId = await scheduleRestNotification(remaining);
-          setRestNotificationId(notificationId);
+          await scheduleRestNotification(remaining);
           // Live countdown in the shade for the same window. Uses `end` (not
           // schedule time), so ±15s adjustments reposition it correctly.
           showRestCountdownNotification(end);

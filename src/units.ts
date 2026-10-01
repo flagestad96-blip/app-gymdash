@@ -1,5 +1,5 @@
 // src/units.ts — Weight unit conversion + hook
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import * as Localization from "expo-localization";
 import { getSettingAsync, setSettingAsync } from "./db";
 
@@ -86,12 +86,13 @@ export function useWeightUnit() {
     };
   }, []);
 
-  return {
+  // Stable identity per unit so the hook result can be used in dependency arrays.
+  return useMemo(() => ({
     unit,
     setUnit: setWeightUnit,
     toDisplay: (kg: number) => toDisplay(kg, unit),
     toKg: (value: number) => toKg(value, unit),
     formatWeight: (kg: number) => formatWeight(kg, unit),
     unitLabel: () => unitLabel(unit),
-  };
+  }), [unit]);
 }

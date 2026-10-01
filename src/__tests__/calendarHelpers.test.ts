@@ -1,5 +1,7 @@
 // Mock the exercise library so classifyWorkout is deterministic and not coupled
 // to real library ids/tags.
+import { classifyWorkout, daysInMonth, startOfMonth, formatTime } from "../calendarHelpers";
+
 jest.mock("../exerciseLibrary", () => ({
   tagsFor: (id: string) => {
     const map: Record<string, string[]> = {
@@ -16,8 +18,6 @@ jest.mock("../exerciseLibrary", () => ({
     return map[id] ?? [];
   },
 }));
-
-import { classifyWorkout, daysInMonth, startOfMonth, formatTime } from "../calendarHelpers";
 
 describe("classifyWorkout", () => {
   it("returns other for no exercises / untagged", () => {
