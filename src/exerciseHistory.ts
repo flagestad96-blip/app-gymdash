@@ -29,10 +29,11 @@ export async function getRecentSessions(
       const params = excludeWorkoutId
         ? [exerciseId, gymId, excludeWorkoutId, limit]
         : [exerciseId, gymId, limit];
+      // Warmup-only sessions are skipped so they don't crowd out real ones in LIMIT.
       workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
         `SELECT DISTINCT s.workout_id, w.date
          FROM sets s JOIN workouts w ON s.workout_id = w.id
-         WHERE s.exercise_id = ? AND w.gym_id = ?${excludeClause}
+         WHERE s.exercise_id = ? AND w.gym_id = ? AND s.is_warmup IS NOT 1${excludeClause}
          ORDER BY w.date DESC
          LIMIT ?`,
         params
@@ -44,7 +45,7 @@ export async function getRecentSessions(
         workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
           `SELECT DISTINCT s.workout_id, w.date
            FROM sets s JOIN workouts w ON s.workout_id = w.id
-           WHERE s.exercise_id = ?${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
+           WHERE s.exercise_id = ? AND s.is_warmup IS NOT 1${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
            ORDER BY w.date DESC
            LIMIT ?`,
           excludeWorkoutId ? [exerciseId, excludeWorkoutId, limit] : [exerciseId, limit]
@@ -55,7 +56,7 @@ export async function getRecentSessions(
       workoutRows = db.getAllSync<{ workout_id: string; date: string }>(
         `SELECT DISTINCT s.workout_id, w.date
          FROM sets s JOIN workouts w ON s.workout_id = w.id
-         WHERE s.exercise_id = ?${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
+         WHERE s.exercise_id = ? AND s.is_warmup IS NOT 1${excludeWorkoutId ? " AND s.workout_id != ?" : ""}
          ORDER BY w.date DESC
          LIMIT ?`,
         excludeWorkoutId ? [exerciseId, excludeWorkoutId, limit] : [exerciseId, limit]

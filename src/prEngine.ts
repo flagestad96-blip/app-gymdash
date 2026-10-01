@@ -54,6 +54,8 @@ export type CheckSetPRsParams = {
   currentVolumeRecord: PrRecord | undefined;
   isBw: boolean;
   estTotalLoadKg: number | null | undefined;
+  /** Warmup sets never participate in PRs — the check becomes a no-op. */
+  isWarmup?: boolean;
 };
 
 export type CheckSetPRsResult = {
@@ -63,6 +65,7 @@ export type CheckSetPRsResult = {
 
 export async function checkSetPRs(params: CheckSetPRsParams): Promise<CheckSetPRsResult> {
   const { exerciseId, weight, reps, setId, workoutId, programId, currentVolumeRecord, isBw, estTotalLoadKg } = params;
+  if (params.isWarmup) return { updatedRecords: {}, messages: [] };
   const dateOnly = isoDateOnly();
   const prWeight = isBw && estTotalLoadKg != null ? estTotalLoadKg : weight;
   const e1rm = round1(epley1RM(prWeight, reps));
@@ -209,6 +212,73 @@ export function recomputePRForExercise(
   }
 }
 
+// ── Recompute volume PR for an exercise (full historical scan) ─────────────
+// Best session-total volume across all workouts, same semantics as
+// checkSessionVolumePRs (warmups excluded, bodyweight effective load,
+// per-side ×2). Repairs volume records polluted by historic warmup sets.
+
+export function recomputeVolumePRForExercise(
+  exerciseId: string,
+  programId: string,
+): PrRecord | null {
+  if (!exerciseId || !programId) return null;
+  try {
+    const db = getDb();
+    const isBw = isBodyweight(exerciseId);
+    const perSideMultiplier = isPerSideExercise(exerciseId) ? 2 : 1;
+
+    const rows = db.getAllSync<{
+      workout_id: string; weight: number; reps: number;
+      est_total_load_kg: number | null; date: string;
+    }>(
+      `SELECT s.workout_id, s.weight, s.reps, s.est_total_load_kg, w.date
+       FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       WHERE s.exercise_id = ?
+         AND w.program_id = ?
+         AND (s.is_warmup IS NULL OR s.is_warmup = 0)`,
+      [exerciseId, programId]
+    );
+
+    if (!rows || rows.length === 0) {
+      db.runSync(
+        `DELETE FROM pr_records WHERE exercise_id = ? AND program_id = ? AND type = 'volume'`,
+        [exerciseId, programId]
+      );
+      return null;
+    }
+
+    const volumeByWorkout: Record<string, { vol: number; date: string }> = {};
+    for (const row of rows) {
+      const effectiveWeight = isBw && row.est_total_load_kg != null ? row.est_total_load_kg : (row.weight ?? 0);
+      const prev = volumeByWorkout[row.workout_id] ?? { vol: 0, date: row.date };
+      prev.vol += effectiveWeight * (row.reps ?? 0) * perSideMultiplier;
+      volumeByWorkout[row.workout_id] = prev;
+    }
+
+    let best: { vol: number; date: string } | null = null;
+    for (const entry of Object.values(volumeByWorkout)) {
+      if (!best || entry.vol > best.vol) best = entry;
+    }
+    if (!best || best.vol <= 0) {
+      db.runSync(
+        `DELETE FROM pr_records WHERE exercise_id = ? AND program_id = ? AND type = 'volume'`,
+        [exerciseId, programId]
+      );
+      return null;
+    }
+
+    const value = round1(best.vol);
+    db.runSync(
+      `INSERT OR REPLACE INTO pr_records(exercise_id, type, value, reps, weight, set_id, date, program_id) VALUES(?, 'volume', ?, NULL, NULL, NULL, ?, ?)`,
+      [exerciseId, value, best.date, programId]
+    );
+    return { value, date: best.date, reps: null, weight: null, setId: null };
+  } catch {
+    return null;
+  }
+}
+
 // ── Session volume PR check ────────────────────────────────────────────────
 
 export type SetForVolume = {
@@ -217,6 +287,7 @@ export type SetForVolume = {
   weight: number;
   reps: number;
   est_total_load_kg?: number | null;
+  is_warmup?: number | boolean | null;
 };
 
 export type CheckSessionVolumePRsParams = {
@@ -235,6 +306,7 @@ export async function checkSessionVolumePRs(params: CheckSessionVolumePRsParams)
 
   const volumeByExercise: Record<string, number> = {};
   for (const s of sets) {
+    if (s.is_warmup) continue; // warmup sets never count toward volume PRs
     const exId = s.exercise_id ?? s.exercise_name;
     const isBw = isBodyweight(exId);
     const effectiveWeight = isBw && s.est_total_load_kg != null ? s.est_total_load_kg : (s.weight ?? 0);

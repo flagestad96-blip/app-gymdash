@@ -472,8 +472,10 @@ export async function unlockAchievement(
  */
 async function getWorkoutCount(): Promise<number> {
   const db = getDbHelpers().getDb();
+  // Only workouts with at least one working (non-warmup) set count.
   const row = await db.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(DISTINCT id) as count FROM workouts`
+    `SELECT COUNT(DISTINCT w.id) as count FROM workouts w
+     WHERE EXISTS (SELECT 1 FROM sets s WHERE s.workout_id = w.id AND s.is_warmup IS NOT 1)`
   );
   return row?.count ?? 0;
 }
@@ -509,7 +511,9 @@ async function checkWeightThreshold(exerciseId: string, threshold: number): Prom
 async function getCurrentStreak(): Promise<number> {
   const db = getDbHelpers().getDb();
   const rows = await db.getAllAsync<{ date: string }>(
-    `SELECT DISTINCT date FROM workouts ORDER BY date DESC`
+    `SELECT DISTINCT w.date FROM workouts w
+     WHERE EXISTS (SELECT 1 FROM sets s WHERE s.workout_id = w.id AND s.is_warmup IS NOT 1)
+     ORDER BY w.date DESC`
   );
 
   if (!rows || rows.length === 0) return 0;
@@ -639,7 +643,9 @@ export async function checkAndUnlockAchievements(context: AchievementContext = {
 
       case "weekend_count": {
         const wcRow = await db.getFirstAsync<{ count: number }>(
-          `SELECT COUNT(DISTINCT id) as count FROM workouts WHERE CAST(strftime('%w', date) AS INTEGER) IN (0, 6)`
+          `SELECT COUNT(DISTINCT w.id) as count FROM workouts w
+           WHERE CAST(strftime('%w', w.date) AS INTEGER) IN (0, 6)
+             AND EXISTS (SELECT 1 FROM sets s WHERE s.workout_id = w.id AND s.is_warmup IS NOT 1)`
         );
         shouldUnlock = (wcRow?.count ?? 0) >= achievement.requirementValue;
         break;

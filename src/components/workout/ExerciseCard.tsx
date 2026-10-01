@@ -390,9 +390,8 @@ function ExerciseHalf({
               historySessions.map((session) => {
                 const [, mo, da] = session.date.split("-");
                 const dateLabel = `${parseInt(da)}.${parseInt(mo)}`;
-                // Warmups are shown in the sets line but never picked as "best".
-                const workingSets = session.sets.filter((s) => !s.isWarmup);
-                const displaySets = workingSets.length > 0 ? workingSets : session.sets;
+                // Warmups never count: not in the sets line, never picked as "best".
+                const displaySets = session.sets.filter((s) => !s.isWarmup);
                 if (displaySets.length === 0) return null;
                 const best = displaySets.reduce((a, b) => (a.weight * a.reps >= b.weight * b.reps ? a : b));
                 const setsLine = displaySets.map((s) => `${formatWeight(wu.toDisplay(s.weight))}\u00d7${s.reps}`).join(", ");

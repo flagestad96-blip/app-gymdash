@@ -53,6 +53,7 @@ type HistorySetRow = {
   started_at: string | null;
   day_index: number | null;
   rest_seconds: number | null;
+  is_warmup: number | null;
 };
 
 type SectionItem =
@@ -195,7 +196,7 @@ LIMIT 500`;
     const whereStr = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";
 
     const sql = `SELECT s.id, s.workout_id, s.exercise_id, s.exercise_name, s.set_index,
-       s.weight, s.reps, s.rpe, s.created_at, s.rest_seconds,
+       s.weight, s.reps, s.rpe, s.created_at, s.rest_seconds, s.is_warmup,
        w.date AS workout_date, w.started_at, w.day_index
 FROM sets s
 JOIN workouts w ON s.workout_id = w.id
@@ -256,7 +257,7 @@ LIMIT ?`;
         key,
         workoutDate: sets[0].workout_date,
         workoutId: sets[0].workout_id,
-        setCount: sets.length,
+        setCount: sets.filter((s) => !s.is_warmup).length,
         expanded,
       });
       if (expanded) {
@@ -268,7 +269,7 @@ LIMIT ?`;
 
   const summary = useMemo(() => {
     const workoutIds = new Set(rawResults.map((r) => r.workout_id));
-    return { sets: rawResults.length, workouts: workoutIds.size };
+    return { sets: rawResults.filter((r) => !r.is_warmup).length, workouts: workoutIds.size };
   }, [rawResults]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
@@ -543,6 +544,9 @@ LIMIT ?`;
                       >
                         {exName}
                       </Text>
+                      {s.is_warmup ? (
+                        <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, minWidth: 16 }}>W</Text>
+                      ) : null}
                       <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 13, minWidth: 70 }}>
                         {formatWeight(wu.toDisplay(s.weight))}{"×"}{s.reps}
                       </Text>

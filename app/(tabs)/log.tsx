@@ -771,6 +771,7 @@ export default function Logg() {
     });
     let volumeKg = 0;
     for (const s of workoutSets) {
+      if (s.is_warmup) continue;
       const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
       volumeKg += (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
     }
@@ -1547,14 +1548,15 @@ export default function Logg() {
     const dayCount = Math.max(1, program?.days.length ?? 1);
     const nextIdx = (activeDayIndex + 1) % dayCount;
 
-    // Build summary before clearing state
-    const totalVolume = workoutSets.reduce((sum, s) => {
+    // Build summary before clearing state — warmup sets never count toward stats.
+    const workingSets = workoutSets.filter((s) => !s.is_warmup);
+    const totalVolume = workingSets.reduce((sum, s) => {
       const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
       return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
     }, 0);
-    const exerciseIds = new Set(workoutSets.map((s) => s.exercise_id ?? s.exercise_name));
+    const exerciseIds = new Set(workingSets.map((s) => s.exercise_id ?? s.exercise_name));
     let topE1rm: { name: string; value: number } | null = null;
-    for (const s of workoutSets) {
+    for (const s of workingSets) {
       if (s.weight > 0 && s.reps > 0) {
         const e = round1(epley1RM(s.weight, s.reps));
         if (!topE1rm || e > topE1rm.value) {
@@ -1566,7 +1568,7 @@ export default function Logg() {
     const { dbPrMap, volumePrs: rawVolumePrs } = await checkSessionVolumePRs({
       workoutId: activeWorkoutId ?? "",
       programId,
-      sets: workoutSets,
+      sets: workingSets,
     });
     const volumePrs = rawVolumePrs.map((msg) => {
       const [, exId, vol] = msg.split(":");
@@ -1603,7 +1605,7 @@ export default function Logg() {
 
     setFinishSummary({
       duration: mmss(workoutElapsedSec),
-      totalSets: workoutSets.length,
+      totalSets: workingSets.length,
       totalVolume: round1(wu.toDisplay(totalVolume)),
       exercises: exerciseIds.size,
       topE1rm: topE1rm ? { name: topE1rm.name, value: round1(wu.toDisplay(topE1rm.value)) } : null,
@@ -1771,56 +1773,60 @@ export default function Logg() {
       }
     }
 
-    const programId = program?.id ?? "";
-    const { updatedRecords, messages: rawMsgs } = await checkSetPRs({
-      exerciseId: exId,
-      weight,
-      reps,
-      setId: row.id,
-      workoutId: activeWorkoutId ?? "",
-      programId,
-      currentVolumeRecord: prRecords[exId]?.volume,
-      isBw,
-      estTotalLoadKg: row.est_total_load_kg,
-    });
+    // Warmup sets never count toward stats: no PR check, no "last set" memory,
+    // no achievements or goal progress.
+    if (!row.is_warmup) {
+      const programId = program?.id ?? "";
+      const { updatedRecords, messages: rawMsgs } = await checkSetPRs({
+        exerciseId: exId,
+        weight,
+        reps,
+        setId: row.id,
+        workoutId: activeWorkoutId ?? "",
+        programId,
+        currentVolumeRecord: prRecords[exId]?.volume,
+        isBw,
+        estTotalLoadKg: row.est_total_load_kg,
+      });
 
-    setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
+      setPrRecords((prev) => ({ ...prev, [exId]: updatedRecords }));
 
-    // Track genuine heaviest PRs so the finish summary lists only real records.
-    if (rawMsgs.some((m) => m.startsWith("heaviest:"))) recordSessionPr(exId);
+      // Track genuine heaviest PRs so the finish summary lists only real records.
+      if (rawMsgs.some((m) => m.startsWith("heaviest:"))) recordSessionPr(exId);
 
-    // Convert coded messages to display strings
-    const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
-    const messages: string[] = rawMsgs.map((msg) => {
-      const [type, val] = msg.split(":");
-      const num = Number(val);
-      if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
-      return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
-    });
+      // Convert coded messages to display strings
+      const eaSuffix = isPerSideExercise(exId) ? ` (${t("log.each")})` : "";
+      const messages: string[] = rawMsgs.map((msg) => {
+        const [type, val] = msg.split(":");
+        const num = Number(val);
+        if (type === "heaviest") return t("log.newHeaviest", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
+        return t("log.newE1rm", { weight: formatWeight(wu.toDisplay(num)) + eaSuffix });
+      });
 
-    if (messages.length) {
-      const bannerText = messages.join(" \u00B7 ");
-      setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
-      setTimeout(() => {
-        setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
-      }, 3500);
+      if (messages.length) {
+        const bannerText = messages.join(" \u00B7 ");
+        setPrBanners((prev) => ({ ...prev, [exId]: bannerText }));
+        setTimeout(() => {
+          setPrBanners((prev) => { const next = { ...prev }; if (next[exId] === bannerText) delete next[exId]; return next; });
+        }, 3500);
+      }
+
+      setLastSets((prev) => ({
+        ...prev,
+        [exId]: { weight: row.weight, reps: row.reps, rpe: row.rpe ?? null, created_at: row.created_at, workout_id: row.workout_id },
+      }));
+
+      try {
+        const unlockedAchievements = await checkAndUnlockAchievements({ workoutId: activeWorkoutId, setId: row.id, exerciseId: exId, weight, reps });
+        if (unlockedAchievements.length > 0) setAchievementToast({ visible: true, achievement: unlockedAchievements[0] });
+      } catch (error) { console.error("Failed to check achievements:", error); }
+
+      try {
+        const { autoCheckGoals } = await import("../../src/goals");
+        const programId = program?.id;
+        if (programId) await autoCheckGoals(programId);
+      } catch {}
     }
-
-    setLastSets((prev) => ({
-      ...prev,
-      [exId]: { weight: row.weight, reps: row.reps, rpe: row.rpe ?? null, created_at: row.created_at, workout_id: row.workout_id },
-    }));
-
-    try {
-      const unlockedAchievements = await checkAndUnlockAchievements({ workoutId: activeWorkoutId, setId: row.id, exerciseId: exId, weight, reps });
-      if (unlockedAchievements.length > 0) setAchievementToast({ visible: true, achievement: unlockedAchievements[0] });
-    } catch (error) { console.error("Failed to check achievements:", error); }
-
-    try {
-      const { autoCheckGoals } = await import("../../src/goals");
-      const programId = program?.id;
-      if (programId) await autoCheckGoals(programId);
-    } catch {}
 
     setUndoSet({ row, exerciseId: exId, prSetId: row.id });
     setUndoVisible(true);
@@ -1952,10 +1958,10 @@ export default function Logg() {
       }
       refreshWorkoutSets();
 
-      // PR recalculation after edit
+      // PR recalculation after edit — warmup sets never participate in PRs.
       const exId = editSet.exercise_id ?? editSet.exercise_name;
       const pid = program?.id ?? "";
-      if (exId && pid) {
+      if (exId && pid && !editSet.is_warmup) {
         // 1) Forward check — fires banner if edited values beat the current record
         const { messages: rawMsgs } = await checkSetPRs({
           exerciseId: exId, weight, reps, setId: editSet.id,

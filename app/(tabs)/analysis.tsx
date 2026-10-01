@@ -218,7 +218,7 @@ export default function Analysis() {
       `SELECT s.workout_id, s.exercise_id, s.exercise_name, s.weight, s.reps, s.rpe, s.created_at, w.date as workout_date, s.est_total_load_kg, s.rest_seconds
        FROM sets s
        JOIN workouts w ON s.workout_id = w.id
-       WHERE w.date >= ?
+       WHERE w.date >= ? AND s.is_warmup IS NOT 1
        ORDER BY w.date ASC, s.created_at ASC`,
       [fromDate]
     );
@@ -238,11 +238,11 @@ export default function Analysis() {
         [lastMonthStart, thisMonthStart]
       );
       const prevS = getDb().getFirstSync<{ c: number; vol: number }>(
-        `SELECT COUNT(1) as c, COALESCE(SUM(weight * reps), 0) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ?`,
+        `SELECT COUNT(1) as c, COALESCE(SUM(weight * reps), 0) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup IS NOT 1`,
         [lastMonthStart, thisMonthStart]
       );
       const prevE1rm = getDb().getAllSync<{ weight: number; reps: number; est_total_load_kg: number | null; exercise_id: string | null }>(
-        `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ?`,
+        `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup IS NOT 1`,
         [lastMonthStart, thisMonthStart]
       );
       let bestPrev = 0;

@@ -135,7 +135,7 @@ export default function CalendarScreen() {
     setWorkouts(wList);
 
     const rows = await db.getAllAsync<{ workout_id: string; c: number }>(
-      `SELECT workout_id, COUNT(1) as c FROM sets GROUP BY workout_id`
+      `SELECT workout_id, COUNT(1) as c FROM sets WHERE is_warmup IS NOT 1 GROUP BY workout_id`
     );
     const map: Record<string, number> = {};
     for (const r of rows ?? []) map[r.workout_id] = r.c ?? 0;
@@ -144,7 +144,7 @@ export default function CalendarScreen() {
     // Load exercise IDs per workout for classification + day summaries
     try {
       const allSets = await db.getAllAsync<{ workout_id: string; exercise_id: string; weight: number; reps: number }>(
-        `SELECT workout_id, exercise_id, weight, reps FROM sets ORDER BY workout_id`
+        `SELECT workout_id, exercise_id, weight, reps FROM sets WHERE is_warmup IS NOT 1 ORDER BY workout_id`
       );
       const byWorkout = new Map<string, Array<{ exercise_id: string; weight: number; reps: number }>>();
       for (const s of allSets ?? []) {
@@ -348,22 +348,24 @@ export default function CalendarScreen() {
     return groups;
   }, [detailSets, prevExOrder]);
 
-  // Summary stats
+  // Summary stats — warmup sets never count toward stats (duration still uses all sets).
   const detailSummary = useMemo(() => {
     if (!detailSets.length) return { totalSets: 0, totalVolume: 0, exercises: 0, duration: "" };
-    const totalVolume = detailSets.reduce((sum, s) => {
+    const workingSets = detailSets.filter((s) => !s.is_warmup);
+    const totalVolume = workingSets.reduce((sum, s) => {
       const multiplier = isPerSideExercise(s.exercise_id ?? "") ? 2 : 1;
       return sum + (s.weight ?? 0) * (s.reps ?? 0) * multiplier;
     }, 0);
+    const workingExercises = new Set(workingSets.map((s) => s.exercise_id ?? s.exercise_name));
     const lastSet = detailSets[detailSets.length - 1];
     const endRef = detailWorkout?.ended_at || lastSet?.created_at;
     return {
-      totalSets: detailSets.length,
+      totalSets: workingSets.length,
       totalVolume: Math.round(totalVolume),
-      exercises: exerciseGroups.length,
+      exercises: workingExercises.size,
       duration: formatDuration(detailWorkout?.started_at, endRef),
     };
-  }, [detailSets, detailWorkout, exerciseGroups]);
+  }, [detailSets, detailWorkout]);
 
   const monthDate = useMemo(() => {
     const now = new Date();
@@ -857,7 +859,7 @@ export default function CalendarScreen() {
                           }}
                         >
                           <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12, width: 24 }}>
-                            {sIdx + 1}
+                            {s.is_warmup ? "W" : group.sets.slice(0, sIdx + 1).filter((x) => !x.is_warmup).length}
                           </Text>
                           <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 14, flex: 1 }}>
                             {wu.toDisplay(s.weight ?? 0)}

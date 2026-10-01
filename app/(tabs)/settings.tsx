@@ -44,7 +44,7 @@ import { patchNotes, CURRENT_VERSION, type PatchNote } from "../../src/patchNote
 import { uid, isoDateOnly } from "../../src/storage";
 import { clampInt } from "../../src/format";
 import { listGyms, createGym, updateGym, deleteGym, type GymLocation } from "../../src/gymStore";
-import { recomputePRForExercise } from "../../src/prEngine";
+import { recomputePRForExercise, recomputeVolumePRForExercise } from "../../src/prEngine";
 import { MaterialIcons } from "@expo/vector-icons";
 
 type ProgramMode = "normal" | "back";
@@ -801,6 +801,7 @@ export default function Settings() {
               for (; idx < batchEnd; idx++) {
                 for (const prog of progList) {
                   recomputePRForExercise(exList[idx].exercise_id, prog.id);
+                  recomputeVolumePRForExercise(exList[idx].exercise_id, prog.id);
                 }
               }
               if (idx < exList.length) {

@@ -110,7 +110,7 @@ export default function HomeScreen() {
           );
           const countStats = db.getFirstSync<{ c: number; ex: number }>(
             `SELECT COUNT(1) as c, COUNT(DISTINCT exercise_id) as ex
-             FROM sets WHERE workout_id = ?`,
+             FROM sets WHERE workout_id = ? AND is_warmup IS NOT 1`,
             [w.id]
           );
           const todayVol = (setRows ?? []).reduce((total, row) => {
@@ -132,7 +132,8 @@ export default function HomeScreen() {
       // Week stats — per-side-corrected volume
       try {
         const wsMeta = db.getFirstSync<{ days: number; sets: number }>(
-          `SELECT COUNT(DISTINCT w.date) as days, COUNT(s.id) as sets
+          `SELECT COUNT(DISTINCT w.date) as days,
+                  COUNT(CASE WHEN s.is_warmup IS NOT 1 THEN s.id END) as sets
            FROM workouts w LEFT JOIN sets s ON s.workout_id = w.id
            WHERE w.date >= ?`,
           [monday]
@@ -189,7 +190,7 @@ export default function HomeScreen() {
         const rpeRow = db.getFirstSync<{ avg: number | null }>(
           `SELECT AVG(s.rpe) as avg
            FROM sets s JOIN workouts w ON s.workout_id = w.id
-           WHERE w.date >= ? AND s.rpe IS NOT NULL`,
+           WHERE w.date >= ? AND s.rpe IS NOT NULL AND s.is_warmup IS NOT 1`,
           [monday]
         );
         const avgRpe = rpeRow?.avg != null ? Math.round(rpeRow.avg * 10) / 10 : null;

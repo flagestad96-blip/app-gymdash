@@ -18,7 +18,7 @@ jest.mock("../exerciseLibrary", () => ({
   isPerSideExercise: (id: string) => id === "dumbbell_curl",
 }));
 
-import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise } from "../prEngine";
+import { checkSetPRs, checkSessionVolumePRs, recomputePRForExercise, recomputeVolumePRForExercise } from "../prEngine";
 
 beforeEach(() => {
   mockGetAllSync.mockReset().mockReturnValue([]);
@@ -135,6 +135,17 @@ describe("checkSetPRs", () => {
     expect(sqlStatements.some((s) => s.includes("'heaviest'"))).toBe(true);
     expect(sqlStatements.some((s) => s.includes("'e1rm'"))).toBe(true);
   });
+
+  it("is a no-op for warmup sets", async () => {
+    mockGetAllSync.mockReturnValue([]);
+    mockGetFirstSync.mockReturnValue({ c: 3 });
+
+    const result = await checkSetPRs({ ...baseParams, weight: 999, isWarmup: true });
+
+    expect(result.messages).toHaveLength(0);
+    expect(result.updatedRecords).toEqual({});
+    expect(mockRunAsync).not.toHaveBeenCalled();
+  });
 });
 
 describe("checkSessionVolumePRs", () => {
@@ -232,6 +243,42 @@ describe("checkSessionVolumePRs", () => {
     // Volume record still gets stored, but messages empty (baseline)
     expect(result.volumePrs).toHaveLength(0);
     expect(result.dbPrMap["bench_press"]?.volume).toBeDefined();
+  });
+
+  it("excludes warmup sets from session volume", async () => {
+    const sets = [
+      { exercise_id: "bench_press", exercise_name: "Bench", weight: 40, reps: 10, is_warmup: 1 },
+      { exercise_id: "bench_press", exercise_name: "Bench", weight: 60, reps: 10, is_warmup: 1 },
+      { exercise_id: "bench_press", exercise_name: "Bench", weight: 100, reps: 5 },
+      { exercise_id: "bench_press", exercise_name: "Bench", weight: 100, reps: 5, is_warmup: 0 },
+    ];
+
+    mockGetFirstSync.mockReturnValue({ c: 3 }); // Not baseline
+
+    const result = await checkSessionVolumePRs({
+      workoutId: "w_1",
+      programId: "prog_1",
+      sets,
+    });
+
+    // Only the two working sets count: 100*5 + 100*5 = 1000 (not 2000)
+    expect(result.volumePrs[0]).toContain("1000");
+  });
+
+  it("skips exercises with only warmup sets entirely", async () => {
+    const sets = [
+      { exercise_id: "bench_press", exercise_name: "Bench", weight: 40, reps: 10, is_warmup: 1 },
+    ];
+
+    const result = await checkSessionVolumePRs({
+      workoutId: "w_1",
+      programId: "prog_1",
+      sets,
+    });
+
+    expect(result.volumePrs).toHaveLength(0);
+    expect(result.dbPrMap["bench_press"]).toBeUndefined();
+    expect(mockRunAsync).not.toHaveBeenCalled();
   });
 
   it("returns non-empty messages array for new volume PR", async () => {
@@ -332,6 +379,54 @@ describe("recomputePRForExercise", () => {
   it("returns empty for empty exerciseId or programId", () => {
     expect(recomputePRForExercise("", "prog_1")).toEqual({});
     expect(recomputePRForExercise("bench_press", "")).toEqual({});
+    expect(mockGetAllSync).not.toHaveBeenCalled();
+  });
+});
+
+describe("recomputeVolumePRForExercise", () => {
+  it("picks the best session-total volume across workouts", () => {
+    mockGetAllSync.mockReturnValue([
+      // Workout A: 80*10 + 80*8 = 1440
+      { workout_id: "wA", weight: 80, reps: 10, est_total_load_kg: null, date: "2026-01-01" },
+      { workout_id: "wA", weight: 80, reps: 8, est_total_load_kg: null, date: "2026-01-01" },
+      // Workout B: 100*5 = 500
+      { workout_id: "wB", weight: 100, reps: 5, est_total_load_kg: null, date: "2026-02-01" },
+    ]);
+
+    const result = recomputeVolumePRForExercise("bench_press", "prog_1");
+
+    expect(result?.value).toBe(1440);
+    expect(result?.date).toBe("2026-01-01");
+    const sqlStatements = mockRunSync.mock.calls.map((c: any[]) => c[0] as string);
+    expect(sqlStatements.some((s) => s.includes("'volume'"))).toBe(true);
+  });
+
+  it("applies per-side multiplier for per-side exercises", () => {
+    mockGetAllSync.mockReturnValue([
+      { workout_id: "wA", weight: 20, reps: 10, est_total_load_kg: null, date: "2026-01-01" },
+    ]);
+
+    const result = recomputeVolumePRForExercise("dumbbell_curl", "prog_1");
+
+    // 20*10*2 = 400
+    expect(result?.value).toBe(400);
+  });
+
+  it("deletes the volume record when no working sets exist", () => {
+    mockGetAllSync.mockReturnValue([]);
+
+    const result = recomputeVolumePRForExercise("bench_press", "prog_1");
+
+    expect(result).toBeNull();
+    expect(mockRunSync).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM pr_records"),
+      ["bench_press", "prog_1"]
+    );
+  });
+
+  it("returns null for empty exerciseId or programId", () => {
+    expect(recomputeVolumePRForExercise("", "prog_1")).toBeNull();
+    expect(recomputeVolumePRForExercise("bench_press", "")).toBeNull();
     expect(mockGetAllSync).not.toHaveBeenCalled();
   });
 });
