@@ -94,7 +94,8 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Settings: lokal backup/restore av hele DB (JSON), CSV-export, health check.
 - Settings: del program (eksport/import av aktivt program uten historikk).
 - Settings: Data & Rydding (liste per øvelse, slett historikk, slett tomme økter, nullstill alt).
-- Settings: tema-valg (system/lys/mørk), standard dag, rest-timer defaults.
+- Settings: palette-valg (aurora/violet/emerald/sunset) + glass-intensitet, standard dag, rest-timer defaults.
+- Settings: Tilbakemelding-kort — mailto med valgfri diagnostikk (versjon/enhet/tellinger, aldri treningsdata) som forhåndsvises i sin helhet. Lokal feillogger (ErrorUtils) lagrer siste fatale feil for diagnostikken.
 - Settings: språkvelger (norsk/engelsk).
 - Settings: vektenhet-velger (KG/LBS) — alle vekter konverteres ved visning/input.
 - Settings: "Hva er nytt"-seksjon med patch notes modal.
@@ -103,7 +104,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Settings: expo-clipboard for kopiering av eksporttekst (fungerer på mobil), manuelt selekterbar tekst.
 - Settings: varsler — treningspåminnelser per ukedag, hviledag-forslag.
 - Settings: personvern-seksjon — forklarer at appen er 100% offline, ingen data forlater enheten, lokal SQLite-lagring.
-- Onboarding: 10-stegs intro (velkommen, program, logging, hvile, alternativer, kropp, analyse, prestasjoner, backup, klar). Skip-knapp. Vises første gang og kan åpnes fra Settings.
+- Onboarding: 10 praktiske steg som faktisk setter opp appen (velkommen, språk, vektenhet, palette, kroppsdata, programvalg blant de fem ferdige, påminnelser, hviletimer, slik-logger-du, klar). Alle steg hoppbare (globalt Hopp over + Neste uten valg). Vises første gang og kan åpnes fra Settings.
 - Splash: fade + logo + minimum varighet i root.
 - Øvelsesbibliotek: 183 innebygde øvelser med tags, equipment, aliases, alternatives, backImpact.
 - Øvelsesbibliotek: alle øvelser har predefinerte alternativer.
@@ -211,15 +212,16 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Unngå hooks inne i loops/conditionals
 - Safe area: Screen wrapper (SafeAreaView) + StatusBar i root
 - UI: src/ui/index.tsx (base) + src/ui/modern.tsx (glassmorphism). components/ui.tsx er legacy.
-- Program templates: 5-dagers Normal/Ryggvennlig + PPL 5-dagers (Brystfokus) (stable IDs)
+- Program templates (stable IDs): 5-dagers Normal/Ryggvennlig + «Marius sin muskeloppskrift» (tidl. PPL 5-dagers Brystfokus, renames ved oppstart) + Nybegynner 3-dagers (Fullkropp) + Styrke 4-dagers (Over/Under) + Hypertrofi 4-dagers (Over/Under) + Hjemme 3-dagers (Manualer). Alle med targets + alternativer; beskrivelser vises i programlisten.
 - Preview APK: EAS build profile preview (internal, android apk); bump expo.android.versionCode per build
-- Preview APK: `android.versionCode` er nå 7 (oppdater ved neste build)
+- Versjonering: app.json er fasit; `npm run bump-version` bumper version + versionCode + ios.buildNumber i lås (håndheves av check-version)
 - Production build: EAS build profile production (store, android app-bundle)
 - Testing: `npm run verify` (typecheck + jest + lint), `npm run test` for unit tests
 - Android: ALDRI bruk `elevation` på elementer med transparent/semi-transparent backgroundColor (gir hvit rektangel)
 - i18n: alle UI-strenger via t("key") fra useI18n() hook. Nye strenger legges til i src/i18n.ts (nb + en).
 - Vektenhet: alle verdier lagres i kg internt. Konvertering skjer kun ved display/input via useWeightUnit() hook.
-- Versjonering: semver. Nåværende: v0.9.0-beta (versionCode 7).
+- Versjonering: semver. Nåværende: v0.15.0-beta (versionCode 17, ute på alpha).
+- iOS: konfig klar (bundleIdentifier, buildNumber, eas-profiler, image-picker-tekster) — bygg krever Apple Developer-konto, se docs/RELEASE.md.
 - expo-file-system: VIKTIG — bruk `import * as FileSystem from "expo-file-system/src/legacy"` (IKKE fra hoved-pakken). Expo SDK 54 / expo-file-system v19 kaster runtime-feil for legacy API importert fra main.
 - Sirkulær import: db.ts og exerciseLibrary.ts har sirkulær avhengighet. Løst med lazy `require()` i begge filer. `_loadCustomExercisesFromDb(db)` tar db-handle direkte for å unngå deadlock under initDb().
 
@@ -231,15 +233,13 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Legacy sets uten exercise_id kan mangle match hvis exercise_name ikke finnes i bibliotek.
 - Eldre workouts uten program_id faller tilbake til program_mode for «neste dag».
 - PRs beregnes per program_id; Analyse viser beste PR på tvers av program.
-- Warmup-sett lagres, men ikke brukt i PR/volum/strength index.
-- Edit/slett sett oppdaterer ikke PR-historikk automatisk.
+- Warmup-sett: full audit 2026-10-01 — `is_warmup` filtreres nå konsekvent i ALLE statistikk-stier (analyse, logg-oppsummering, PR inkl. volum, hjem, kalender, historikk, achievements, coach). «Reparer PRs» i Settings rekalkulerer også volum-PRs (historisk warmup-forurensning).
 - Cue/link UI fjernet (legacy data beholdes kun i storage).
-- Rest-timer: dokket utvidbar hvilebar (RestBar) — slank bunn-bar mens hvilen løper med nedtelling + inline ±15s/skip/+30s (bla fritt i appen over den), tappes ut til kompakt kontrollkort (neste-øvelse, sett-notat); aldri full-skjerm. Vises kun mens hvilen løper. Innstillinger via tannhjul i logg-toppbaren (RestSettingsHost). Sett-notat fanges i kontrollkortet + redigeres via edit-knapp; egen notat-knapp fjernet (var redundant med edit). RestTimerInline i RestTimer.tsx er ubrukt legacy. (Tidligere: full-skjerm RestOverlay — «ble hele verden»; og FloatingRestTimer-hjørneboble — tungvint tidsjustering. Begge fjernet.)
+- Rest-timer: dokket utvidbar hvilebar (RestBar) — slank bunn-bar mens hvilen løper med nedtelling + inline ±15s/skip/+30s (bla fritt i appen over den), tappes ut til kompakt kontrollkort (neste-øvelse, sett-notat); aldri full-skjerm. Vises kun mens hvilen løper. Innstillinger via tannhjul i logg-toppbaren (RestSettingsHost). Sett-notat fanges i kontrollkortet + redigeres via edit-knapp. (Tidligere: full-skjerm RestOverlay, FloatingRestTimer-hjørneboble og RestTimerInline — alle fjernet.)
 - Repair av splittede økter flytter sett inn i én økt; tomme "Merged into ..."-rader kan bli igjen.
-- App icon PNG (1024×1024) — SVG-filer generert (assets/gymdash-icon.svg + foreground), må konverteres til PNG for Play Store.
 - ExerciseTag-typen har fortsatt `lower_back_demanding`/`lower_back_friendly` (legacy) — erstattet av `backImpact`-feltet.
 - trainingStatus.ts: computeTrainingStatus() kan gi synlig lag på hjemskjermen med stor treningshistorikk. Bruk loading skeleton.
-- RestBar: kun logg-skjermen kompenserer med paddingBottom (REST_BAR_CLEARANCE) — på andre skjermer (historikk/analyse/kropp) kan baren dekke nederste rad/knapp mens hvilen løper. Baren rendres også over åpen drawer (kosmetisk, zIndex 1000).
+- RestBar: Screen-wrapperen reserverer REST_BAR_CLEARANCE globalt mens hvilen løper (fikset 2026-10-01) — ingen skjerm får dekket nederste rad lenger. Baren rendres fortsatt over åpen drawer (kosmetisk, zIndex 1000).
 
 ## Build — Preview APK (Android)
 - Kommandoer: `npx eas login` (ved behov) og `npx eas build --platform android --profile preview`
@@ -252,6 +252,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-10-01: **Bredere-utgivelse-forberedelser** — (1) Warmup-audit: `is_warmup` filtreres nå konsekvent i alle statistikk-stier (analyse-fanen hadde mistet filtrene helt; økt-oppsummering, volum-PR, hjem, kalender, historikk, achievements, coach-øktutvalg fikset; `recomputeVolumePRForExercise` reparerer historiske volum-PRs via «Reparer PRs»). (2) Global RestBar-clearance via Screen-wrapper (portet fra develop-branchen). (3) Lint 151→0 + dødkode slettet (Expo-template-rester, ThemeMode-shims, RestTimerInline). (4) Fire nye ferdigprogrammer (Nybegynner 3d, Styrke 4d O/U, Hypertrofi 4d O/U, Hjemme 3d Manualer) + PPL5 omdøpt til «Marius sin muskeloppskrift»; beskrivelser vises i programlisten. (5) Onboarding omskrevet til 10 praktiske, hoppbare steg (språk/enhet/palette/kropp/program/påminnelser/hvile/guide). (6) Feedback-kort i Settings: mailto + opt-in diagnostikk m/ forhåndsvisning, lokal ErrorUtils-feillogger. (7) iOS-konfig klar (bundleId, buildNumber-lås, eas-profiler, RELEASE.md-seksjon). (8) Codex-agentoppsett committet.
 - 2026-08-23: **Release v0.13.0-beta** (versionCode 14) — patch notes + CHANGELOG fylt ut. `serviceAccountKeyPath` fjernet fra `eas.json` så tag-push-workflowen (`.eas/workflows/release-android.yml`) faktisk kan submitte fra EAS-serverne; release trigges av tag-push (`v*`), ikke av merge til main.
 - 2026-08-23: Automatisk sikkerhetskopi (`src/autoBackup.ts` + ren kjerne i `autoBackupCore.ts` m/ tester) — bruker velger mappe én gang (Android SAF, gjerne sky-synket mappe; iOS: dokumentmappe), appen skriver full JSON-backup daglig ved oppstart + etter hver fullført økt, beholder de 7 nyeste (rører aldri andres filer). Toggle + mappevalg + status i Settings→Backup. `last_backup_at` oppdateres → hjem-påminnelsen stilner av seg selv. OG: hvilevarsel-fix — `ensureRestNotificationPermission()` ber om varseltillatelse ved økt-start/første timer (Android 13+ droppet alt stille uten), og dedikert Android-kanal «rest-timer» med MAX importance + lyd/vibrasjon opprettes (uten kanal ble varselet stille). `channelId` settes på trigger.
 - 2026-08-23: Kvalitetsrunde + backlog-opprydding — (1) hjem-skjermens dagsvolum ekskluderer nå warmup-sett (matcher ukesstatistikken), (2) endWorkout-statistikk teller C-slot i 3-veis supersett, (3) «beste sett» i Historikk ignorerer warmups, (4) NY: estimert 3RM/5RM/10RM (Epley) øverst i Historikk-panelet, (5) NY: ukentlig ryggbelastnings-score på hjem (`src/backLoad.ts`, volum vektet rød 1.0/gul 0.5/grønn 0.15 + uke-trend), (6) exercise-picker sorterer øvelser med tilgjengelig utstyr først og merker resten («ikke på dette treningssenteret»). CLAUDE.md-backlog oppdatert (punkt 1–6 verifisert levert).
