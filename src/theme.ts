@@ -9,19 +9,12 @@
 // chips and inputs all inherit those same numbers through `theme.glass` /
 // `theme.glassBorder`, so the whole app reads as one frosted surface.
 //
-// Back-compat: `ThemeMode` / `setThemeMode` / `getThemeMode` are kept as
-// deprecated no-ops so existing call sites compile while we migrate the
-// Settings personalization UI to palette + intensity.
-//
 // Type system: Inter (body + numerics/labels), Instrument Serif (display) —
 // loaded in app/_layout.tsx. `theme.mono` is a legacy token name that now maps
 // to Inter Medium (the old JetBrains Mono look was retired by user request).
 
 import React from "react";
 import { type TextStyle } from "react-native";
-
-/** @deprecated dark-only now — retained so existing imports keep compiling. */
-export type ThemeMode = "light" | "dark" | "system";
 
 export type Theme = {
   /** Always "dark" now. */
@@ -292,16 +285,6 @@ export function getGlassIntensity(): number {
 
 export function getTheme(): Theme {
   return currentTheme;
-}
-
-/** @deprecated dark-only now — no-op kept so existing call sites compile. */
-export function setThemeMode(_mode?: ThemeMode) {
-  /* intentionally empty: theme is dark-only */
-}
-
-/** @deprecated dark-only now — always reports "dark". */
-export function getThemeMode(): ThemeMode {
-  return "dark";
 }
 
 // ── React context ────────────────────────────────────────────────────────────

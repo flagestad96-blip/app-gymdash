@@ -6,37 +6,6 @@ import { useI18n } from "../../i18n";
 import { Btn } from "../../ui";
 import { mmss } from "../../format";
 
-export type RestTimerInlineProps = {
-  restEnabled: boolean;
-  restRunning: boolean;
-  restLabel: string;
-  onToggle: () => void;
-};
-
-/** Inline rest timer button shown inside exercise cards */
-export function RestTimerInline({ restEnabled, restRunning, restLabel, onToggle }: RestTimerInlineProps) {
-  const theme = useTheme();
-  const { t } = useI18n();
-
-  return (
-    <Pressable
-      onPress={onToggle}
-      style={{
-        borderColor: restEnabled ? theme.glassBorder : theme.danger,
-        borderWidth: 1,
-        borderRadius: theme.radius.lg,
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        backgroundColor: theme.glass,
-      }}
-    >
-      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12 }}>
-        {t("log.restPrefix", { time: restLabel })}
-      </Text>
-    </Pressable>
-  );
-}
-
 export type RestSettingsModalProps = {
   visible: boolean;
   onClose: () => void;
