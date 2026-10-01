@@ -45,6 +45,7 @@ import { uid, isoDateOnly } from "../../src/storage";
 import { clampInt } from "../../src/format";
 import { listGyms, createGym, updateGym, deleteGym, type GymLocation } from "../../src/gymStore";
 import { recomputePRForExercise, recomputeVolumePRForExercise } from "../../src/prEngine";
+import { buildDiagnostics, sendFeedback } from "../../src/feedback";
 import { MaterialIcons } from "@expo/vector-icons";
 
 type ProgramMode = "normal" | "back";
@@ -115,6 +116,9 @@ export default function Settings() {
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [restDayEnabled, setRestDayEnabled] = useState(false);
   const [notifPermission, setNotifPermission] = useState(false);
+
+  const [feedbackIncludeDiag, setFeedbackIncludeDiag] = useState(false);
+  const [feedbackDiagPreview, setFeedbackDiagPreview] = useState<string | null>(null);
 
   const [autoBackupOn, setAutoBackupOn] = useState(false);
   const [autoBackupDirUri, setAutoBackupDirUri] = useState<string | null>(null);
@@ -301,6 +305,20 @@ export default function Settings() {
     } catch {
       Alert.alert(t("common.error"), t("settings.importFileFailed"));
       setBackupBusy(false);
+    }
+  }
+
+  async function handleToggleFeedbackDiag(enabled: boolean) {
+    setFeedbackIncludeDiag(enabled);
+    if (enabled) {
+      // Show the user exactly what would be included before anything is sent.
+      try {
+        setFeedbackDiagPreview(await buildDiagnostics());
+      } catch {
+        setFeedbackDiagPreview(null);
+      }
+    } else {
+      setFeedbackDiagPreview(null);
     }
   }
 
@@ -1346,6 +1364,33 @@ export default function Settings() {
               </Text>
             </View>
           </View>
+        </Card>
+
+        <Card title={t("feedback.title")}>
+          <Text style={{ color: theme.muted, fontSize: 13 }}>{t("feedback.desc")}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={{ color: theme.text }}>{t("feedback.includeDiag")}</Text>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>{t("feedback.includeDiagDesc")}</Text>
+            </View>
+            <Switch value={feedbackIncludeDiag} onValueChange={handleToggleFeedbackDiag} />
+          </View>
+          {feedbackIncludeDiag && feedbackDiagPreview ? (
+            <View
+              style={{
+                backgroundColor: theme.glass,
+                borderColor: theme.glassBorder,
+                borderWidth: 1,
+                borderRadius: theme.radius.md,
+                padding: 10,
+              }}
+            >
+              <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 11, lineHeight: 16 }} selectable>
+                {feedbackDiagPreview}
+              </Text>
+            </View>
+          ) : null}
+          <Btn label={t("feedback.send")} onPress={() => { void sendFeedback(feedbackIncludeDiag); }} tone="accent" />
         </Card>
 
         {/* Patch Notes */}

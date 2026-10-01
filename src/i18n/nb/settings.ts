@@ -156,6 +156,13 @@ const settings: TranslationMap = {
   "settings.privacy.storageTitle": "Datalagring",
   "settings.privacy.storageDesc": "All data lagres lokalt i en SQLite-database p\u00e5 enheten. Ingen konto, ingen sky, ingen sporing.",
 
+  "feedback.title": "TILBAKEMELDING",
+  "feedback.desc": "Funnet en feil eller har et forslag? Send en e-post \u2014 ingenting sendes f\u00f8r du selv trykker send i e-postappen din.",
+  "feedback.includeDiag": "Inkluder diagnostikk",
+  "feedback.includeDiagDesc": "App-versjon, enhet og antall \u00f8kter \u2014 aldri treningsdata. Du ser alt under f\u00f8r du sender.",
+  "feedback.send": "Send tilbakemelding",
+  "feedback.subject": "Gymdash tilbakemelding",
+
   // ── Gym Locations ──
   "settings.gymLocations": "TRENINGSSTEDER",
   "settings.gymLocations.desc": "Opprett og administrer dine treningssteder.",

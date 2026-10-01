@@ -18,6 +18,7 @@ import { AppBackground } from "../src/components/AppBackground";
 import GymdashLogo from "../src/components/GymdashLogo";
 import * as ProgramStore from "../src/programStore";
 import { loadWeightUnit } from "../src/units";
+import { installErrorLogger } from "../src/feedback";
 import SplashScreen from "../components/SplashScreen";
 import { RestTimerProvider } from "../src/restTimerContext";
 import { runAutoBackupIfDue } from "../src/autoBackup";
@@ -218,6 +219,7 @@ function RootLayoutInner() {
       if (alive) setAppReady(true);
     }, HARD_TIMEOUT_MS);
 
+    installErrorLogger();
     (async () => {
       try {
         await initDb();

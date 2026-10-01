@@ -156,6 +156,13 @@ const settings: TranslationMap = {
   "settings.privacy.storageTitle": "Data storage",
   "settings.privacy.storageDesc": "All data is stored locally in a SQLite database on your device. No account, no cloud, no tracking.",
 
+  "feedback.title": "FEEDBACK",
+  "feedback.desc": "Found a bug or have a suggestion? Send an email — nothing is sent until you tap send in your mail app.",
+  "feedback.includeDiag": "Include diagnostics",
+  "feedback.includeDiagDesc": "App version, device and session counts — never training data. You see everything below before sending.",
+  "feedback.send": "Send feedback",
+  "feedback.subject": "Gymdash feedback",
+
   // ── Gym Locations ──
   "settings.gymLocations": "GYM LOCATIONS",
   "settings.gymLocations.desc": "Create and manage your gym locations.",
