@@ -1,4 +1,5 @@
 // src/programImport.ts — validation for imported program JSON (pure, testable).
+import { clampInt } from "./format";
 
 export type ImportPayload = {
   name: string;
@@ -44,4 +45,51 @@ export function validateImport(payload: unknown): ImportResult {
   }
 
   return { ok: true, program: p };
+}
+
+/** One exercise target from a shared program (Settings → Share program, schemaVersion 1). */
+export type ShareTarget = {
+  exerciseId: string;
+  dayIndex: number;
+  repMin: number;
+  repMax: number;
+  /** Missing in exports made before sets were shared — the caller falls back to the exercise default. */
+  targetSets?: number;
+  /** Missing or non-positive — the caller falls back to the exercise default. */
+  incrementKg?: number;
+  autoProgress?: boolean;
+};
+
+/**
+ * Normalise the `targets` array of a shared program. Entries without an
+ * exercise id or a numeric rep range are dropped; everything else is clamped
+ * to the same limits as the target editor (reps 1–30 / up to 40, sets 1–10).
+ */
+export function parseShareTargets(raw: unknown): ShareTarget[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ShareTarget[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.exerciseId !== "string" || !e.exerciseId) continue;
+    if (typeof e.repMin !== "number" || !Number.isFinite(e.repMin)) continue;
+    if (typeof e.repMax !== "number" || !Number.isFinite(e.repMax)) continue;
+
+    const repMin = clampInt(e.repMin, 1, 30);
+    const target: ShareTarget = {
+      exerciseId: e.exerciseId,
+      dayIndex: typeof e.dayIndex === "number" && Number.isFinite(e.dayIndex) ? Math.max(0, Math.trunc(e.dayIndex)) : 0,
+      repMin,
+      repMax: clampInt(e.repMax, repMin, 40),
+    };
+    if (typeof e.targetSets === "number" && Number.isFinite(e.targetSets)) {
+      target.targetSets = clampInt(e.targetSets, 1, 10);
+    }
+    if (typeof e.incrementKg === "number" && Number.isFinite(e.incrementKg) && e.incrementKg > 0) {
+      target.incrementKg = e.incrementKg;
+    }
+    if (typeof e.autoProgress === "boolean") target.autoProgress = e.autoProgress;
+    out.push(target);
+  }
+  return out;
 }

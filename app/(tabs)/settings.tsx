@@ -19,6 +19,8 @@ import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import { useRestTimer } from "../../src/restTimerContext";
 import * as ProgramStore from "../../src/programStore";
+import { getTargets, upsertTarget, defaultTargetForExercise } from "../../src/progressionStore";
+import { parseShareTargets } from "../../src/programImport";
 import { displayNameFor } from "../../src/exerciseLibrary";
 import { exportFullBackup, importBackup, exportCsv, type ImportMode } from "../../src/backup";
 import { saveBackupFile, shareFile, pickBackupFile } from "../../src/fileSystem";
@@ -402,13 +404,8 @@ export default function Settings() {
       await ensureDb();
       const program = await ProgramStore.getActiveProgram(programMode);
       const alternatives = await ProgramStore.getAlternativesForProgram(program.id);
-      const db = getDb();
-      const targets = await db.getAllAsync(
-        `SELECT exercise_id, day_index, rep_min, rep_max, increment_kg
-         FROM exercise_targets
-         WHERE program_id = ?`,
-        [program.id]
-      );
+      const targetsByDay = await getTargets(program.id);
+      const targets = Object.values(targetsByDay).flatMap((byExercise) => Object.values(byExercise));
 
       const altList: { dayIndex: number; exerciseId: string; alternatives: string[] }[] = [];
       for (const dayKey of Object.keys(alternatives)) {
@@ -441,12 +438,14 @@ export default function Settings() {
           }),
         })),
         alternatives: altList,
-        targets: (targets ?? []).map((t: any) => ({
-          exerciseId: t.exercise_id,
-          dayIndex: t.day_index ?? 0,
-          repMin: t.rep_min,
-          repMax: t.rep_max,
-          incrementKg: t.increment_kg,
+        targets: targets.map((tgt) => ({
+          exerciseId: tgt.exerciseId,
+          dayIndex: tgt.dayIndex,
+          repMin: tgt.repMin,
+          repMax: tgt.repMax,
+          targetSets: tgt.targetSets,
+          incrementKg: tgt.incrementKg,
+          autoProgress: tgt.autoProgress,
         })),
       };
 
@@ -547,24 +546,18 @@ export default function Settings() {
         });
       }
 
-      const targets = Array.isArray(parsed.targets) ? parsed.targets : [];
-      const db = getDb();
-      for (const t of targets) {
-        if (
-          !t ||
-          typeof t.exerciseId !== "string" ||
-          typeof t.repMin !== "number" ||
-          typeof t.repMax !== "number" ||
-          typeof t.incrementKg !== "number"
-        ) {
-          continue;
-        }
-        const dayIndex = typeof t.dayIndex === "number" ? t.dayIndex : 0;
-        await db.runAsync(
-          `INSERT OR REPLACE INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, increment_kg, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?)` ,
-          [uid("target"), nextProgram.id, t.exerciseId, dayIndex, t.repMin, t.repMax, t.incrementKg, new Date().toISOString()]
-        );
+      for (const tgt of parseShareTargets(parsed.targets)) {
+        const fallback = defaultTargetForExercise(tgt.exerciseId);
+        await upsertTarget({
+          programId: nextProgram.id,
+          exerciseId: tgt.exerciseId,
+          dayIndex: tgt.dayIndex,
+          repMin: tgt.repMin,
+          repMax: tgt.repMax,
+          targetSets: tgt.targetSets ?? fallback.targetSets,
+          incrementKg: tgt.incrementKg ?? fallback.incrementKg,
+          autoProgress: tgt.autoProgress,
+        });
       }
 
       if (shareSetActive) {
