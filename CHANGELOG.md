@@ -1,5 +1,26 @@
 # Gymdash Changelog
 
+## v0.16.0-beta — 2026-11-16
+
+First release of the broader-release round from 2026-10-01 (never shipped until now) plus complete program sharing.
+
+### Programs
+- **Four new built-in programs**: Beginner 3-day (full body), Strength 4-day (upper/lower), Hypertrophy 4-day (upper/lower) and Home 3-day (dumbbells only) — all with targets and alternatives. "PPL 5-dagers (Brystfokus)" is renamed to "Marius sin muskeloppskrift" (one-time rename at startup; user-chosen names are untouched).
+- **Program descriptions show in the program list.**
+- **Share program carries the whole program** (Settings → Share program): export and import now include the number of sets and the auto-progression toggle per exercise, on top of days, exercises, supersets, alternatives and rep ranges. Still `schemaVersion: 1` — older exports import as before, and a target without sets or increment falls back to the exercise default instead of being dropped. Pure parser `parseShareTargets` in `src/programImport.ts` with tests.
+
+### Onboarding & feedback
+- **Onboarding rewritten as 10 practical steps** that actually set the app up: language, weight unit, palette, body data, program choice, reminders, rest timer, how-to-log. Every step is skippable.
+- **Feedback card in Settings**: mailto-based, with opt-in diagnostics (version, device, counts — never training data) previewed in full before sending. A local error logger keeps the last fatal JS error on the device only.
+
+### Fixes
+- **Warm-up sets are excluded from every statistics path** — analysis, session summary, PRs (incl. volume), home, calendar, history, achievements and the coach. "Repair PRs" in Settings also recomputes volume PRs polluted by earlier warm-up sets.
+- **Rest bar clearance on every screen**: the Screen wrapper reserves room for the docked rest bar, so it no longer covers the bottom row outside the log.
+
+### Under the hood
+- iOS build config ready (bundle identifier, build number locked to versionCode) — building still needs an Apple Developer account.
+- Lint at 0 warnings, dead code removed.
+
 ## v0.15.0-beta — 2026-08-25
 
 Driven end to end by tester feedback (22 open items triaged: 12 fixed/built here, 9 already shipped in v0.13–v0.14, 1 needs re-verification).

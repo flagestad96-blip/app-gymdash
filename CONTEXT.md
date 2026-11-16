@@ -220,7 +220,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Android: ALDRI bruk `elevation` på elementer med transparent/semi-transparent backgroundColor (gir hvit rektangel)
 - i18n: alle UI-strenger via t("key") fra useI18n() hook. Nye strenger legges til i src/i18n.ts (nb + en).
 - Vektenhet: alle verdier lagres i kg internt. Konvertering skjer kun ved display/input via useWeightUnit() hook.
-- Versjonering: semver. Nåværende: v0.15.0-beta (versionCode 17, ute på alpha).
+- Versjonering: semver. Nåværende: v0.16.0-beta (versionCode 18).
 - iOS: konfig klar (bundleIdentifier, buildNumber, eas-profiler, image-picker-tekster) — bygg krever Apple Developer-konto, se docs/RELEASE.md.
 - expo-file-system: VIKTIG — bruk `import * as FileSystem from "expo-file-system/src/legacy"` (IKKE fra hoved-pakken). Expo SDK 54 / expo-file-system v19 kaster runtime-feil for legacy API importert fra main.
 - Sirkulær import: db.ts og exerciseLibrary.ts har sirkulær avhengighet. Løst med lazy `require()` i begge filer. `_loadCustomExercisesFromDb(db)` tar db-handle direkte for å unngå deadlock under initDb().
