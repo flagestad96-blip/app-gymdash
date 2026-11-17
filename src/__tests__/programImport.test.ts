@@ -1,4 +1,4 @@
-import { parseShareTargets, validateImport } from "../programImport";
+import { parseProgramImport, parseShareTargets, validateImport } from "../programImport";
 
 const validProgram = {
   name: "PPL",
@@ -82,5 +82,64 @@ describe("parseShareTargets", () => {
         { exerciseId: "x", repMin: 8 },
       ])
     ).toEqual([]);
+  });
+});
+
+describe("parseProgramImport", () => {
+  const sharePayload = {
+    schemaVersion: 1,
+    exportedAt: "2026-11-16T13:42:30.207Z",
+    program: { name: "Over/Under", daysCount: 2 },
+    days: [
+      {
+        dayIndex: 0,
+        name: "Overkropp A",
+        blocks: [
+          { type: "single", exerciseId: "bench_press", sortIndex: 0 },
+          { type: "superset", a: "lateral_raise", b: "triceps_pushdown", sortIndex: 1 },
+        ],
+      },
+      { dayIndex: 1, name: "Underkropp A", blocks: [{ type: "single", exerciseId: "back_squat", sortIndex: 0 }] },
+    ],
+    alternatives: [{ dayIndex: 0, exerciseId: "bench_press", alternatives: ["flat_db_press", 7, "a", "b", "c"] }],
+    targets: [{ exerciseId: "bench_press", dayIndex: 0, repMin: 5, repMax: 8, targetSets: 3, incrementKg: 2.5 }],
+  };
+
+  it("reads the full format from Settings → Share program", () => {
+    const res = parseProgramImport(sharePayload);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.program.name).toBe("Over/Under");
+    expect(res.program.days.map((d) => d.name)).toEqual(["Overkropp A", "Underkropp A"]);
+    expect(res.program.days[0].blocks).toEqual([
+      { type: "single", exId: "bench_press" },
+      { type: "superset", a: "lateral_raise", b: "triceps_pushdown", sortIndex: 1 },
+    ]);
+    expect(res.targets).toEqual([
+      { exerciseId: "bench_press", dayIndex: 0, repMin: 5, repMax: 8, targetSets: 3, incrementKg: 2.5 },
+    ]);
+    expect(res.alternatives).toEqual([
+      { dayIndex: 0, exerciseId: "bench_press", alternatives: ["flat_db_press", "a", "b"] },
+    ]);
+  });
+
+  it("still reads the simple Program-screen format, without targets or alternatives", () => {
+    const res = parseProgramImport(validProgram);
+    expect(res).toEqual({ ok: true, program: validProgram, targets: [], alternatives: [] });
+  });
+
+  it("honours daysCount and rejects an unknown schemaVersion", () => {
+    const oneDay = parseProgramImport({ ...sharePayload, program: { name: "X", daysCount: 1 } });
+    expect(oneDay.ok && oneDay.program.days.length).toBe(1);
+    expect(parseProgramImport({ ...sharePayload, schemaVersion: 2 })).toEqual({ ok: false, errorKey: "settings.schemaError" });
+  });
+
+  it("reports the same errors as the simple format for a broken share payload", () => {
+    expect(parseProgramImport({ ...sharePayload, program: { daysCount: 2 } })).toEqual({ ok: false, errorKey: "program.mustHaveName" });
+    expect(parseProgramImport({ ...sharePayload, days: [] })).toEqual({ ok: false, errorKey: "program.mustHave1to10Days" });
+    expect(
+      parseProgramImport({ ...sharePayload, days: [{ name: "D", blocks: [{ type: "single", sortIndex: 0 }] }] })
+    ).toEqual({ ok: false, errorKey: "program.singleMissingExId" });
+    expect(parseProgramImport(null)).toEqual({ ok: false, errorKey: "program.invalidJson" });
   });
 });

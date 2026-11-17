@@ -30,7 +30,7 @@ const onboarding: TranslationMap = {
   "onboarding.program.goal.home": "Home training with dumbbells",
   "onboarding.program.goal.marius": "Versatile 5-day with chest focus",
   "onboarding.reminders.title": "Workout reminders",
-  "onboarding.reminders.body": "Get a nudge on training days so the session doesn't slip.",
+  "onboarding.reminders.body": "Get a reminder Monday, Wednesday and Friday at 17:00 so you don't miss a session. Change the days and time in Settings.",
   "onboarding.reminders.on": "Yes please",
   "onboarding.reminders.off": "No thanks",
   "onboarding.reminders.enabled": "Reminders are on. Adjust days and time in Settings.",

@@ -1244,6 +1244,9 @@ export type SupersetCardProps = ExerciseCardCallbacks & {
 };
 
 
+/** In-session memory for SupersetCard (see the state comment in the component). Keyed by workout + exercises. */
+const supersetCardMemory = new Map<string, { dropped: SupersetSlotKey[]; skipped: Record<SupersetSlotKey, number | null> }>();
+
 export function SupersetCard(props: SupersetCardProps) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -1299,9 +1302,20 @@ export function SupersetCard(props: SupersetCardProps) {
     return arr;
   }, [hasC, props.exIdA, props.exIdB, props.exIdC, props.baseA, props.baseB, props.baseC, props.inputA, props.inputB, props.inputC, props.setsA, props.setsB, props.setsC, props.targetA, props.targetB, props.targetC, props.lastSetA, props.lastSetB, props.lastSetC, props.prBannerA, props.prBannerB, props.prBannerC, props.coachHintA, props.coachHintB, props.coachHintC, props.altListA, props.altListB, props.altListC, props.exerciseNoteA, props.exerciseNoteB, props.exerciseNoteC, props.activeGoalLabelA, props.activeGoalLabelB, props.activeGoalLabelC]);
 
-  // Per-card local state
-  const [droppedSlots, setDroppedSlots] = useState<Set<SupersetSlotKey>>(new Set());
-  const [skippedRoundBySlot, setSkippedRoundBySlot] = useState<Record<SupersetSlotKey, number | null>>({ a: null, b: null, c: null });
+  // Per-card state. "Drop B" and "skip B this round" are remembered per
+  // workout and superset: the card unmounts as soon as another exercise is
+  // opened, and the choice used to be gone on the way back.
+  const memoryKey = props.workoutId ? `${props.workoutId}|${props.exIdA}|${props.exIdB}|${props.exIdC ?? ""}` : null;
+  const [droppedSlots, setDroppedSlots] = useState<Set<SupersetSlotKey>>(
+    () => new Set(memoryKey ? supersetCardMemory.get(memoryKey)?.dropped ?? [] : []),
+  );
+  const [skippedRoundBySlot, setSkippedRoundBySlot] = useState<Record<SupersetSlotKey, number | null>>(
+    () => (memoryKey ? supersetCardMemory.get(memoryKey)?.skipped : undefined) ?? { a: null, b: null, c: null },
+  );
+  useEffect(() => {
+    if (!memoryKey) return;
+    supersetCardMemory.set(memoryKey, { dropped: [...droppedSlots], skipped: skippedRoundBySlot });
+  }, [memoryKey, droppedSlots, skippedRoundBySlot]);
   const [focusOverride, setFocusOverride] = useState<SupersetSlotKey | null>(null);
   const [contextSlot, setContextSlot] = useState<SupersetSlotKey | null>(null);
 

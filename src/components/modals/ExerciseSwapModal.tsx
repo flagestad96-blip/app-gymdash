@@ -129,7 +129,6 @@ export default function ExerciseSwapModal({
             shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius,
             shadowOffset: theme.shadow.lg.offset,
-            elevation: theme.shadow.lg.elevation,
             maxHeight: "80%",
           }}
         >

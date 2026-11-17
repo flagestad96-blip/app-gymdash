@@ -1,6 +1,6 @@
 // app/(tabs)/analysis.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, ScrollView, Modal, FlatList, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, Modal, FlatList, Alert, KeyboardAvoidingView } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
@@ -19,7 +19,7 @@ import { useWeightUnit } from "../../src/units";
 import { isoDateOnly } from "../../src/storage";
 import { addDays, parseLocalDate, weekStartKey, monthKey, fmtRest } from "../../src/analysisHelpers";
 import { epley1RM } from "../../src/metrics";
-import { parseTimeMs } from "../../src/format";
+import { parseTimeMs, parseDecimal } from "../../src/format";
 import { generateExerciseInsight } from "../../src/analysisInsights";
 import TrainingStatusCard from "../../src/components/TrainingStatusCard";
 import HintBanner from "../../src/components/HintBanner";
@@ -137,6 +137,7 @@ export default function Analysis() {
   const [bodyMetrics90, setBodyMetrics90] = useState<BodyMetricRow[]>([]);
   const [allPrRecords, setAllPrRecords] = useState<PrRow[]>([]);
   const [prevPeriodData, setPrevPeriodData] = useState<{ workouts: number; sets: number; volume: number; bestE1rm: number }>({ workouts: 0, sets: 0, volume: 0, bestE1rm: 0 });
+  const [thisPeriodData, setThisPeriodData] = useState<{ workouts: number; sets: number; volume: number; bestE1rm: number }>({ workouts: 0, sets: 0, volume: 0, bestE1rm: 0 });
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatusResult | null>(null);
   const [trainingStatusLoading, setTrainingStatusLoading] = useState(true);
   const [deloadToast, setDeloadToast] = useState(false);
@@ -235,7 +236,9 @@ export default function Analysis() {
     );
     setSets(Array.isArray(s) ? s : []);
 
-    // Previous period data (for period comparison)
+    // Period comparison: the last 30 days against the 30 before. Both sides
+    // come from their own query — the range-limited sets above only cover
+    // 7 days in "week" view, which made "this month" look like a 75 % drop.
     try {
       const d2 = new Date();
       d2.setDate(d2.getDate() - 30);
@@ -244,29 +247,34 @@ export default function Analysis() {
       d3.setDate(d3.getDate() - 60);
       const lastMonthStart = isoDateOnly(d3);
 
-      const prevW = getDb().getFirstSync<{ c: number }>(
-        `SELECT COUNT(DISTINCT date) as c FROM workouts WHERE date >= ? AND date < ?`,
-        [lastMonthStart, thisMonthStart]
-      );
-      const prevS = getDb().getFirstSync<{ c: number; vol: number }>(
-        `SELECT COUNT(1) as c, COALESCE(SUM(weight * reps), 0) as vol FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup IS NOT 1`,
-        [lastMonthStart, thisMonthStart]
-      );
-      const prevE1rm = getDb().getAllSync<{ weight: number; reps: number; est_total_load_kg: number | null; exercise_id: string | null }>(
-        `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup IS NOT 1`,
-        [lastMonthStart, thisMonthStart]
-      );
-      let bestPrev = 0;
-      for (const r of prevE1rm ?? []) {
-        const wt = r.exercise_id && isBodyweight(r.exercise_id) && Number.isFinite(r.est_total_load_kg ?? NaN) ? r.est_total_load_kg! : r.weight;
-        bestPrev = Math.max(bestPrev, epley1RM(wt, r.reps));
-      }
-      setPrevPeriodData({
-        workouts: prevW?.c ?? 0,
-        sets: prevS?.c ?? 0,
-        volume: Math.round(prevS?.vol ?? 0),
-        bestE1rm: Math.round(bestPrev * 10) / 10,
-      });
+      const periodStats = (from: string, before: string | null) => {
+        const until = before ?? "9999-12-31";
+        const days = getDb().getFirstSync<{ c: number }>(
+          `SELECT COUNT(DISTINCT date) as c FROM workouts WHERE date >= ? AND date < ?`,
+          [from, until]
+        );
+        const rows = getDb().getAllSync<{ weight: number; reps: number; est_total_load_kg: number | null; exercise_id: string | null }>(
+          `SELECT s.weight, s.reps, s.est_total_load_kg, s.exercise_id FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date >= ? AND w.date < ? AND s.is_warmup IS NOT 1`,
+          [from, until]
+        );
+        let volume = 0;
+        let best = 0;
+        for (const r of rows ?? []) {
+          const wt = r.exercise_id && isBodyweight(r.exercise_id) && Number.isFinite(r.est_total_load_kg ?? NaN) ? r.est_total_load_kg! : r.weight;
+          if (wt == null) continue;
+          volume += wt * r.reps;
+          best = Math.max(best, epley1RM(wt, r.reps));
+        }
+        return {
+          workouts: days?.c ?? 0,
+          sets: rows?.length ?? 0,
+          volume: Math.round(volume),
+          bestE1rm: Math.round(best * 10) / 10,
+        };
+      };
+
+      setPrevPeriodData(periodStats(lastMonthStart, thisMonthStart));
+      setThisPeriodData(periodStats(thisMonthStart, null));
     } catch {}
   }, [ready, range]);
 
@@ -838,31 +846,6 @@ export default function Analysis() {
       .sort((a, b) => a.dayIndex - b.dayIndex);
 
     return { avg, dayAverages, count: durationsMin.length };
-  }, [sets, workouts]);
-
-  // ── Period Comparison (this month) ─────────────────────────────────
-  const thisPeriodData = useMemo(() => {
-    const d30 = new Date();
-    d30.setDate(d30.getDate() - 30);
-    const cutoff = isoDateOnly(d30);
-
-    const recentWorkouts = workouts.filter((w) => w.date >= cutoff);
-    const recentSets = sets.filter((s) => s.workout_date >= cutoff);
-    const vol = recentSets.reduce((sum, s) => {
-      const w = weightForSet(s);
-      return sum + (w != null ? w * s.reps : 0);
-    }, 0);
-    let bestE1rm = 0;
-    for (const s of recentSets) {
-      const w = weightForSet(s);
-      if (w != null) bestE1rm = Math.max(bestE1rm, epley1RM(w, s.reps));
-    }
-    return {
-      workouts: new Set(recentWorkouts.map((w) => w.date)).size,
-      sets: recentSets.length,
-      volume: Math.round(vol),
-      bestE1rm: Math.round(bestE1rm * 10) / 10,
-    };
   }, [sets, workouts]);
 
   // ── Strength Standards ──────────────────────────────────────────────
@@ -1578,7 +1561,8 @@ export default function Analysis() {
         </View>
       )}
 
-      <Modal visible={exercisePickerOpen} animationType="slide" transparent>
+      <Modal visible={exercisePickerOpen} animationType="slide" transparent onRequestClose={() => setExercisePickerOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
           <View
             style={{
@@ -1592,7 +1576,6 @@ export default function Analysis() {
               shadowOpacity: theme.shadow.lg.opacity,
               shadowRadius: theme.shadow.lg.radius,
               shadowOffset: theme.shadow.lg.offset,
-              elevation: theme.shadow.lg.elevation,
             }}
           >
             <View
@@ -1670,10 +1653,12 @@ export default function Analysis() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Goal Creation Modal */}
-      <Modal visible={goalModalOpen} animationType="slide" transparent>
+      <Modal visible={goalModalOpen} animationType="slide" transparent onRequestClose={() => setGoalModalOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "center" }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: theme.radius.xl, padding: 20, gap: 16 }}>
             <Text style={{ color: theme.text, fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.bold }}>
@@ -1747,7 +1732,7 @@ export default function Analysis() {
               </Pressable>
               <Pressable
                 onPress={async () => {
-                  const target = parseFloat(goalTarget);
+                  const target = parseDecimal(goalTarget);
                   if (!target || target <= 0) { Alert.alert(t("common.error"), t("analysis.invalidGoalValue")); return; }
                   try {
                     const programMode = (await getSettingAsync("programMode")) || "normal";
@@ -1769,10 +1754,12 @@ export default function Analysis() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Comparison Exercise Picker Modal */}
-      <Modal visible={comparisonPickerOpen} animationType="slide" transparent>
+      <Modal visible={comparisonPickerOpen} animationType="slide" transparent onRequestClose={() => setComparisonPickerOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "flex-end" }}>
           <View
             style={{
@@ -1856,6 +1843,7 @@ export default function Analysis() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

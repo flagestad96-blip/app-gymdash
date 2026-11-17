@@ -4,6 +4,13 @@ import { EncodingType } from "expo-file-system/src/legacy/FileSystem.types";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
 
+/** Delete a file the app wrote (a progress photo, say); a missing file is not an error. */
+export async function deleteFileQuietly(uri: string): Promise<void> {
+  try {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  } catch {}
+}
+
 /**
  * Save a JSON string as a backup file in the app's document directory.
  * Returns the file URI.

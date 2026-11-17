@@ -5,7 +5,6 @@ export type Periodization = {
   enabled: boolean;
   cycleWeeks: number;     // e.g. 4
   deloadEvery: number;    // e.g. 4 (deload on week N)
-  deloadPercent: number;  // e.g. 60 (use 60% of normal weight)
   currentWeek: number;    // 1-based
   manualDeload?: boolean; // manual deload override (drop 1 set per exercise)
 };
@@ -14,7 +13,6 @@ const DEFAULT_PERIODIZATION: Periodization = {
   enabled: false,
   cycleWeeks: 4,
   deloadEvery: 4,
-  deloadPercent: 60,
   currentWeek: 1,
 };
 
@@ -35,7 +33,6 @@ export async function getPeriodization(programId: string): Promise<Periodization
       enabled: !!parsed.enabled,
       cycleWeeks: Number(parsed.cycleWeeks) || 4,
       deloadEvery: Number(parsed.deloadEvery) || 4,
-      deloadPercent: Number(parsed.deloadPercent) || 60,
       currentWeek: Number(parsed.currentWeek) || 1,
       manualDeload: !!parsed.manualDeload,
     };
@@ -76,14 +73,6 @@ export function isDeloadWeek(config: Periodization): boolean {
   if (config.manualDeload) return true;
   if (!config.enabled) return false;
   return config.currentWeek === config.deloadEvery;
-}
-
-/**
- * Calculate the deloaded weight for a given normal weight.
- */
-export function deloadWeight(weight: number, config: Periodization): number {
-  if (!isDeloadWeek(config)) return weight;
-  return Math.round((weight * config.deloadPercent) / 100 * 2) / 2; // Round to 0.5
 }
 
 /**

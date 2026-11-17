@@ -95,7 +95,6 @@ const program: TranslationMap = {
   "program.enablePeriodization": "Enable periodization",
   "program.cycleLength": "Cycle length (3\u20138 weeks)",
   "program.deloadWeekNumber": "Deload week number",
-  "program.deloadIntensity": "Deload intensity %",
   "program.week": "Week",
   "program.shareFile": "Share as file",
   "program.exportFailed": "Export failed.",
@@ -112,13 +111,16 @@ const program: TranslationMap = {
   "periodization.enabled": "Enabled",
   "periodization.weeks": "Cycle length (weeks)",
   "periodization.deload": "Deload week",
-  "periodization.deloadPercent": "Deload intensity (%)",
   "periodization.currentWeek": "Current week",
   "periodization.weekOf": "Week {current} of {total}",
   "periodization.deloadBanner": "DELOAD \u2014 {percent}% intensity",
   "periodization.deloadBannerSets": "DELOAD \u2014 \u22121 set per exercise",
   "periodization.deloadWeek": "DELOAD",
   "program.saved": "Program saved",
+  "program.importReplaceTitle": "Program already exists",
+  "program.importReplaceMsg": "You already have a program called \"{name}\". Replace it, or keep both?",
+  "program.importReplace": "Replace",
+  "program.importKeepBoth": "Keep both",
 };
 
 export default program;

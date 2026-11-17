@@ -58,7 +58,6 @@ export default function GymPickerModal({
             shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius,
             shadowOffset: theme.shadow.lg.offset,
-            elevation: theme.shadow.lg.elevation,
           }}
         >
           <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>

@@ -26,6 +26,16 @@ type CsvRow = {
 
 export type ImportMode = "merge" | "fresh";
 
+/** Settings that are never restored from a backup: they describe the device that wrote it. */
+const DEVICE_LOCAL_SETTINGS = new Set([
+  "autoBackupEnabled",
+  "autoBackupDirUri",
+  "lastAutoBackupAt",
+  "autoBackupLastErrorAt",
+  "last_backup_at",
+  "lastFatalError",
+]);
+
 export interface BackupPayload {
   schemaVersion: number;
   exportedAt: string;
@@ -36,6 +46,21 @@ export interface BackupPayload {
 export interface ImportResult {
   success: boolean;
   error?: string;
+}
+
+/**
+ * Record that a backup actually left the app (file written, text copied).
+ * Building the JSON is not a backup yet — the home screen's "back up your
+ * data" reminder goes quiet on this timestamp.
+ */
+export async function markBackupDone(): Promise<void> {
+  try {
+    await ensureDb();
+    await getDb().runAsync(`INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)`, [
+      "last_backup_at",
+      new Date().toISOString(),
+    ]);
+  } catch {}
 }
 
 /**
@@ -104,6 +129,9 @@ export async function exportFullBackup(): Promise<string> {
   const gymLocations = await db.getAllAsync(
     `SELECT id, name, color, icon, available_equipment, available_plates, sort_index, created_at FROM gym_locations`
   );
+  const skippedExercises = await db.getAllAsync(
+    `SELECT id, workout_id, exercise_id, reason, created_at FROM skipped_exercises`
+  );
 
   const payload: BackupPayload = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -130,16 +158,10 @@ export async function exportFullBackup(): Promise<string> {
       day_marks: dayMarks ?? [],
       exercise_notes: exerciseNotes ?? [],
       gym_locations: gymLocations ?? [],
+      skipped_exercises: skippedExercises ?? [],
     },
   };
 
-  // Record backup timestamp
-  try {
-    await db.runAsync(
-      `INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)`,
-      ["last_backup_at", new Date().toISOString()]
-    );
-  } catch {}
 
   return JSON.stringify(payload, null, 2);
 }
@@ -199,6 +221,7 @@ export async function importBackup(
   const dayMarks = Array.isArray(data.day_marks) ? data.day_marks : [];
   const exerciseNotes = Array.isArray(data.exercise_notes) ? data.exercise_notes : [];
   const gymLocations = Array.isArray(data.gym_locations) ? data.gym_locations : [];
+  const skippedExercises = Array.isArray(data.skipped_exercises) ? data.skipped_exercises : [];
 
   const hasAnyData =
     workouts.length > 0 ||
@@ -220,7 +243,8 @@ export async function importBackup(
     workoutTemplates.length > 0 ||
     dayMarks.length > 0 ||
     exerciseNotes.length > 0 ||
-    gymLocations.length > 0;
+    gymLocations.length > 0 ||
+    skippedExercises.length > 0;
 
   if (!hasAnyData) {
     return { success: false, error: "backup_empty" };
@@ -254,6 +278,7 @@ export async function importBackup(
       await db.execAsync("DELETE FROM day_marks");
       await db.execAsync("DELETE FROM exercise_notes");
       await db.execAsync("DELETE FROM gym_locations");
+      await db.execAsync("DELETE FROM skipped_exercises");
     }
 
     for (const w of workouts) {
@@ -263,10 +288,12 @@ export async function importBackup(
         [
           w.id,
           w.date,
-          w.program_mode,
+          w.program_mode ?? "normal",
           w.program_id ?? null,
-          w.day_key,
-          w.back_status,
+          w.day_key ?? `day_${(Number(w.day_index) || 0) + 1}`,
+          // NOT NULL in the schema: a backup row without it would abort a fresh
+          // restore and be dropped silently in a merge.
+          w.back_status ?? "green",
           w.notes ?? null,
           w.day_index ?? null,
           w.started_at ?? null,
@@ -303,6 +330,9 @@ export async function importBackup(
     }
 
     for (const s of settingsRows) {
+      // Settings that only mean something on the device that wrote them (a
+      // folder permission, when that device last backed up, its last crash).
+      if (DEVICE_LOCAL_SETTINGS.has(s.key)) continue;
       await db.runAsync(`${verb} settings(key, value) VALUES(?, ?)`, [s.key, s.value]);
     }
 
@@ -478,6 +508,24 @@ export async function importBackup(
         ]
       );
     }
+
+    for (const se of skippedExercises) {
+      await db.runAsync(
+        `${verb} skipped_exercises(id, workout_id, exercise_id, reason, created_at) VALUES(?, ?, ?, ?, ?)`,
+        [se.id, se.workout_id, se.exercise_id, se.reason ?? null, se.created_at]
+      );
+    }
+
+    // Older backups have workouts without ended_at; History only lists ended
+    // workouts, so close every restored workout that has sets (same rule as
+    // migration 27 — never the workout that is currently active).
+    await db.execAsync(`
+      UPDATE workouts
+      SET ended_at = (SELECT MAX(s.created_at) FROM sets s WHERE s.workout_id = workouts.id)
+      WHERE ended_at IS NULL
+        AND EXISTS (SELECT 1 FROM sets s WHERE s.workout_id = workouts.id)
+        AND id NOT IN (SELECT value FROM settings WHERE key = 'activeWorkoutId' AND value <> '')
+    `);
 
     await db.execAsync("COMMIT");
     return { success: true };

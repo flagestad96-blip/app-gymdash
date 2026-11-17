@@ -108,7 +108,6 @@ export default function RestSettingsModal({
             shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius,
             shadowOffset: theme.shadow.lg.offset,
-            elevation: theme.shadow.lg.elevation,
           }}
         >
           <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.restTimerTitle")}</Text>
@@ -254,7 +253,7 @@ export default function RestSettingsModal({
                   })}
                 </Text>
               ) : null}
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <TextInput
                   value={exerciseRestText || (focusedExerciseRest != null ? String(focusedExerciseRest) : "")}
                   onChangeText={setExerciseRestText}

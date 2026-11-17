@@ -8,7 +8,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
-import { validateImport } from "../../src/programImport";
+import { parseProgramImport } from "../../src/programImport";
 import {
   displayNameFor, searchExercises, EXERCISES, EXERCISE_TAGS,
   type ExerciseTag, type Equipment,
@@ -22,7 +22,7 @@ import type { TargetsByDay } from "../../src/progressionStore";
 import { collectDayExercisePairs } from "../../src/programExercises";
 import { getPeriodization, savePeriodization, isDeloadWeek, getDefaultPeriodization, toggleManualDeload, type Periodization } from "../../src/periodization";
 import { shareFile, saveBackupFile } from "../../src/fileSystem";
-import { getShareableProgramJson } from "../../src/sharing";
+import { getShareableProgramJson, programShareFileName } from "../../src/sharing";
 import { SkeletonProgramCard } from "../../src/components/Skeleton";
 import { Screen, TopBar, Card, Chip, Btn, IconButton, TextField } from "../../src/ui";
 import { SuccessToast } from "../../src/ui/modern";
@@ -105,7 +105,6 @@ export default function ProgramScreen() {
   const [periodEnabled, setPeriodEnabled] = useState(false);
   const [periodCycleWeeks, setPeriodCycleWeeks] = useState("4");
   const [periodDeloadWeek, setPeriodDeloadWeek] = useState("4");
-  const [periodDeloadPercent, setPeriodDeloadPercent] = useState("60");
 
   const [previewDayIdx, setPreviewDayIdx] = useState<number | null>(null);
   const [previewDuration, setPreviewDuration] = useState<string | null>(null);
@@ -194,12 +193,10 @@ export default function ProgramScreen() {
       setPeriodEnabled(periodCfg.enabled);
       setPeriodCycleWeeks(String(periodCfg.cycleWeeks));
       setPeriodDeloadWeek(String(periodCfg.deloadEvery));
-      setPeriodDeloadPercent(String(periodCfg.deloadPercent));
     } else {
       setPeriodEnabled(false);
       setPeriodCycleWeeks("4");
       setPeriodDeloadWeek("4");
-      setPeriodDeloadPercent("60");
     }
   }, []);
 
@@ -265,12 +262,8 @@ export default function ProgramScreen() {
 
   const canDeleteProgram = !!(
     activeProgram &&
-    ![
-      ProgramStore.STANDARD_PROGRAM_ID,
-      ProgramStore.BACK_PROGRAM_ID,
-      ProgramStore.LEGACY_STANDARD_PROGRAM_ID,
-      ProgramStore.LEGACY_BACK_PROGRAM_ID,
-    ].includes(activeProgram.id)
+    // Built-in programs are re-seeded at startup: deleting one only reset it.
+    !ProgramStore.BUILT_IN_PROGRAM_IDS.includes(activeProgram.id)
   );
 
   function ensureUnlocked(message?: string) {
@@ -281,6 +274,13 @@ export default function ProgramScreen() {
 
   async function saveProgram(next: Program) {
     await ProgramStore.saveProgram(programMode, next);
+    // Days or exercises may have been removed: drop what belonged to them, so
+    // it cannot reappear on a day or exercise added later.
+    await ProgramStore.pruneProgramExtras(next);
+    const alts = await ProgramStore.getAlternativesForProgram(next.id);
+    await ProgressionStore.ensureTargets(next.id, collectDayExercisePairs(next, alts));
+    setAlternatives(alts);
+    setTargets(await ProgressionStore.getTargets(next.id));
     setActiveProgram(next);
     const list = await ProgramStore.listPrograms(programMode);
     setPrograms(list);
@@ -324,6 +324,14 @@ export default function ProgramScreen() {
     setAlternatives(alts);
     await ProgressionStore.ensureTargets(prog.id, collectDayExercisePairs(prog, alts));
     setTargets(await ProgressionStore.getTargets(prog.id));
+    // Periodization belongs to the program — without this the previous
+    // program's week/deload showed on (and could be saved onto) the new one.
+    const periodCfg = await getPeriodization(prog.id);
+    const shown = periodCfg ?? getDefaultPeriodization();
+    setPeriodConfig(periodCfg);
+    setPeriodEnabled(shown.enabled);
+    setPeriodCycleWeeks(String(shown.cycleWeeks));
+    setPeriodDeloadWeek(String(shown.deloadEvery));
   }
 
   function openDayEditor(idx: number) {
@@ -612,6 +620,7 @@ export default function ProgramScreen() {
     } else if (nameAction === "duplicate" && activeProgram) {
       const clone = ProgramStore.cloneProgram(activeProgram, name);
       await ProgramStore.saveProgram(programMode, clone);
+      await ProgramStore.copyProgramExtras(activeProgram.id, clone.id);
       await ProgramStore.setActiveProgram(programMode, clone.id);
       await loadAll();
     } else if (nameAction === "rename" && activeProgram) {
@@ -650,13 +659,11 @@ export default function ProgramScreen() {
       setPeriodEnabled(periodConfig.enabled);
       setPeriodCycleWeeks(String(periodConfig.cycleWeeks));
       setPeriodDeloadWeek(String(periodConfig.deloadEvery));
-      setPeriodDeloadPercent(String(periodConfig.deloadPercent));
     } else {
       const def = getDefaultPeriodization();
       setPeriodEnabled(def.enabled);
       setPeriodCycleWeeks(String(def.cycleWeeks));
       setPeriodDeloadWeek(String(def.deloadEvery));
-      setPeriodDeloadPercent(String(def.deloadPercent));
     }
     setPeriodizationOpen(true);
   }
@@ -665,14 +672,13 @@ export default function ProgramScreen() {
     if (!activeProgram) return;
     const cycleWeeks = clampInt(parseInt(periodCycleWeeks, 10), 3, 8);
     const deloadEvery = clampInt(parseInt(periodDeloadWeek, 10), 1, cycleWeeks);
-    const deloadPercent = clampInt(parseInt(periodDeloadPercent, 10), 20, 100);
     const currentWeek = periodConfig?.currentWeek ?? 1;
     const config: Periodization = {
       enabled: periodEnabled,
       cycleWeeks,
       deloadEvery,
-      deloadPercent,
       currentWeek: currentWeek > cycleWeeks ? 1 : currentWeek,
+      manualDeload: periodConfig?.manualDeload,
     };
     await savePeriodization(activeProgram.id, config);
     setPeriodConfig(config);
@@ -687,7 +693,7 @@ export default function ProgramScreen() {
         Alert.alert(t("common.error"), t("program.exportFailed"));
         return;
       }
-      const filename = `gymdash_program_${activeProgram.name.replace(/\s+/g, "_")}.json`;
+      const filename = programShareFileName(activeProgram.name);
       const uri = await saveBackupFile(json, filename);
       await shareFile(uri);
     } catch {
@@ -695,23 +701,17 @@ export default function ProgramScreen() {
     }
   }
 
-  function openExport() {
+  async function openExport() {
     if (!activeProgram) return;
-    const payload = {
-      name: activeProgram.name,
-      days: activeProgram.days.map((d) => ({
-        name: d.name,
-        blocks: d.blocks.map((b) =>
-          b.type === "single"
-            ? { type: "single", exId: b.exId }
-            : b.c
-              ? { type: "superset", a: b.a, b: b.b, c: b.c }
-              : { type: "superset", a: b.a, b: b.b }
-        ),
-      })),
-    };
-    setExportText(JSON.stringify(payload, null, 2));
-    setImportExportOpen("export");
+    try {
+      // Same full format as "share file" and Settings: sets x reps and alternatives included.
+      const text = await getShareableProgramJson(activeProgram.id);
+      if (!text) throw new Error("program not found");
+      setExportText(text);
+      setImportExportOpen("export");
+    } catch {
+      Alert.alert(t("common.error"), t("program.exportFailed"));
+    }
   }
 
   async function copyText(text: string) {
@@ -730,7 +730,8 @@ export default function ProgramScreen() {
       return;
     }
 
-    const res = validateImport(parsed);
+    // Accepts both the simple format and the full one from Settings → Share program.
+    const res = parseProgramImport(parsed);
     if (!res.ok) {
       setImportError(t(res.errorKey));
       return;
@@ -738,15 +739,6 @@ export default function ProgramScreen() {
 
     const base = res.program;
     const now = isoNow();
-
-    // Check if a program with the same name already exists — replace it
-    const existing = await ProgramStore.listPrograms(programMode);
-    const duplicate = existing.find(
-      (p) => p.name.toLowerCase() === base.name.toLowerCase()
-    );
-    if (duplicate) {
-      await ProgramStore.deleteProgram(duplicate.id);
-    }
 
     const program: Program = {
       id: uid("program"),
@@ -765,11 +757,46 @@ export default function ProgramScreen() {
       })),
     };
 
-    await ProgramStore.saveProgram(programMode, program);
-    await ProgramStore.setActiveProgram(programMode, program.id);
-    await loadAll();
-    setImportExportOpen(null);
-    setImportText("");
+    const existing = await ProgramStore.listPrograms(programMode);
+    const sameName = (p: Program) => p.name.toLowerCase() === base.name.toLowerCase();
+    const taken = new Set(existing.map((p) => p.name.toLowerCase()));
+    let freeName = base.name;
+    for (let n = 2; taken.has(freeName.toLowerCase()); n += 1) freeName = `${base.name} (${n})`;
+
+    // The user's own program with that name: their call whether it is replaced.
+    const duplicate = existing.find((p) => sameName(p) && !ProgramStore.BUILT_IN_PROGRAM_IDS.includes(p.id));
+    if (duplicate) {
+      Alert.alert(t("program.importReplaceTitle"), t("program.importReplaceMsg", { name: duplicate.name }), [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("program.importKeepBoth"), onPress: () => { void finishImport({ ...program, name: freeName }, res, null); } },
+        { text: t("program.importReplace"), style: "destructive", onPress: () => { void finishImport(program, res, duplicate.id); } },
+      ]);
+      return;
+    }
+    // A built-in with that name cannot be replaced (it is re-seeded): import beside it.
+    await finishImport({ ...program, name: freeName }, res, null);
+  }
+
+  async function finishImport(
+    program: Program,
+    res: Extract<ReturnType<typeof parseProgramImport>, { ok: true }>,
+    replaceProgramId: string | null,
+  ) {
+    try {
+      await ProgramStore.saveProgram(programMode, program);
+      for (const alt of res.alternatives) {
+        await ProgramStore.setAlternatives({ programId: program.id, ...alt });
+      }
+      await ProgressionStore.applySharedTargets(program.id, res.targets);
+      // The old program goes only after the new one is safely written.
+      if (replaceProgramId) await ProgramStore.deleteProgram(replaceProgramId);
+      await ProgramStore.setActiveProgram(programMode, program.id);
+      await loadAll();
+      setImportExportOpen(null);
+      setImportText("");
+    } catch {
+      setImportError(t("program.importFailed"));
+    }
   }
 
   if (!ready || !activeProgram) {
@@ -1088,7 +1115,7 @@ export default function ProgramScreen() {
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }}>
-              <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                 <Btn label={t("program.addExercise")} onPress={startAddSingle} tone="accent" />
                 <Btn label={t("program.addSuperset")} onPress={startAddSuperset} />
               </View>
@@ -1255,7 +1282,7 @@ export default function ProgramScreen() {
               </Pressable>
             </View>
 
-            <View style={{ padding: 14, gap: 10 }}>
+            <View style={{ padding: 14, gap: 10, flexShrink: 1 }}>
               {/* "Save as 2-way" must appear ABOVE the exercise FlatList.
                   Earlier it sat below the list, which on most screens
                   pushed it off-screen and made the (optional) C slot
@@ -1399,7 +1426,7 @@ export default function ProgramScreen() {
               </Pressable>
             </View>
 
-            <View style={{ padding: 14, gap: 10 }}>
+            <View style={{ padding: 14, gap: 10, flexShrink: 1 }}>
               <TextField
                 value={altQuery}
                 onChangeText={setAltQuery}
@@ -1474,6 +1501,7 @@ export default function ProgramScreen() {
       </Modal>
 
       <Modal visible={nameModalOpen} transparent animationType="fade" onRequestClose={() => setNameModalOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
@@ -1515,9 +1543,11 @@ export default function ProgramScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={renameDayOpen} transparent animationType="fade" onRequestClose={() => setRenameDayOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
@@ -1544,9 +1574,11 @@ export default function ProgramScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={targetEditorOpen} transparent animationType="fade" onRequestClose={() => setTargetEditorOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.targets")}</Text>
@@ -1622,9 +1654,11 @@ export default function ProgramScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={importExportOpen !== null} transparent animationType="fade" onRequestClose={() => setImportExportOpen(null)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "80%" }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
@@ -1689,10 +1723,12 @@ export default function ProgramScreen() {
             )}
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Custom exercise creation modal */}
       <Modal visible={customExModalOpen} transparent animationType="fade" onRequestClose={() => setCustomExModalOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.createCustom")}</Text>
@@ -1772,9 +1808,11 @@ export default function ProgramScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* Periodization Modal */}
       <Modal visible={periodizationOpen} transparent animationType="fade" onRequestClose={() => setPeriodizationOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("program.periodization")}</Text>
@@ -1826,25 +1864,6 @@ export default function ProgramScreen() {
               />
             </View>
 
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted }}>{t("program.deloadIntensity")}</Text>
-              <TextField
-                value={periodDeloadPercent}
-                onChangeText={setPeriodDeloadPercent}
-                keyboardType="numeric"
-                placeholder="60"
-                placeholderTextColor={theme.muted}
-                style={{
-                  color: theme.text,
-                  backgroundColor: theme.glass,
-                  borderColor: theme.glassBorder,
-                  borderWidth: 1,
-                  borderRadius: 14,
-                  padding: 12,
-                }}
-              />
-            </View>
-
             {periodConfig?.enabled ? (
               <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 12 }}>
                 {isDeloadWeek(periodConfig)
@@ -1859,6 +1878,7 @@ export default function ProgramScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
       <SuccessToast visible={successToast} message={t("program.saved")} onDismiss={() => setSuccessToast(false)} />
     </Screen>

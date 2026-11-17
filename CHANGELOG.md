@@ -1,5 +1,53 @@
 # Gymdash Changelog
 
+## v0.17.0-beta — 2026-11-17
+
+Whole-app audit after a tester could not import a shared program. Five parallel code reviews plus mechanical checks; every finding below was confirmed in the code before it was fixed. Nothing here was verified on a device — see `docs/sessions/2026-11-17.md` for what to check on a phone.
+
+### Sharing programs
+- **One share format everywhere.** "Copy text" and "Share file" on the Program screen now emit the same full payload as Settings → Share program (days, supersets, alternatives, sets × reps, increment, auto-progress). "Share file" used to write a `gymdash_program` file that no importer could read, and failed outright on program names containing "/".
+- **"Receive program" accepts the full format** (`parseProgramImport`), and asks before replacing a program with the same name (replace / keep both). The new program is written before the old one is removed.
+- **The share dialog in Settings scrolls** — a long pasted program pushed the Import button off the screen.
+- **Alternatives inherit sets × reps** from the exercise they stand in for (`inheritFrom` in `ensureTargets`), instead of the library default.
+- **Duplicating a program copies targets and alternatives** (`copyProgramExtras`).
+
+### Data safety
+- **"Import file" always merges.** The "new profile" switch in the paste dialog could stay on after Cancel, and a later file import then wiped every table without confirmation.
+- **Backups include `skipped_exercises`**; restoring an old backup backfills `ended_at` so the workouts show in History; device-bound settings (auto-backup folder, last-backup timestamps) are no longer restored onto another phone; a workout row without `back_status` no longer aborts a restore.
+- **A backup counts only once it exists**: `last_backup_at` is stamped after the file is written or the text copied (`markBackupDone`), and a failed auto-backup is remembered and shown in Settings.
+- **Migrations are atomic and retried**: each runs in a transaction with its version row, applied versions are tracked individually, and a failed migration is no longer skipped for good.
+- **"Reset everything" deletes everything** (body measurements and photo files, achievements, goals, custom exercises, templates, day marks, notes, scheduled reminders) and says so.
+- "Delete empty workouts" spares the workout in progress.
+
+### Program
+- **Periodization week** advances once per pass through the program, not after every workout (the "deload week" came every fourth session). Switching program reloads its periodization; saving the form keeps a manual deload.
+- **Removed the "Deload intensity %" field** — it was stored and never used.
+- Targets and alternatives are pruned when a day or exercise is removed (`pruneProgramExtras`), so they cannot reappear on a day added later.
+- Built-in programs can no longer be "deleted" (they were re-seeded immediately); a custom exercise in use as a third superset slot or as an alternative can no longer be deleted.
+
+### Log
+- An empty weight is accepted for body-weight-only exercises (hanging leg raise, plank …).
+- **Undo of a PR set rebuilds the record** instead of deleting it together with the best it had replaced.
+- **No false PRs in a new or imported program**: the first set is only announced if it also beats the best under every other program; a set without load is never announced.
+- A second tap while a set is being written no longer logs it twice.
+- The day you picked is kept when you come back to the tab; the program chosen in onboarding reaches the Log screen.
+- The finish summary scrolls with "Done" pinned; a skipped exercise no longer blocks the "all sets done" prompt; "drop/skip" in a superset survives switching exercise; editing only a note no longer rewrites the weight (lbs rounding).
+
+### Reminders
+- **Days and time can be chosen** in Settings → Notifications (default Mon/Wed/Fri 17:00). Before, "reminders on" meant Mondays at 17:00 only, while onboarding promised training days. Installs that already had reminders on show Monday until changed.
+
+### Other screens
+- Home reloads when it regains focus (it showed pre-workout numbers after the back button) and no longer prints a literal `·`.
+- Calendar month navigation no longer skips a month on the 29th–31st.
+- Comma decimals in body weight, goals and the history filter; no more "BMI: 0" with an empty weight field.
+- Analysis: "this month vs last month" is computed from its own 30-day queries (it showed about −75 % in week view); Android back closes the three sheets.
+- Onboarding saves the chosen palette; the two time-of-day achievements can unlock; feedback opens the mail app directly.
+- Keyboard: every dialog with a text field is wrapped in a `KeyboardAvoidingView` (`padding`), and the Log, Body and rest-bar views use `padding` on Android too.
+- `elevation` removed from ten dialogs on semi-transparent glass; 16 Norwegian strings fixed.
+
+### Tests
+- `src/__tests__/dbIntegration.test.ts` runs the real schema, migrations and stores against a real SQLite engine (`node:sqlite`; skipped on Node < 22.5): import, share round trip, duplicate, prune, backup export → restore, PR rules. 313 tests in total.
+
 ## v0.16.0-beta — 2026-11-16
 
 First release of the broader-release round from 2026-10-01 (never shipped until now) plus complete program sharing.

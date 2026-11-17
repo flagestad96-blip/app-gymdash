@@ -59,12 +59,12 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Program: fleksibelt antall dager per program (1—10), +/- knapper i ukeoversikt.
 - Program: per øvelse rep-range + increment (targets) + auto-progresjon toggle via modal.
 - Program: targets inkluderer antall sett (target_sets).
-- Program: import/export av program (del som tekst/fil, motta via innliming), dupliser/rename/slett.
+- Program: import/export av program (del som tekst/fil, motta via innliming) — hele programmet følger med (dager, supersett, alternativer, sett×reps); dupliser (inkl. mål/alternativer)/rename/slett. Import spør før et program med samme navn erstattes.
 - Program: innebygde templates inkl. «PPL 5-dagers (Brystfokus)» med targets + alternativer.
 - Program: øvelsessøk med fuzzy matching + FlatList for ytelse (184 øvelser + egne øvelser).
 - Program: egne øvelser — opprett, slett, med utstyr/merkelapper/increment.
 - Program: forbedret rekkefølge — MaterialIcons piler med haptics, deaktivert ved grense.
-- Program: periodisering — mesosyklus med deload-uker, uke-badge på programkort.
+- Program: periodisering — mesosyklus med deload-uker (uka går videre når siste dag i programmet er fullført), uke-badge på programkort.
 - Program: dag-forhåndsvisning — trykk dag → modal med øvelser, targets (sett×reps), estimert varighet.
 - Program: manuell deload-uke — toggle-knapp som reduserer target-sett med 1 per øvelse.
 - Program: del program via fil (native share sheet).
@@ -102,7 +102,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Settings: filbasert backup — eksporter til fil + del via native share, importer fra fil.
 - Settings: import deduplisering — programimport erstatter eksisterende med samme navn, backup-import bruker INSERT OR REPLACE.
 - Settings: expo-clipboard for kopiering av eksporttekst (fungerer på mobil), manuelt selekterbar tekst.
-- Settings: varsler — treningspåminnelser per ukedag, hviledag-forslag.
+- Settings: varsler — treningspåminnelser med valgbare ukedager og tidspunkt (standard man/ons/fre kl. 17), hviledag-forslag.
 - Settings: personvern-seksjon — forklarer at appen er 100% offline, ingen data forlater enheten, lokal SQLite-lagring.
 - Onboarding: 10 praktiske steg som faktisk setter opp appen (velkommen, språk, vektenhet, palette, kroppsdata, programvalg blant de fem ferdige, påminnelser, hviletimer, slik-logger-du, klar). Alle steg hoppbare (globalt Hopp over + Neste uten valg). Vises første gang og kan åpnes fra Settings.
 - Splash: fade + logo + minimum varighet i root.
@@ -220,7 +220,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Android: ALDRI bruk `elevation` på elementer med transparent/semi-transparent backgroundColor (gir hvit rektangel)
 - i18n: alle UI-strenger via t("key") fra useI18n() hook. Nye strenger legges til i src/i18n.ts (nb + en).
 - Vektenhet: alle verdier lagres i kg internt. Konvertering skjer kun ved display/input via useWeightUnit() hook.
-- Versjonering: semver. Nåværende: v0.16.0-beta (versionCode 18).
+- Versjonering: semver. Nåværende: v0.17.0-beta (versionCode 19).
 - iOS: konfig klar (bundleIdentifier, buildNumber, eas-profiler, image-picker-tekster) — bygg krever Apple Developer-konto, se docs/RELEASE.md.
 - expo-file-system: VIKTIG — bruk `import * as FileSystem from "expo-file-system/src/legacy"` (IKKE fra hoved-pakken). Expo SDK 54 / expo-file-system v19 kaster runtime-feil for legacy API importert fra main.
 - Sirkulær import: db.ts og exerciseLibrary.ts har sirkulær avhengighet. Løst med lazy `require()` i begge filer. `_loadCustomExercisesFromDb(db)` tar db-handle direkte for å unngå deadlock under initDb().
@@ -252,6 +252,7 @@ Stabil og pen treningsapp (Expo Router) for logging, programbygging og analyse.
 - Bump `expo.android.versionCode` og `expo.version` før hver release
 
 ## Sist endret (dato + hva)
+- 2026-11-17: **v0.17.0-beta — helapp-gjennomgang** etter at en tester ikke fikk importert et delt program. (1) **Programdeling**: ett felles format (`buildProgramSharePayload` i `src/sharing.ts`) for «Kopier tekst», «Del fil» og Innstillinger; «Motta program» leser det (`parseProgramImport`) og spør før et program med samme navn erstattes; alternativer arver sett×reps (`inheritFrom`); duplisering kopierer mål/alternativer (`copyProgramExtras`); `pruneProgramExtras` rydder mål/alternativer når dager/øvelser fjernes. (2) **Datasikkerhet**: filimport fletter alltid (kunne slette alt uten bekreftelse), backup tar med `skipped_exercises`, gjenoppretting backfiller `ended_at` og tar ikke med enhetsbundne innstillinger, `markBackupDone` stempler først når kopien finnes, auto-backup-feil vises, migreringer er atomiske og spores per versjon, «Nullstill alt» sletter alt. (3) **Program**: periodiserings-uka går videre per runde gjennom programmet (ikke per økt), feltet «Deload-intensitet %» er fjernet (gjorde ingenting), innebygde programmer kan ikke slettes. (4) **Logg**: tom vekt på kroppsvektøvelser, angre-PR gjenoppbygger rekorden, ingen falske PR-er i nytt program, dobbelttrykk-vern, valgt dag huskes, øktoppsummering ruller. (5) **Påminnelser**: dager og tidspunkt velges i Innstillinger (`src/reminderSchedule.ts`). (6) Tastatur: alle dialoger med tekstfelt har `KeyboardAvoidingView` (`padding`). (7) Ny `dbIntegration.test.ts` kjører ekte skjema/migreringer/stores mot `node:sqlite`. Ikke verifisert på enhet — se sjekkliste i `docs/sessions/2026-11-17.md`.
 - 2026-11-16: Del program (Settings) tar nå med antall sett + auto-progresjon per øvelse i eksport/import (`targetSets`/`autoProgress` i targets, fortsatt schemaVersion 1 — eldre eksporter uten feltene importeres med standardverdier, og `incrementKg` er valgfri). Ren parser `parseShareTargets` i `src/programImport.ts` m/ tester; importen bruker `upsertTarget`. «Motta program» på Program-skjermen er uendret (kun dager + øvelser).
 - 2026-10-01: **Bredere-utgivelse-forberedelser** — (1) Warmup-audit: `is_warmup` filtreres nå konsekvent i alle statistikk-stier (analyse-fanen hadde mistet filtrene helt; økt-oppsummering, volum-PR, hjem, kalender, historikk, achievements, coach-øktutvalg fikset; `recomputeVolumePRForExercise` reparerer historiske volum-PRs via «Reparer PRs»). (2) Global RestBar-clearance via Screen-wrapper (portet fra develop-branchen). (3) Lint 151→0 + dødkode slettet (Expo-template-rester, ThemeMode-shims, RestTimerInline). (4) Fire nye ferdigprogrammer (Nybegynner 3d, Styrke 4d O/U, Hypertrofi 4d O/U, Hjemme 3d Manualer) + PPL5 omdøpt til «Marius sin muskeloppskrift»; beskrivelser vises i programlisten. (5) Onboarding omskrevet til 10 praktiske, hoppbare steg (språk/enhet/palette/kropp/program/påminnelser/hvile/guide). (6) Feedback-kort i Settings: mailto + opt-in diagnostikk m/ forhåndsvisning, lokal ErrorUtils-feillogger. (7) iOS-konfig klar (bundleId, buildNumber-lås, eas-profiler, RELEASE.md-seksjon). (8) Codex-agentoppsett committet.
 - 2026-08-23: **Release v0.13.0-beta** (versionCode 14) — patch notes + CHANGELOG fylt ut. `serviceAccountKeyPath` fjernet fra `eas.json` så tag-push-workflowen (`.eas/workflows/release-android.yml`) faktisk kan submitte fra EAS-serverne; release trigges av tag-push (`v*`), ikke av merge til main.

@@ -208,3 +208,30 @@ describe("summarizeSessionSets", () => {
     })).toEqual({ plannedSets: 6, doneSets: 3, bonusSets: 0 });
   });
 });
+
+describe("areAllPlannedSetsDone with skipped exercises", () => {
+  const blocks = [
+    { type: "single" as const, exId: "bench" },
+    { type: "superset" as const, a: "calf", b: "legraise" },
+  ];
+  const getTarget = () => ({ targetSets: 2 });
+  const two = [{ is_warmup: 0 }, { is_warmup: 0 }];
+
+  it("a skipped exercise owes no sets", () => {
+    const input = { blocks, setsByExercise: { bench: two, calf: two }, adHocSet: new Set<string>(), getTarget };
+    expect(areAllPlannedSetsDone(input)).toBe(false);
+    expect(areAllPlannedSetsDone({ ...input, skippedSet: new Set(["legraise"]) })).toBe(true);
+  });
+
+  it("skipping everything does not count as a finished workout", () => {
+    expect(
+      areAllPlannedSetsDone({
+        blocks,
+        setsByExercise: {},
+        adHocSet: new Set<string>(),
+        skippedSet: new Set(["bench", "calf", "legraise"]),
+        getTarget,
+      })
+    ).toBe(false);
+  });
+});

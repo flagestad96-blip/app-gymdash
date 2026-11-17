@@ -15,6 +15,8 @@ export type CompletionInputs = {
   blocks: CompletionBlock[];
   setsByExercise: Record<string, CompletionSet[]>;
   adHocSet: ReadonlySet<string>;
+  /** Exercises the user skipped for today — they owe no sets. */
+  skippedSet?: ReadonlySet<string>;
   getTarget: (exId: string) => CompletionTarget;
 };
 
@@ -82,6 +84,7 @@ export function areAllPlannedSetsDone(input: CompletionInputs): boolean {
 
     for (const eid of exIds) {
       if (input.adHocSet.has(eid)) continue;
+      if (input.skippedSet?.has(eid)) continue;
       const tgt = input.getTarget(eid);
       if (tgt.targetSets <= 0) continue;
       anyTargetDefined = true;

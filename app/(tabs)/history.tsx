@@ -9,7 +9,7 @@
 // volume and set count. Editing is intentionally deferred (will be wired
 // to PR-recalculation in a follow-up sprint).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, FlatList, Modal, Alert } from "react-native";
+import { View, Text, Pressable, FlatList, Modal, Alert, KeyboardAvoidingView } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { ensureDb, getDb, deleteWorkout } from "../../src/db";
@@ -20,7 +20,7 @@ import { displayNameFor, searchExercises } from "../../src/exerciseLibrary";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import { useWeightUnit } from "../../src/units";
 import { periodCutoffIso, durationMinutes, type TimePeriod } from "../../src/historyHelpers";
-import { formatWeight } from "../../src/format";
+import { formatWeight, parseDecimal } from "../../src/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -186,7 +186,7 @@ LIMIT 500`;
       params.push(cutoff);
     }
 
-    const minNum = parseFloat(minWeight);
+    const minNum = parseDecimal(minWeight);
     if (Number.isFinite(minNum) && minNum > 0) {
       whereClauses.push("s.weight >= ?");
       params.push(wu.toKg(minNum));
@@ -672,6 +672,7 @@ LIMIT ?`;
 
       {/* ── Min Weight Modal ────────────────────────────────────────── */}
       <Modal visible={minWeightModalOpen} transparent animationType="fade" onRequestClose={() => setMinWeightModalOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable
           style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}
           onPress={() => setMinWeightModalOpen(false)}
@@ -728,6 +729,7 @@ LIMIT ?`;
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

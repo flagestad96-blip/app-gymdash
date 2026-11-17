@@ -17,7 +17,7 @@ import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system/src/legacy";
 import { EncodingType } from "expo-file-system/src/legacy/FileSystem.types";
 import { getSettingAsync, setSettingAsync } from "./db";
-import { exportFullBackup } from "./backup";
+import { exportFullBackup, markBackupDone } from "./backup";
 import {
   AUTO_BACKUP_KEEP,
   autoBackupFilename,
@@ -30,6 +30,8 @@ const SAF = FileSystem.StorageAccessFramework;
 export const AUTO_BACKUP_ENABLED_KEY = "autoBackupEnabled";
 export const AUTO_BACKUP_DIR_KEY = "autoBackupDirUri";
 export const AUTO_BACKUP_LAST_KEY = "lastAutoBackupAt";
+/** When the most recent attempt failed; cleared by the next successful run. */
+export const AUTO_BACKUP_ERROR_KEY = "autoBackupLastErrorAt";
 
 export type AutoBackupRunResult = "done" | "throttled" | "disabled" | "unconfigured" | "error";
 
@@ -38,15 +40,18 @@ export type AutoBackupStatus = {
   /** SAF folder URI (Android). null on iOS (fixed app-documents location). */
   dirUri: string | null;
   lastRunAt: string | null;
+  /** Set while the latest attempt failed (folder gone, permission lost, disk full). */
+  lastErrorAt: string | null;
 };
 
 export async function getAutoBackupStatus(): Promise<AutoBackupStatus> {
-  const [enabled, dirUri, lastRunAt] = await Promise.all([
+  const [enabled, dirUri, lastRunAt, lastErrorAt] = await Promise.all([
     getSettingAsync(AUTO_BACKUP_ENABLED_KEY),
     getSettingAsync(AUTO_BACKUP_DIR_KEY),
     getSettingAsync(AUTO_BACKUP_LAST_KEY),
+    getSettingAsync(AUTO_BACKUP_ERROR_KEY),
   ]);
-  return { enabled: enabled === "1", dirUri: dirUri || null, lastRunAt: lastRunAt || null };
+  return { enabled: enabled === "1", dirUri: dirUri || null, lastRunAt: lastRunAt || null, lastErrorAt: lastErrorAt || null };
 }
 
 export async function setAutoBackupEnabled(enabled: boolean): Promise<void> {
@@ -119,13 +124,21 @@ export async function runAutoBackupIfDue(opts?: { force?: boolean }): Promise<Au
     if (!status.enabled) return "disabled";
     if (!opts?.force && !isAutoBackupDue(status.lastRunAt, Date.now())) return "throttled";
 
+    // Nowhere to write yet (Android needs a folder) — not a failed backup.
+    if (Platform.OS === "android" && !status.dirUri) return "unconfigured";
+
     const now = new Date();
     const json = await exportFullBackup();
 
-    if (Platform.OS === "android") {
-      if (!status.dirUri) return "unconfigured";
+    if (Platform.OS === "android" && status.dirUri) {
       const fileUri = await SAF.createFileAsync(status.dirUri, autoBackupFilename(now), "application/json");
-      await FileSystem.writeAsStringAsync(fileUri, json, { encoding: EncodingType.UTF8 });
+      try {
+        await FileSystem.writeAsStringAsync(fileUri, json, { encoding: EncodingType.UTF8 });
+      } catch (writeErr) {
+        // Don't leave an empty file behind: it would count as one of the kept backups.
+        await FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+        throw writeErr;
+      }
       await pruneSafBackups(status.dirUri).catch(() => {});
     } else {
       const dir = `${FileSystem.documentDirectory}backups/`;
@@ -136,10 +149,16 @@ export async function runAutoBackupIfDue(opts?: { force?: boolean }): Promise<Au
       await pruneLocalBackups(dir).catch(() => {});
     }
 
+    // Only now is there a backup: stamp it and clear any earlier failure.
     await setSettingAsync(AUTO_BACKUP_LAST_KEY, now.toISOString());
+    await setSettingAsync(AUTO_BACKUP_ERROR_KEY, "").catch(() => {});
+    await markBackupDone();
     return "done";
   } catch (err) {
     console.warn("[autoBackup] run failed", err);
+    // Remember the failure so Settings can show it — it used to fail silently
+    // forever (e.g. a folder permission that did not survive a reinstall).
+    await setSettingAsync(AUTO_BACKUP_ERROR_KEY, new Date().toISOString()).catch(() => {});
     return "error";
   }
 }

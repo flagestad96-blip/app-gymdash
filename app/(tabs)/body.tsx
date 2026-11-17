@@ -1,10 +1,11 @@
 // app/(tabs)/body.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useTheme } from "../../src/theme";
 import { useI18n } from "../../src/i18n";
 import { deleteBodyMetric, listBodyMetrics, upsertBodyMetric, getSettingAsync, setSettingAsync, type BodyMetricRow } from "../../src/db";
+import { parseDecimal } from "../../src/format";
 import { Screen, TopBar, Card, Btn, TextField, IconButton } from "../../src/ui";
 import { useWeightUnit } from "../../src/units";
 import PhotoPicker from "../../src/components/PhotoPicker";
@@ -72,18 +73,19 @@ export default function BodyScreen() {
   );
 
   const latestMetric = metrics[0] ?? null;
-  const parsedHeight = Number(heightCm);
-  const parsedWeightInput = Number(weightInput);
+  const parsedHeight = parseDecimal(heightCm);
+  const parsedWeightInput = parseDecimal(weightInput);
 
   const bmiValue = useMemo(() => {
-    const w = Number.isFinite(parsedWeightInput) ? wu.toKg(parsedWeightInput) : latestMetric?.weight_kg;
+    // An empty or zero field means "nothing typed yet": fall back to the latest saved weight.
+    const w = Number.isFinite(parsedWeightInput) && parsedWeightInput > 0 ? wu.toKg(parsedWeightInput) : latestMetric?.weight_kg;
     return computeBmi(w, parsedHeight);
   }, [parsedHeight, parsedWeightInput, latestMetric, wu]);
 
   const weightTrend = useMemo(() => computeWeightTrend(metrics), [metrics]);
 
   async function saveMetric() {
-    const w = Number(weightInput);
+    const w = parseDecimal(weightInput);
     if (!Number.isFinite(w) || w <= 0) {
       Alert.alert(t("body.invalidWeight"), t("body.invalidWeightMsg"));
       return;
@@ -143,7 +145,7 @@ export default function BodyScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={{ padding: theme.space.lg, gap: theme.space.md, paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"

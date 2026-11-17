@@ -24,8 +24,17 @@ describe("collectDayExercisePairs", () => {
     const alts: AlternativesMap = { 0: { bench: ["db-bench", "machine-press"] } } as unknown as AlternativesMap;
     expect(collectDayExercisePairs(p, alts)).toEqual([
       { dayIndex: 0, exerciseId: "bench" },
+      { dayIndex: 0, exerciseId: "db-bench", inheritFrom: "bench" },
+      { dayIndex: 0, exerciseId: "machine-press", inheritFrom: "bench" },
+    ]);
+  });
+
+  it("an exercise that is both a primary and an alternative keeps its own target", () => {
+    const p = prog([{ blocks: [{ type: "single", exId: "bench" }, { type: "single", exId: "db-bench" }] }]);
+    const alts: AlternativesMap = { 0: { bench: ["db-bench"] } } as unknown as AlternativesMap;
+    expect(collectDayExercisePairs(p, alts)).toEqual([
+      { dayIndex: 0, exerciseId: "bench" },
       { dayIndex: 0, exerciseId: "db-bench" },
-      { dayIndex: 0, exerciseId: "machine-press" },
     ]);
   });
 

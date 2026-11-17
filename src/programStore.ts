@@ -1161,6 +1161,105 @@ export function cloneProgram(program: Program, name: string): Program {
   };
 }
 
+/**
+ * Copy what belongs to a program besides its days: per-day targets (sets,
+ * rep range, increment, auto-progress) and alternatives. Used when a program
+ * is duplicated, so the copy is the same plan and not just the same exercises.
+ */
+export async function copyProgramExtras(fromProgramId: string, toProgramId: string): Promise<void> {
+  if (!fromProgramId || !toProgramId || fromProgramId === toProgramId) return;
+  await ensureDb();
+  const db = getDb();
+  await db.runAsync(
+    `INSERT OR IGNORE INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at, auto_progress)
+     SELECT 'target_' || ? || '_' || exercise_id || '_d' || day_index, ?, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, ?, auto_progress
+     FROM exercise_targets WHERE program_id = ?`,
+    [toProgramId, toProgramId, isoNow(), fromProgramId]
+  );
+  const alts = await db.getAllAsync<{ day_index: number; exercise_id: string; alt_exercise_id: string; sort_index: number }>(
+    `SELECT day_index, exercise_id, alt_exercise_id, sort_index FROM program_exercise_alternatives WHERE program_id = ?`,
+    [fromProgramId]
+  );
+  for (const a of alts ?? []) {
+    await db.runAsync(
+      `INSERT INTO program_exercise_alternatives(id, program_id, day_index, exercise_id, alt_exercise_id, sort_index)
+       VALUES(?, ?, ?, ?, ?, ?)`,
+      [uid("alt"), toProgramId, a.day_index, a.exercise_id, a.alt_exercise_id, a.sort_index]
+    );
+  }
+}
+
+/**
+ * Drop targets and alternatives that no longer belong to the program: days
+ * that were removed, and exercises taken out of a day. Left behind, they come
+ * back silently when a day or exercise is added again later (an empty new day
+ * showing the removed day's rep ranges).
+ */
+export async function pruneProgramExtras(program: Program): Promise<void> {
+  if (!program?.id) return;
+  await ensureDb();
+  const db = getDb();
+  const dayCount = program.days.length;
+  await db.runAsync(`DELETE FROM exercise_targets WHERE program_id = ? AND day_index >= ?`, [program.id, dayCount]);
+  await db.runAsync(`DELETE FROM program_exercise_alternatives WHERE program_id = ? AND day_index >= ?`, [program.id, dayCount]);
+
+  for (let di = 0; di < dayCount; di += 1) {
+    const primaries = new Set<string>();
+    for (const block of program.days[di].blocks) {
+      if (block.type === "single") primaries.add(block.exId);
+      else {
+        primaries.add(block.a);
+        primaries.add(block.b);
+        if (block.c) primaries.add(block.c);
+      }
+    }
+
+    // Alternatives of an exercise that left the day go with it.
+    const altRows = await db.getAllAsync<{ exercise_id: string; alt_exercise_id: string }>(
+      `SELECT exercise_id, alt_exercise_id FROM program_exercise_alternatives WHERE program_id = ? AND day_index = ?`,
+      [program.id, di]
+    );
+    const keep = new Set(primaries);
+    const orphanBases = new Set<string>();
+    for (const row of altRows ?? []) {
+      if (primaries.has(row.exercise_id)) keep.add(row.alt_exercise_id);
+      else orphanBases.add(row.exercise_id);
+    }
+    for (const base of orphanBases) {
+      await db.runAsync(
+        `DELETE FROM program_exercise_alternatives WHERE program_id = ? AND day_index = ? AND exercise_id = ?`,
+        [program.id, di, base]
+      );
+    }
+
+    // Targets for anything that is neither in the day nor an alternative there.
+    const targetRows = await db.getAllAsync<{ exercise_id: string }>(
+      `SELECT exercise_id FROM exercise_targets WHERE program_id = ? AND day_index = ?`,
+      [program.id, di]
+    );
+    for (const row of targetRows ?? []) {
+      if (keep.has(row.exercise_id)) continue;
+      await db.runAsync(
+        `DELETE FROM exercise_targets WHERE program_id = ? AND day_index = ? AND exercise_id = ?`,
+        [program.id, di, row.exercise_id]
+      );
+    }
+  }
+}
+
+/** Ids of the programs that ship with the app and are re-seeded at startup. */
+export const BUILT_IN_PROGRAM_IDS: readonly string[] = [
+  STANDARD_PROGRAM_ID,
+  BACK_PROGRAM_ID,
+  LEGACY_STANDARD_PROGRAM_ID,
+  LEGACY_BACK_PROGRAM_ID,
+  PPL5_BRYSTFOKUS_ID,
+  NYBEGYNNER3_ID,
+  STYRKE4_ID,
+  HYPERTROFI4_ID,
+  HJEMME3_ID,
+];
+
 /** Get preview data for the next workout day */
 export async function getNextWorkoutPreview(
   programId: string,

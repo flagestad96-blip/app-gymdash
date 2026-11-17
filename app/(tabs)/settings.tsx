@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme, setPalette, getPalette, getPaletteColors, setGlassIntensity, getGlassIntensity, PALETTE_LIST, type Palette } from "../../src/theme";
@@ -19,11 +20,12 @@ import { useI18n, type Locale, setLocale as setI18nLocale } from "../../src/i18n
 import { ensureDb, getDb, getSettingAsync, setSettingAsync } from "../../src/db";
 import { useRestTimer } from "../../src/restTimerContext";
 import * as ProgramStore from "../../src/programStore";
-import { getTargets, upsertTarget, defaultTargetForExercise } from "../../src/progressionStore";
+import { applySharedTargets } from "../../src/progressionStore";
+import { getShareableProgramJson } from "../../src/sharing";
 import { parseShareTargets } from "../../src/programImport";
-import { displayNameFor } from "../../src/exerciseLibrary";
-import { exportFullBackup, importBackup, exportCsv, type ImportMode } from "../../src/backup";
-import { saveBackupFile, shareFile, pickBackupFile } from "../../src/fileSystem";
+import { displayNameFor, loadCustomExercises } from "../../src/exerciseLibrary";
+import { exportFullBackup, importBackup, exportCsv, markBackupDone, type ImportMode } from "../../src/backup";
+import { saveBackupFile, shareFile, pickBackupFile, deleteFileQuietly } from "../../src/fileSystem";
 import {
   getAutoBackupStatus,
   setAutoBackupEnabled,
@@ -34,10 +36,13 @@ import {
 import {
   requestNotificationPermissions,
   hasNotificationPermissions,
-  scheduleWorkoutReminder,
   scheduleRestDayCheck,
   cancelAllNotificationsOfType,
+  getReminderSchedule,
+  saveReminderSchedule,
+  applyWorkoutReminders,
 } from "../../src/notifications";
+import { DEFAULT_REMINDER_SCHEDULE, formatReminderTime, toggleReminderDay, type ReminderSchedule } from "../../src/reminderSchedule";
 import * as Clipboard from "expo-clipboard";
 import { SkeletonCard } from "../../src/components/Skeleton";
 import OnboardingModal from "../../components/OnboardingModal";
@@ -116,6 +121,8 @@ export default function Settings() {
   const [dataToolsBusy, setDataToolsBusy] = useState(false);
 
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderSchedule, setReminderSchedule] = useState<ReminderSchedule>(DEFAULT_REMINDER_SCHEDULE);
+  const [autoBackupLastError, setAutoBackupLastError] = useState<string | null>(null);
   const [restDayEnabled, setRestDayEnabled] = useState(false);
   const [notifPermission, setNotifPermission] = useState(false);
 
@@ -178,6 +185,11 @@ export default function Settings() {
       setAutoBackupOn(abStatus.enabled);
       setAutoBackupDirUri(abStatus.dirUri);
       setAutoBackupLastRun(abStatus.lastRunAt);
+      setAutoBackupLastError(abStatus.lastErrorAt);
+    } catch {}
+
+    try {
+      setReminderSchedule(await getReminderSchedule());
     } catch {}
 
     // Load persisted notification toggles
@@ -219,6 +231,7 @@ export default function Settings() {
       setAutoBackupOn(status.enabled);
       setAutoBackupDirUri(status.dirUri);
       setAutoBackupLastRun(status.lastRunAt);
+      setAutoBackupLastError(status.lastErrorAt);
     } catch {}
   }
 
@@ -243,9 +256,8 @@ export default function Settings() {
     setAutoBackupOn(true);
     // Take the first backup immediately so the user sees it working.
     const result = await runAutoBackupIfDue({ force: true });
-    if (result === "done") {
-      await refreshAutoBackupStatus();
-    } else if (result === "error" || result === "unconfigured") {
+    await refreshAutoBackupStatus();
+    if (result === "error" || result === "unconfigured") {
       Alert.alert(t("common.error"), t("settings.autoBackup.failed"));
     }
   }
@@ -256,8 +268,8 @@ export default function Settings() {
     setAutoBackupDirUri(dirUri);
     if (autoBackupOn) {
       const result = await runAutoBackupIfDue({ force: true });
-      if (result === "done") await refreshAutoBackupStatus();
-      else if (result === "error") Alert.alert(t("common.error"), t("settings.autoBackup.failed"));
+      await refreshAutoBackupStatus();
+      if (result === "error") Alert.alert(t("common.error"), t("settings.autoBackup.failed"));
     }
   }
 
@@ -267,12 +279,19 @@ export default function Settings() {
       const json = await exportFullBackup();
       const uri = await saveBackupFile(json);
       await shareFile(uri);
+      await markBackupDone();
       Alert.alert(t("settings.backupComplete"));
     } catch {
       Alert.alert(t("common.error"), t("settings.couldNotExport"));
     } finally {
       setBackupBusy(false);
     }
+  }
+
+  function closeBackupModal() {
+    setBackupOpen(null);
+    // The destructive "new profile" choice does not outlive the dialog.
+    setImportMode("merge");
   }
 
   async function handleImportFromFile() {
@@ -283,7 +302,9 @@ export default function Settings() {
       setBackupBusy(true);
       setImportError(null);
 
-      const result = await importBackup(content, importMode);
+      // Always merge: the "new profile" switch lives in the paste dialog and has its
+      // own confirmation. A file import must never wipe the database silently.
+      const result = await importBackup(content, "merge");
 
       if (!result.success) {
         const errorMap: Record<string, string> = {
@@ -333,18 +354,29 @@ export default function Settings() {
         return;
       }
     }
-    setReminderEnabled(enabled);
     if (enabled) {
-      // Cancel any strays first so re-enabling can never double-schedule.
-      await cancelAllNotificationsOfType("workout_reminder");
-      // Schedule Mon-Fri at 17:00 (weekday 2=Mon through 6=Fri)
-      await scheduleWorkoutReminder(2, 17, 0);
+      // One weekly notification per chosen day (replaces any earlier ones).
+      const scheduled = await applyWorkoutReminders(reminderSchedule);
+      if (scheduled === 0) {
+        setReminderEnabled(false);
+        Alert.alert(t("notifications.permissionRequired"));
+        return;
+      }
+      setReminderEnabled(true);
+      await saveReminderSchedule(reminderSchedule).catch(() => {});
       setSettingAsync("reminderEnabled", "1").catch(() => {});
     } else {
+      setReminderEnabled(false);
       // By type, not stored id — ids get lost while the OS keeps the schedule.
       await cancelAllNotificationsOfType("workout_reminder");
       setSettingAsync("reminderEnabled", "0").catch(() => {});
     }
+  }
+
+  async function updateReminderSchedule(next: ReminderSchedule) {
+    setReminderSchedule(next);
+    await saveReminderSchedule(next).catch(() => {});
+    if (reminderEnabled) await applyWorkoutReminders(next);
   }
 
   async function handleToggleRestDay(enabled: boolean) {
@@ -403,53 +435,9 @@ export default function Settings() {
     try {
       await ensureDb();
       const program = await ProgramStore.getActiveProgram(programMode);
-      const alternatives = await ProgramStore.getAlternativesForProgram(program.id);
-      const targetsByDay = await getTargets(program.id);
-      const targets = Object.values(targetsByDay).flatMap((byExercise) => Object.values(byExercise));
-
-      const altList: { dayIndex: number; exerciseId: string; alternatives: string[] }[] = [];
-      for (const dayKey of Object.keys(alternatives)) {
-        const diParsed = parseInt(dayKey, 10);
-        const di = Number.isFinite(diParsed) ? diParsed : 0;
-        const byExercise = alternatives[di] ?? {};
-        for (const exId of Object.keys(byExercise)) {
-          altList.push({ dayIndex: di, exerciseId: exId, alternatives: byExercise[exId] ?? [] });
-        }
-      }
-
-      const payload = {
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        program: {
-          name: program.name,
-          createdAt: program.createdAt,
-          daysCount: program.days.length,
-        },
-        days: program.days.map((d, dayIndex) => ({
-          dayIndex,
-          name: d.name,
-          blocks: d.blocks.map((b, sortIndex) => {
-            if (b.type === "single") {
-              return { type: "single", exerciseId: b.exId, sortIndex };
-            }
-            return b.c
-              ? { type: "superset", a: b.a, b: b.b, c: b.c, sortIndex }
-              : { type: "superset", a: b.a, b: b.b, sortIndex };
-          }),
-        })),
-        alternatives: altList,
-        targets: targets.map((tgt) => ({
-          exerciseId: tgt.exerciseId,
-          dayIndex: tgt.dayIndex,
-          repMin: tgt.repMin,
-          repMax: tgt.repMax,
-          targetSets: tgt.targetSets,
-          incrementKg: tgt.incrementKg,
-          autoProgress: tgt.autoProgress,
-        })),
-      };
-
-      setShareText(JSON.stringify(payload, null, 2));
+      const text = await getShareableProgramJson(program.id);
+      if (!text) throw new Error("program not found");
+      setShareText(text);
       setShareOpen("export");
     } catch {
       Alert.alert(t("common.error"), t("settings.couldNotExportProgram"));
@@ -546,19 +534,7 @@ export default function Settings() {
         });
       }
 
-      for (const tgt of parseShareTargets(parsed.targets)) {
-        const fallback = defaultTargetForExercise(tgt.exerciseId);
-        await upsertTarget({
-          programId: nextProgram.id,
-          exerciseId: tgt.exerciseId,
-          dayIndex: tgt.dayIndex,
-          repMin: tgt.repMin,
-          repMax: tgt.repMax,
-          targetSets: tgt.targetSets ?? fallback.targetSets,
-          incrementKg: tgt.incrementKg ?? fallback.incrementKg,
-          autoProgress: tgt.autoProgress,
-        });
-      }
+      await applySharedTargets(nextProgram.id, parseShareTargets(parsed.targets));
 
       if (shareSetActive) {
         await ProgramStore.setActiveProgram(programMode, nextProgram.id);
@@ -766,7 +742,8 @@ export default function Settings() {
       const countRow = await db.getFirstAsync<{ c: number }>(
         `SELECT COUNT(1) as c
          FROM workouts
-         WHERE id NOT IN (SELECT DISTINCT workout_id FROM sets WHERE workout_id IS NOT NULL)`
+         WHERE id NOT IN (SELECT DISTINCT workout_id FROM sets WHERE workout_id IS NOT NULL)
+           AND id NOT IN (SELECT value FROM settings WHERE key = 'activeWorkoutId' AND value <> '')`
       );
       const count = countRow?.c ?? 0;
       if (count === 0) {
@@ -782,8 +759,10 @@ export default function Settings() {
             try {
               await db.execAsync(
                 `DELETE FROM workouts
-                 WHERE id NOT IN (SELECT DISTINCT workout_id FROM sets WHERE workout_id IS NOT NULL)`
+                 WHERE id NOT IN (SELECT DISTINCT workout_id FROM sets WHERE workout_id IS NOT NULL)
+           AND id NOT IN (SELECT value FROM settings WHERE key = 'activeWorkoutId' AND value <> '')`
               );
+              await db.execAsync(`DELETE FROM skipped_exercises WHERE workout_id NOT IN (SELECT id FROM workouts)`);
               Alert.alert(t("common.done"), t("settings.emptyDeleted"));
             } catch {
               Alert.alert(t("common.error"), t("settings.couldNotDeleteEmpty"));
@@ -845,6 +824,10 @@ export default function Settings() {
             try {
               await ensureDb();
               const db = getDb();
+              // Progress photos are files outside the database — collect them first.
+              const photos = await db.getAllAsync<{ photo_uri: string | null }>(
+                `SELECT photo_uri FROM body_metrics WHERE photo_uri IS NOT NULL AND photo_uri <> ''`
+              );
               await db.execAsync("BEGIN");
               await db.execAsync("DELETE FROM sets");
               await db.execAsync("DELETE FROM workouts");
@@ -857,7 +840,23 @@ export default function Settings() {
               await db.execAsync("DELETE FROM programs");
               await db.execAsync("DELETE FROM settings");
               await db.execAsync("DELETE FROM gym_locations");
+              await db.execAsync("DELETE FROM skipped_exercises");
+              await db.execAsync("DELETE FROM progression_log");
+              await db.execAsync("DELETE FROM body_metrics");
+              await db.execAsync("DELETE FROM user_achievements");
+              await db.execAsync("DELETE FROM exercise_goals");
+              await db.execAsync("DELETE FROM custom_exercises");
+              await db.execAsync("DELETE FROM workout_templates");
+              await db.execAsync("DELETE FROM day_marks");
+              await db.execAsync("DELETE FROM exercise_notes");
               await db.execAsync("COMMIT");
+              for (const p of photos ?? []) {
+                if (p.photo_uri) await deleteFileQuietly(p.photo_uri);
+              }
+              // Scheduled reminders live in the OS, not in the database.
+              await cancelAllNotificationsOfType("workout_reminder").catch(() => {});
+              await cancelAllNotificationsOfType("rest_day_check").catch(() => {});
+              await loadCustomExercises().catch(() => {});
               await ProgramStore.ensurePrograms();
               await loadSettings();
               setDataToolsOpen(false);
@@ -1211,6 +1210,32 @@ export default function Settings() {
               onValueChange={handleToggleReminder}
             />
           </View>
+          {reminderEnabled ? (
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>{t("notifications.reminderDays")}</Text>
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                  <Chip
+                    key={`rd_${day}`}
+                    text={t(`notifications.day.${day}`)}
+                    active={reminderSchedule.days.includes(day)}
+                    onPress={() => updateReminderSchedule({ ...reminderSchedule, days: toggleReminderDay(reminderSchedule.days, day) })}
+                  />
+                ))}
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>{t("notifications.reminderTime")}</Text>
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                {[6, 7, 8, 12, 16, 17, 18, 19, 20].map((hour) => (
+                  <Chip
+                    key={`rt_${hour}`}
+                    text={formatReminderTime(hour, 0)}
+                    active={reminderSchedule.hour === hour && reminderSchedule.minute === 0}
+                    onPress={() => updateReminderSchedule({ ...reminderSchedule, hour, minute: 0 })}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={{ color: theme.text }}>{t("notifications.restDaySuggestions")}</Text>
@@ -1247,6 +1272,11 @@ export default function Settings() {
                 {"  ·  "}
                 {t("settings.autoBackup.keepNote", { n: 7 })}
               </Text>
+              {autoBackupLastError && (!autoBackupLastRun || autoBackupLastError > autoBackupLastRun) ? (
+                <Text style={{ color: theme.danger, fontSize: 12 }}>
+                  {t("settings.autoBackup.lastFailed", { when: autoBackupLastError.slice(0, 16).replace("T", " ") })}
+                </Text>
+              ) : null}
               {Platform.OS === "android" ? (
                 <View style={{ flexDirection: "row" }}>
                   <Btn label={t("settings.autoBackup.changeFolder")} onPress={handleChangeBackupFolder} small />
@@ -1404,7 +1434,8 @@ export default function Settings() {
         onClose={() => setShowOnboarding(false)}
       />
 
-      <Modal visible={backupOpen !== null} transparent animationType="fade" onRequestClose={() => setBackupOpen(null)}>
+      <Modal visible={backupOpen !== null} transparent animationType="fade" onRequestClose={closeBackupModal}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "80%" }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
@@ -1433,8 +1464,8 @@ export default function Settings() {
                   />
                 </ScrollView>
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Btn label={t("common.copy")} onPress={() => copyText(backupText)} tone="accent" />
-                  <Btn label={t("common.close")} onPress={() => setBackupOpen(null)} />
+                  <Btn label={t("common.copy")} onPress={() => { copyText(backupText); markBackupDone(); }} tone="accent" />
+                  <Btn label={t("common.close")} onPress={closeBackupModal} />
                 </View>
               </>
             ) : backupOpen === "csv" ? (
@@ -1460,7 +1491,7 @@ export default function Settings() {
                 </ScrollView>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn label={t("common.copy")} onPress={() => copyText(backupCsvText)} tone="accent" />
-                  <Btn label={t("common.close")} onPress={() => setBackupOpen(null)} />
+                  <Btn label={t("common.close")} onPress={closeBackupModal} />
                 </View>
               </>
             ) : (
@@ -1508,12 +1539,13 @@ export default function Settings() {
                     }}
                     tone="accent"
                   />
-                  <Btn label={t("common.cancel")} onPress={() => setBackupOpen(null)} />
+                  <Btn label={t("common.cancel")} onPress={closeBackupModal} />
                 </View>
               </>
             )}
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={dataToolsOpen} transparent animationType="fade" onRequestClose={() => setDataToolsOpen(false)}>
@@ -1595,30 +1627,34 @@ export default function Settings() {
       </Modal>
 
       <Modal visible={shareOpen !== null} transparent animationType="fade" onRequestClose={() => setShareOpen(null)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12 }}>
+          <View style={{ backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1, borderRadius: 16, padding: 14, gap: 12, maxHeight: "80%" }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
               {shareOpen === "export" ? t("settings.modal.shareExport") : t("settings.modal.shareImport")}
             </Text>
 
             {shareOpen === "export" ? (
               <>
-                <TextField
-                  value={shareText}
-                  editable={false}
-                  selectTextOnFocus
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 180,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={shareText}
+                    editable={false}
+                    selectTextOnFocus
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 180,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <Btn label={t("common.copy")} onPress={() => copyText(shareText)} tone="accent" />
                   <Btn label={t("common.close")} onPress={() => setShareOpen(null)} />
@@ -1626,23 +1662,26 @@ export default function Settings() {
               </>
             ) : (
               <>
-                <TextField
-                  value={shareImportText}
-                  onChangeText={setShareImportText}
-                  placeholder={t("settings.paste")}
-                  placeholderTextColor={theme.muted}
-                  multiline
-                  style={{
-                    color: theme.text,
-                    backgroundColor: theme.glass,
-                    borderColor: theme.glassBorder,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    minHeight: 180,
-                    textAlignVertical: "top",
-                  }}
-                />
+                <ScrollView style={{ flexShrink: 1 }}>
+                  <TextField
+                    value={shareImportText}
+                    onChangeText={setShareImportText}
+                    placeholder={t("settings.paste")}
+                    placeholderTextColor={theme.muted}
+                    multiline
+                    scrollEnabled={false}
+                    style={{
+                      color: theme.text,
+                      backgroundColor: theme.glass,
+                      borderColor: theme.glassBorder,
+                      borderWidth: 1,
+                      borderRadius: 14,
+                      padding: 12,
+                      minHeight: 180,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </ScrollView>
                 {shareError ? <Text style={{ color: theme.danger }}>{shareError}</Text> : null}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ color: theme.text }}>{t("settings.setActiveProgram")}</Text>
@@ -1656,6 +1695,7 @@ export default function Settings() {
             )}
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Patch Notes Modal */}
@@ -1763,6 +1803,7 @@ export default function Settings() {
         animationType="fade"
         onRequestClose={() => setGymFormOpen(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}>
           <View style={{
             backgroundColor: theme.modalGlass,
@@ -1831,6 +1872,7 @@ export default function Settings() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

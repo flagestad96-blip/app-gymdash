@@ -7,7 +7,7 @@
 // choosing anything.
 
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Modal, Pressable, Text, View, ScrollView, TextInput } from "react-native";
+import { Animated, Modal, Pressable, Text, View, ScrollView, TextInput, KeyboardAvoidingView } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useTheme, setPalette, getPalette, PALETTE_LIST, getPaletteColors, type Palette } from "../src/theme";
 import { useI18n } from "../src/i18n";
@@ -18,7 +18,9 @@ import { useRestTimerOptional } from "../src/restTimerContext";
 import {
   requestNotificationPermissions,
   cancelAllNotificationsOfType,
-  scheduleWorkoutReminder,
+  getReminderSchedule,
+  saveReminderSchedule,
+  applyWorkoutReminders,
 } from "../src/notifications";
 import {
   setActiveProgram,
@@ -147,8 +149,14 @@ export default function OnboardingModal({
         setRemindersDenied(true);
         return;
       }
-      await cancelAllNotificationsOfType("workout_reminder");
-      await scheduleWorkoutReminder(2, 17, 0);
+      const schedule = await getReminderSchedule();
+      const scheduled = await applyWorkoutReminders(schedule);
+      if (scheduled === 0) {
+        setRemindersOn(false);
+        setRemindersDenied(true);
+        return;
+      }
+      await saveReminderSchedule(schedule).catch(() => {});
       setSettingAsync("reminderEnabled", "1").catch(() => {});
       setRemindersOn(true);
     } else {
@@ -173,6 +181,7 @@ export default function OnboardingModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose ?? onDone}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 18 }}>
         <Animated.View
           style={{
@@ -188,7 +197,6 @@ export default function OnboardingModal({
             shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius,
             shadowOffset: theme.shadow.lg.offset,
-            elevation: theme.shadow.lg.elevation,
           }}
         >
           <View style={{ alignItems: "center", gap: theme.space.sm }}>
@@ -260,7 +268,7 @@ export default function OnboardingModal({
                   return (
                     <Pressable
                       key={p}
-                      onPress={() => { setPalette(p); setPaletteChoice(p); }}
+                      onPress={() => { setPalette(p); setPaletteChoice(p); setSettingAsync("palette", p).catch(() => {}); }}
                       style={[{ padding: 10, alignItems: "center", gap: 6, minWidth: 72 }, choiceStyle(selected)]}
                     >
                       <View style={{ flexDirection: "row", gap: 3 }}>
@@ -509,6 +517,7 @@ export default function OnboardingModal({
           </View>
         </Animated.View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -3,6 +3,8 @@ import { Share } from "react-native";
 import { ensureDb, getDb, formatDuration } from "./db";
 import { displayNameFor, isPerSideExercise } from "./exerciseLibrary";
 import { t } from "./i18n";
+import { getProgram, getAlternativesForProgram } from "./programStore";
+import { getTargets } from "./progressionStore";
 
 /**
  * Generate and share a workout summary via native share sheet.
@@ -79,27 +81,69 @@ export async function shareWorkoutSummary(workoutId: string): Promise<void> {
 }
 
 /**
- * Share a program as a JSON file via native share.
- * Returns the program JSON for file-based sharing.
+ * The one format a program is shared in — as copied text or as a file, from
+ * the Program screen or from Settings. Carries the whole plan: days, blocks
+ * (singles and supersets), alternatives and per-day targets (sets, rep range,
+ * increment, auto-progress). Read back by `parseProgramImport`.
  */
-export async function getShareableProgramJson(programId: string): Promise<string | null> {
-  await ensureDb();
-  const db = getDb();
-
-  const program = await db.getFirstAsync<{ id: string; name: string; json: string; mode: string | null }>(
-    `SELECT id, name, json, mode FROM programs WHERE id = ?`,
-    [programId]
-  );
+export async function buildProgramSharePayload(programId: string) {
+  const program = await getProgram(programId);
   if (!program) return null;
+  const dayCount = program.days.length;
+  const alternatives = await getAlternativesForProgram(program.id);
+  const targetsByDay = await getTargets(program.id);
 
-  return JSON.stringify({
-    type: "gymdash_program",
-    version: 1,
-    name: program.name,
-    mode: program.mode,
-    data: JSON.parse(program.json),
+  const altList: { dayIndex: number; exerciseId: string; alternatives: string[] }[] = [];
+  for (const [dayKey, byExercise] of Object.entries(alternatives)) {
+    const dayIndex = Number(dayKey);
+    if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex >= dayCount) continue;
+    for (const [exerciseId, alts] of Object.entries(byExercise ?? {})) {
+      if (alts?.length) altList.push({ dayIndex, exerciseId, alternatives: alts });
+    }
+  }
+
+  const targets = Object.values(targetsByDay)
+    .flatMap((byExercise) => Object.values(byExercise))
+    .filter((tgt) => tgt.dayIndex >= 0 && tgt.dayIndex < dayCount)
+    .map((tgt) => ({
+      exerciseId: tgt.exerciseId,
+      dayIndex: tgt.dayIndex,
+      repMin: tgt.repMin,
+      repMax: tgt.repMax,
+      targetSets: tgt.targetSets,
+      incrementKg: tgt.incrementKg,
+      autoProgress: tgt.autoProgress,
+    }));
+
+  return {
+    schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-  });
+    program: { name: program.name, createdAt: program.createdAt, daysCount: dayCount },
+    days: program.days.map((d, dayIndex) => ({
+      dayIndex,
+      name: d.name,
+      blocks: d.blocks.map((b, sortIndex) => {
+        if (b.type === "single") return { type: "single", exerciseId: b.exId, sortIndex };
+        return b.c
+          ? { type: "superset", a: b.a, b: b.b, c: b.c, sortIndex }
+          : { type: "superset", a: b.a, b: b.b, sortIndex };
+      }),
+    })),
+    alternatives: altList,
+    targets,
+  };
+}
+
+/** The share payload as text, for copying or writing to a file. */
+export async function getShareableProgramJson(programId: string): Promise<string | null> {
+  const payload = await buildProgramSharePayload(programId);
+  return payload ? JSON.stringify(payload, null, 2) : null;
+}
+
+/** A file name for a shared program; program names may contain "/" and other characters a path cannot. */
+export function programShareFileName(programName: string): string {
+  const safe = programName.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_").replace(/^[-_.]+|[-_.]+$/g, "");
+  return `gymdash_program_${safe || "program"}.json`;
 }
 
 /**

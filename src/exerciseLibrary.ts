@@ -1985,12 +1985,18 @@ export async function deleteCustomExercise(id: string): Promise<{ ok: boolean; r
   const { ensureDb, getDb } = getDbModule();
   await ensureDb();
   const db = getDb();
-  // Check usage in programs
+  // Check usage in programs — every slot (incl. the third superset slot) and
+  // as someone's alternative. A deleted exercise would otherwise show up in
+  // the program as a raw id.
   const used = await db.getFirstAsync<{ c: number }>(
-    `SELECT COUNT(1) as c FROM program_day_exercises WHERE ex_id=? OR a_id=? OR b_id=?`,
-    [id, id, id]
+    `SELECT COUNT(1) as c FROM program_day_exercises WHERE ex_id=? OR a_id=? OR b_id=? OR c_id=?`,
+    [id, id, id, id]
   );
-  if (used && used.c > 0) {
+  const usedAsAlt = await db.getFirstAsync<{ c: number }>(
+    `SELECT COUNT(1) as c FROM program_exercise_alternatives WHERE exercise_id=? OR alt_exercise_id=?`,
+    [id, id]
+  );
+  if ((used && used.c > 0) || (usedAsAlt && usedAsAlt.c > 0)) {
     return { ok: false, reason: "in_use" };
   }
   await db.runAsync(`DELETE FROM custom_exercises WHERE id=?`, [id]);

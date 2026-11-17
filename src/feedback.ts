@@ -103,12 +103,12 @@ export async function sendFeedback(includeDiagnostics: boolean): Promise<void> {
     `mailto:${FEEDBACK_EMAIL}` +
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
+  // Open the mail app directly instead of asking canOpenURL first: on
+  // Android 11+ that check can answer false for "mailto:" when the scheme is
+  // not declared in the manifest, even with a mail app installed.
   try {
-    const supported = await Linking.canOpenURL(url);
-    if (supported) {
-      await Linking.openURL(url);
-      return;
-    }
+    await Linking.openURL(url);
+    return;
   } catch {}
   // No mail client — fall back to the native share sheet with the same text.
   try {
