@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gymdash",
     "slug": "gymdash",
-    "version": "0.16.0-beta",
+    "version": "0.17.0-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "gymdash",
@@ -11,14 +11,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.marius.gymdash",
-      "buildNumber": "18",
+      "buildNumber": "19",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.marius.gymdash",
-      "versionCode": 18,
+      "versionCode": 19,
       "adaptiveIcon": {
         "backgroundColor": "#1A0E2E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -68,6 +68,7 @@ NB: Dette er Play Store-**listingen**, ikke appens interne `patchNotes.ts`. List
 
 - **Release-pipeline**: ferdig. Merge til `main` med bumpet `versionCode` bygger, submitter til alpha og setter Play «Hva er nytt» automatisk (se «Utgivelse» over). Gjenstår kun å legge inn repo-secreten `EXPO_TOKEN` (og valgfritt `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`) i GitHub før workflowen kan kjøre.
 - **Bredere-utgivelse-runde (2026-10-01)**: warmup-audit (is_warmup filtreres overalt + volum-PR-reparasjon), global RestBar-clearance, lint 0, dødkode slettet, 4 nye ferdigprogrammer + «Marius sin muskeloppskrift»-rename, onboarding → 10 praktiske steg, feedback-kort (privacy-first mailto + diagnostikk), iOS-konfig klar. Se `docs/sessions/2026-10-01.md`.
+- **Helapp-gjennomgang (2026-11-17, v0.17.0-beta)**: programdeling i ett felles format, datasikkerhet (filimport, backup, migreringer), periodisering, PR-regler, påminnelser med valgbare dager/tid, tastatur i dialoger. Ingenting er verifisert på enhet — sjekklista står i `docs/sessions/2026-11-17.md`. Datalaget testes mot ekte SQLite i `src/__tests__/dbIntegration.test.ts` (krever Node ≥ 22.5 lokalt; hoppes over i CI på Node 20).
 - **Gjenstår kun Marius**: (1) `EXPO_TOKEN`-secret i GitHub, (2) rullere Play-tjenestekontonøkkelen i Google Cloud, (3) testerrekruttering (12 testere/14 dager for produksjon — har 2), (4) Apple Developer-konto for iOS-bygg, (5) norsk listing-språk i Play.
 
 ## Backlog (prioritert)

@@ -19,6 +19,20 @@ export type PatchNote = {
  */
 export const patchNotes: PatchNote[] = [
   {
+    version: "0.17.0-beta",
+    date: "2026-11-17",
+    changes: [
+      { type: "fix", key: "patchNotes.0_17_0.importAnywhere" },
+      { type: "new", key: "patchNotes.0_17_0.reminderDays" },
+      { type: "improved", key: "patchNotes.0_17_0.shareWhole" },
+      { type: "fix", key: "patchNotes.0_17_0.dataSafety" },
+      { type: "fix", key: "patchNotes.0_17_0.prRules" },
+      { type: "fix", key: "patchNotes.0_17_0.periodization" },
+      { type: "improved", key: "patchNotes.0_17_0.resetAndKeyboard" },
+      { type: "fix", key: "patchNotes.0_17_0.manySmall" },
+    ],
+  },
+  {
     version: "0.16.0-beta",
     date: "2026-11-16",
     changes: [
