@@ -93,3 +93,81 @@ export function parseShareTargets(raw: unknown): ShareTarget[] {
   }
   return out;
 }
+
+/** The alternatives for one exercise on one day of a shared program. */
+export type ShareAlternatives = {
+  dayIndex: number;
+  exerciseId: string;
+  alternatives: string[];
+};
+
+/** Normalise the `alternatives` array of a shared program (max 3 per exercise, like the editor). */
+export function parseShareAlternatives(raw: unknown): ShareAlternatives[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ShareAlternatives[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.dayIndex !== "number" || !Number.isFinite(e.dayIndex)) continue;
+    if (typeof e.exerciseId !== "string" || !e.exerciseId) continue;
+    if (!Array.isArray(e.alternatives)) continue;
+    out.push({
+      dayIndex: Math.max(0, Math.trunc(e.dayIndex)),
+      exerciseId: e.exerciseId,
+      alternatives: e.alternatives.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, 3),
+    });
+  }
+  return out;
+}
+
+export type ProgramImportResult =
+  | { ok: true; program: ImportPayload; targets: ShareTarget[]; alternatives: ShareAlternatives[] }
+  | { ok: false; errorKey: string };
+
+/**
+ * Parse pasted program JSON in either of the two formats the app produces:
+ *  - the simple one from the Program screen: `{ name, days }`
+ *  - the full one from Settings → Share program: `{ schemaVersion: 1, program,
+ *    days, alternatives, targets }`
+ * Both come back in the simple program shape; targets and alternatives are
+ * empty for the simple format.
+ */
+export function parseProgramImport(payload: unknown): ProgramImportResult {
+  if (!payload || typeof payload !== "object") return { ok: false, errorKey: "program.invalidJson" };
+  const p = payload as Record<string, unknown>;
+  const meta = p.program && typeof p.program === "object" ? (p.program as Record<string, unknown>) : null;
+
+  const isShareFormat = p.schemaVersion !== undefined || (p.name === undefined && meta !== null);
+  if (!isShareFormat) {
+    const res = validateImport(payload);
+    return res.ok ? { ok: true, program: res.program, targets: [], alternatives: [] } : res;
+  }
+  if (p.schemaVersion !== 1) return { ok: false, errorKey: "settings.schemaError" };
+
+  const rawDays: unknown[] = Array.isArray(p.days) ? p.days : [];
+  const daysCount =
+    typeof meta?.daysCount === "number" && meta.daysCount >= 1 ? Math.trunc(meta.daysCount) : rawDays.length;
+  const days = rawDays.slice(0, daysCount).map((day) => {
+    if (!day || typeof day !== "object") return day;
+    const d = day as Record<string, unknown>;
+    if (!Array.isArray(d.blocks)) return d;
+    return {
+      name: d.name,
+      // The share format calls the exercise of a single block `exerciseId`.
+      blocks: d.blocks.map((block: unknown) => {
+        if (!block || typeof block !== "object") return block;
+        const b = block as Record<string, unknown>;
+        return b.type === "single" ? { type: "single", exId: b.exerciseId ?? b.exId ?? b.ex } : b;
+      }),
+    };
+  });
+
+  const res = validateImport({ name: meta?.name, days });
+  if (!res.ok) return res;
+  return {
+    ok: true,
+    program: res.program,
+    targets: parseShareTargets(p.targets),
+    alternatives: parseShareAlternatives(p.alternatives),
+  };
+}

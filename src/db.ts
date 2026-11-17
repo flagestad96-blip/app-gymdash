@@ -389,14 +389,22 @@ export async function initDb() {
       // ── Versioned migrations ──
       db.execSync(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY NOT NULL);`);
 
-      const currentVersion = (() => {
-        try {
-          const row = db.getFirstSync<{ v: number | null }>(`SELECT MAX(version) as v FROM schema_migrations`);
-          return row?.v ?? 0;
-        } catch { return 0; }
-      })();
+      // Which migrations have run — tracked individually, not as "highest
+      // version": a migration that failed must not be skipped for good just
+      // because a later one succeeded.
+      const appliedVersions = new Set<number>();
+      try {
+        for (const row of db.getAllSync<{ version: number }>(`SELECT version FROM schema_migrations`) ?? []) {
+          appliedVersions.add(row.version);
+        }
+      } catch {}
 
-      type Migration = { version: number; up: (d: SQLite.SQLiteDatabase) => void | Promise<void> };
+      type Migration = {
+        version: number;
+        up: (d: SQLite.SQLiteDatabase) => void | Promise<void>;
+        /** Manages its own BEGIN/COMMIT, so it is not wrapped in one. */
+        ownTransaction?: boolean;
+      };
 
       const MIGRATIONS: Migration[] = [
         // 1: sets — extra columns (each wrapped: existing users may have some already)
@@ -485,7 +493,7 @@ export async function initDb() {
             );`);
         }},
         // 10: one-time split workout repair
-        { version: 10, up: () => { runSplitWorkoutRepairOnce(); }},
+        { version: 10, ownTransaction: true, up: () => { runSplitWorkoutRepairOnce(); }},
         // 11: exercise_targets — auto_progress column
         { version: 11, up: (d) => {
           if (!hasColumn("exercise_targets", "auto_progress")) {
@@ -538,7 +546,10 @@ export async function initDb() {
             );`);
         }},
         { version: 18, up: (d) => {
-          d.execSync(`ALTER TABLE sets ADD COLUMN rest_seconds INTEGER`);
+          // Guarded: the base schema already has the column on newer installs.
+          if (!hasColumn("sets", "rest_seconds")) {
+            d.execSync(`ALTER TABLE sets ADD COLUMN rest_seconds INTEGER`);
+          }
         }},
         // 19: migrate legacy active-program setting keys
         { version: 19, up: (d) => {
@@ -661,13 +672,21 @@ export async function initDb() {
         }},
       ];
 
-      // Run pending migrations
+      // Run pending migrations. Each one runs in a transaction together with
+      // its version row: a failure leaves nothing half-applied and is retried
+      // on the next start, while later migrations still run.
       for (const m of MIGRATIONS) {
-        if (m.version <= currentVersion) continue;
+        if (appliedVersions.has(m.version)) continue;
+        const wrap = !m.ownTransaction;
         try {
+          if (wrap) db.execSync("BEGIN");
           await Promise.resolve(m.up(db));
-          db.runSync(`INSERT INTO schema_migrations(version) VALUES(?)`, [m.version]);
+          db.runSync(`INSERT OR IGNORE INTO schema_migrations(version) VALUES(?)`, [m.version]);
+          if (wrap) db.execSync("COMMIT");
         } catch (err) {
+          if (wrap) {
+            try { db.execSync("ROLLBACK"); } catch {}
+          }
           console.warn(`[db] migration ${m.version} failed:`, err);
         }
       }

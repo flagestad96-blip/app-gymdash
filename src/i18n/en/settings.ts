@@ -103,7 +103,7 @@ const settings: TranslationMap = {
   "settings.orphansCleaned": "Orphan sets deleted.",
   "settings.couldNotClean": "Could not clean orphan sets.",
   "settings.resetAll": "Reset everything?",
-  "settings.resetAllMsg": "This deletes all local data (workouts, sets, programs, targets, PRs). Continue?",
+  "settings.resetAllMsg": "This deletes everything stored in the app: workouts, sets, programs, targets, PRs, body measurements and photos, achievements, custom exercises, templates, notes and settings. It cannot be undone. Continue?",
   "settings.deleteAll": "Delete all",
   "settings.resetDone": "Reset",
   "settings.resetDoneMsg": "All data deleted. Default program restored.",
@@ -185,6 +185,7 @@ const settings: TranslationMap = {
   "settings.repairPrs.confirmMsg": "This will recalculate all personal records from your workout history.",
   "settings.repairPrs.done": "Done",
   "settings.repairPrs.doneMsg": "{n} exercises scanned. PRs have been updated.",
+  "settings.autoBackup.lastFailed": "The last attempt failed {when}. Check that the folder still exists, or pick a new one.",
 };
 
 export default settings;

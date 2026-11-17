@@ -63,6 +63,26 @@ export type CheckSetPRsResult = {
   messages: string[];
 };
 
+/** Best stored value per exercise and record type across ALL programs. */
+function bestAcrossPrograms(exerciseIds: string[], types: PrType[]): Record<string, Partial<Record<PrType, number>>> {
+  const out: Record<string, Partial<Record<PrType, number>>> = {};
+  if (exerciseIds.length === 0 || types.length === 0) return out;
+  try {
+    const rows = getDb().getAllSync<{ exercise_id?: string | null; type: string; value: number }>(
+      `SELECT exercise_id, type, MAX(value) AS value FROM pr_records
+       WHERE exercise_id IN (${exerciseIds.map(() => "?").join(",")}) AND type IN (${types.map(() => "?").join(",")})
+       GROUP BY exercise_id, type`,
+      [...exerciseIds, ...types]
+    );
+    for (const r of rows ?? []) {
+      if (!r?.exercise_id || !Number.isFinite(r.value)) continue;
+      if (!out[r.exercise_id]) out[r.exercise_id] = {};
+      out[r.exercise_id][r.type as PrType] = r.value;
+    }
+  } catch {}
+  return out;
+}
+
 export async function checkSetPRs(params: CheckSetPRsParams): Promise<CheckSetPRsResult> {
   const { exerciseId, weight, reps, setId, workoutId, programId, currentVolumeRecord, isBw, estTotalLoadKg } = params;
   if (params.isWarmup) return { updatedRecords: {}, messages: [] };
@@ -105,18 +125,25 @@ export async function checkSetPRs(params: CheckSetPRsParams): Promise<CheckSetPR
     } catch {}
   }
 
+  // Records are kept per program, so a new or imported program starts with
+  // none. The first set there is only announced as a PR if it also beats the
+  // best under every other program — otherwise every exercise would "PR".
+  const elsewhere = !dbHeaviest || !dbE1rm ? bestAcrossPrograms([exerciseId], ["heaviest", "e1rm"])[exerciseId] ?? {} : {};
+
   let heaviestChanged = false;
   let e1rmChanged = false;
 
   if (!dbHeaviest || prWeight > (dbHeaviest.value ?? 0)) {
     nextMap.heaviest = { value: prWeight, date: dateOnly, reps, weight: prWeight, setId };
     heaviestChanged = true;
-    if (!isBaseline) messages.push(`heaviest:${prWeight}`);
+    const beatsElsewhere = dbHeaviest != null || prWeight > (elsewhere.heaviest ?? -Infinity);
+    if (!isBaseline && beatsElsewhere && prWeight > 0) messages.push(`heaviest:${prWeight}`);
   }
   if (!dbE1rm || e1rm > (dbE1rm.value ?? 0)) {
     nextMap.e1rm = { value: e1rm, date: dateOnly, reps, weight: prWeight, setId };
     e1rmChanged = true;
-    if (!isBaseline) messages.push(`e1rm:${e1rm}`);
+    const beatsElsewhere = dbE1rm != null || e1rm > (elsewhere.e1rm ?? -Infinity);
+    if (!isBaseline && beatsElsewhere && e1rm > 0) messages.push(`e1rm:${e1rm}`);
   }
 
   try {
@@ -334,6 +361,8 @@ export async function checkSessionVolumePRs(params: CheckSessionVolumePRsParams)
     } catch {}
   }
 
+  const volumeElsewhere = bestAcrossPrograms(workoutExIds, ["volume"]);
+
   for (const [exId, sessionVolume] of Object.entries(volumeByExercise)) {
     const vol = round1(sessionVolume);
     const dbVolume = dbPrMap[exId]?.volume;
@@ -349,6 +378,8 @@ export async function checkSessionVolumePRs(params: CheckSessionVolumePRsParams)
           isBaseline = !(prior && prior.c > 0);
         } catch {}
       }
+      // No volume record in this program yet: only a PR if it beats other programs too.
+      if (!dbVolume && vol <= (volumeElsewhere[exId]?.volume ?? -Infinity)) isBaseline = true;
       const record: PrRecord = { value: vol, date: dateOnly, reps: null, weight: null, setId: null };
       dbPrMap[exId] = { ...dbPrMap[exId], volume: record };
       try {

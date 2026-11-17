@@ -24,7 +24,6 @@ import {
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
-  Platform,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -322,7 +321,7 @@ export default function RestBar() {
         accessibilityLabel={t("log.restMinimize")}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         style={{ flex: 1, justifyContent: "flex-end" }}
         pointerEvents="box-none"
       >

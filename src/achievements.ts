@@ -622,7 +622,9 @@ export async function checkAndUnlockAchievements(context: AchievementContext = {
       }
 
       case "time_of_day":
-        if (context.workoutDate) {
+        // Needs only the workout: no caller passes workoutDate, which used to
+        // gate this branch and made both time-of-day achievements unreachable.
+        if (context.workoutId) {
           // Check started_at for the current workout
           const wRow = await db.getFirstAsync<{ started_at: string | null }>(
             `SELECT started_at FROM workouts WHERE id = ?`,

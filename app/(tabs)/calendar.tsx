@@ -368,9 +368,10 @@ export default function CalendarScreen() {
   }, [detailSets, detailWorkout]);
 
   const monthDate = useMemo(() => {
+    // Day 1 of the target month. Adding months to "today" overflows on the
+    // 29th–31st (31 Oct + 1 month = 1 Dec), which skipped a whole month.
     const now = new Date();
-    now.setMonth(now.getMonth() + monthOffset);
-    return now;
+    return new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   }, [monthOffset]);
 
   const monthKey = useMemo(() => {

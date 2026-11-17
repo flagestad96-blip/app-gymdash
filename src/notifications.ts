@@ -3,6 +3,15 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { t } from "./i18n";
 import { showRestCountdown, hideRestCountdown } from "../modules/rest-countdown";
+import {
+  DEFAULT_REMINDER_SCHEDULE,
+  LEGACY_REMINDER_SCHEDULE,
+  formatReminderTime,
+  parseReminderSchedule,
+  serializeReminderDays,
+  toExpoWeekday,
+  type ReminderSchedule,
+} from "./reminderSchedule";
 
 // NOTE: Expo Go doesn't support expo-notifications on Android. Re-verify in preview/dev builds before release.
 const IS_EXPO_GO =
@@ -51,6 +60,9 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     let finalStatus = existingStatus;
 
     if (existingStatus !== "granted") {
+      // Have a channel in place before asking — on Android 13+ the system
+      // prompt may not be shown for an app that has no channel yet.
+      await ensureReminderChannel(Notifications);
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
@@ -106,6 +118,23 @@ async function ensureRestChannel(Notifications: Awaited<ReturnType<typeof getNot
     channelEnsured = true;
   } catch (error) {
     console.error("Failed to create rest notification channel:", error);
+  }
+}
+
+export const REMINDER_CHANNEL_ID = "reminders";
+let reminderChannelEnsured = false;
+
+/** Android channel for workout reminders and rest-day suggestions (default importance). */
+async function ensureReminderChannel(Notifications: Awaited<ReturnType<typeof getNotifications>>): Promise<void> {
+  if (Platform.OS !== "android" || reminderChannelEnsured || !Notifications) return;
+  try {
+    await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
+      name: t("notifications.workoutReminders"),
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+    reminderChannelEnsured = true;
+  } catch (error) {
+    console.error("Failed to create reminder notification channel:", error);
   }
 }
 
@@ -297,6 +326,7 @@ export async function scheduleWorkoutReminder(
   if (!hasPermission) return null;
 
   try {
+    await ensureReminderChannel(Notifications);
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: `${t("notifications.workoutTime")} 💪`,
@@ -309,6 +339,7 @@ export async function scheduleWorkoutReminder(
         weekday,
         hour,
         minute,
+        channelId: REMINDER_CHANNEL_ID,
       },
     });
     return id;
@@ -316,6 +347,46 @@ export async function scheduleWorkoutReminder(
     console.error("Failed to schedule workout reminder:", error);
     return null;
   }
+}
+
+const REMINDER_DAYS_KEY = "reminderDays";
+const REMINDER_TIME_KEY = "reminderTime";
+
+/**
+ * The stored reminder days and time. Installs that had reminders on before
+ * days could be chosen get the old fixed schedule (Mondays 17:00), so the
+ * settings show what the phone is actually doing.
+ */
+export async function getReminderSchedule(): Promise<ReminderSchedule> {
+  const { getSettingAsync } = await import("./db");
+  const [daysRaw, timeRaw, enabled] = await Promise.all([
+    getSettingAsync(REMINDER_DAYS_KEY),
+    getSettingAsync(REMINDER_TIME_KEY),
+    getSettingAsync("reminderEnabled"),
+  ]);
+  const fallback = !daysRaw && enabled === "1" ? LEGACY_REMINDER_SCHEDULE : DEFAULT_REMINDER_SCHEDULE;
+  return parseReminderSchedule(daysRaw, timeRaw, fallback);
+}
+
+export async function saveReminderSchedule(schedule: ReminderSchedule): Promise<void> {
+  const { setSettingAsync } = await import("./db");
+  await setSettingAsync(REMINDER_DAYS_KEY, serializeReminderDays(schedule.days));
+  await setSettingAsync(REMINDER_TIME_KEY, formatReminderTime(schedule.hour, schedule.minute));
+}
+
+/**
+ * Replace every scheduled workout reminder with one weekly notification per
+ * chosen day. Returns how many were scheduled (0 = no permission, or nothing
+ * could be scheduled).
+ */
+export async function applyWorkoutReminders(schedule: ReminderSchedule): Promise<number> {
+  await cancelAllNotificationsOfType("workout_reminder");
+  let scheduled = 0;
+  for (const day of schedule.days) {
+    const id = await scheduleWorkoutReminder(toExpoWeekday(day), schedule.hour, schedule.minute);
+    if (id) scheduled += 1;
+  }
+  return scheduled;
 }
 
 /**

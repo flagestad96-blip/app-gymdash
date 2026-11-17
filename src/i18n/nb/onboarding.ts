@@ -30,7 +30,7 @@ const onboarding: TranslationMap = {
   "onboarding.program.goal.home": "Hjemmetrening med manualer",
   "onboarding.program.goal.marius": "Allsidig 5-dagers med brystfokus",
   "onboarding.reminders.title": "Treningsp\u00e5minnelser",
-  "onboarding.reminders.body": "F\u00e5 en p\u00e5minnelse p\u00e5 treningsdager s\u00e5 \u00f8kten ikke glipper.",
+  "onboarding.reminders.body": "Få en påminnelse mandag, onsdag og fredag kl. 17 så økten ikke glipper. Dager og tidspunkt endrer du i Innstillinger.",
   "onboarding.reminders.on": "Ja takk",
   "onboarding.reminders.off": "Nei takk",
   "onboarding.reminders.enabled": "P\u00e5minnelser er p\u00e5. Tilpass dager og tid i Innstillinger.",

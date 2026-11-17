@@ -95,6 +95,10 @@ type RenderBlock = MergeableBlock;
 
 // Module-level flag - persists across component remounts (tab switches)
 let _logTabInitialized = false;
+// The day the user picked by hand (per program), kept for this app session so
+// coming back to the tab does not snap back to the suggested day. Cleared when
+// a workout is finished — then the next suggestion applies again.
+let _userDayPick: { programId: string; dayIndex: number } | null = null;
 
 // Exercises that hit a *genuine* new heaviest PR during this session (excludes
 // first-ever baseline sets). Module-level so a mid-workout detour to another
@@ -235,6 +239,7 @@ export default function Logg() {
     const dayCount = program?.days.length ?? 0;
     if (!Number.isFinite(idx) || idx < 0 || dayCount === 0 || idx >= dayCount) return;
     consumedDayParamRef.current = dayParam;
+    if (program?.id) _userDayPick = { programId: program.id, dayIndex: idx };
     setActiveDayIndex(idx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayParam, ready, activeWorkoutId, program?.id]);
@@ -372,6 +377,8 @@ export default function Logg() {
         }
         const lockedDay = Number.isFinite(fromIndex) ? fromIndex : Number.isFinite(fromKey) ? fromKey : day;
         day = clampInt(lockedDay, 0, dayCount - 1);
+      } else if (_userDayPick && _userDayPick.programId === prog.id) {
+        day = clampInt(_userDayPick.dayIndex, 0, dayCount - 1);
       }
       const programAlts = await ProgramStore.getAlternativesForProgram(prog.id);
 
@@ -851,6 +858,7 @@ export default function Logg() {
       ),
       setsByExercise,
       adHocSet,
+      skippedSet: new Set(Object.keys(skippedMap)),
       getTarget: (exId) => ({ targetSets: getTargetFor(exId).targetSets }),
     });
 
@@ -870,7 +878,7 @@ export default function Logg() {
     // We intentionally exclude `getTargetFor` and `endWorkout` from deps —
     // both are recreated on every render and would re-fire this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setsByExercise, renderBlocks, activeWorkoutId, adHocSet]);
+  }, [setsByExercise, renderBlocks, activeWorkoutId, adHocSet, skippedMap]);
 
   // Rest timer functions (getRestForExercise, startRestTimer, stopRestTimer) are now in restTimerContext
 
@@ -1005,14 +1013,28 @@ export default function Logg() {
     if (!program?.id || exerciseIds.length === 0) return;
     let alive = true;
     (async () => {
-      const pairs = exerciseIds.map((exerciseId) => ({ dayIndex: activeDayIndex, exerciseId }));
+      // A swapped-in alternative inherits the plan of the exercise it replaces.
+      const baseOf: Record<string, string> = {};
+      for (const [base, selected] of Object.entries(selectedAlternatives)) {
+        if (selected && selected !== base) baseOf[selected] = base;
+      }
+      const pairs: ProgressionStore.DayExerciseRef[] = [];
+      for (const exerciseId of exerciseIds) {
+        const base = baseOf[exerciseId];
+        if (base) {
+          pairs.push({ dayIndex: activeDayIndex, exerciseId: base });
+          pairs.push({ dayIndex: activeDayIndex, exerciseId, inheritFrom: base });
+        } else {
+          pairs.push({ dayIndex: activeDayIndex, exerciseId });
+        }
+      }
       await ProgressionStore.ensureTargets(program.id, pairs);
       const targetMap = await ProgressionStore.getTargets(program.id);
       if (!alive) return;
       setTargets(targetMap);
     })();
     return () => { alive = false; };
-  }, [program?.id, exerciseIdsKey, exerciseIds, activeDayIndex]);
+  }, [program?.id, exerciseIdsKey, exerciseIds, activeDayIndex, selectedAlternatives]);
 
   useEffect(() => {
     if (exerciseIds.length === 0) { setExerciseNotes({}); return; }
@@ -1421,12 +1443,14 @@ export default function Logg() {
           style: "destructive",
           onPress: async () => {
             await endWorkout();
+            if (program?.id) _userDayPick = { programId: program.id, dayIndex: i };
             setActiveDayIndex(i);
           },
         },
       ]);
       return;
     }
+    if (program?.id) _userDayPick = { programId: program.id, dayIndex: i };
     setActiveDayIndex(i);
   }
 
@@ -1615,8 +1639,11 @@ export default function Logg() {
       const { analyzeWorkoutForProgression } = await import("../../src/progressionStore");
       if (programId) await analyzeWorkoutForProgression(activeWorkoutId, programId);
     } catch {}
-    // Advance periodization week
-    if (programId) {
+    _userDayPick = null;
+    // Advance the periodization week once per pass through the program (the
+    // finished day was the last one), not after every single workout —
+    // otherwise a "deload week" came around every few sessions.
+    if (programId && nextIdx === 0) {
       try {
         const updated = await advanceWeek(programId);
         setPeriodization(updated);
@@ -1693,7 +1720,25 @@ export default function Logg() {
     });
   }
 
+  // Exercises in flight: a second tap on the same exercise while its set is
+  // still being written would log the set twice (same set index).
+  const addSetInFlightRef = useRef<Set<string>>(new Set());
+
   async function addSetForExercise(
+    exId: string,
+    forcedIndex?: number,
+    opts?: { skipRestTimer?: boolean; weightKg?: number; reps?: number; isWarmup?: boolean },
+  ) {
+    if (addSetInFlightRef.current.has(exId)) return undefined;
+    addSetInFlightRef.current.add(exId);
+    try {
+      return await addSetForExerciseNow(exId, forcedIndex, opts);
+    } finally {
+      addSetInFlightRef.current.delete(exId);
+    }
+  }
+
+  async function addSetForExerciseNow(
     exId: string,
     forcedIndex?: number,
     opts?: { skipRestTimer?: boolean; weightKg?: number; reps?: number; isWarmup?: boolean },
@@ -1702,11 +1747,14 @@ export default function Logg() {
 
     const input = inputs[exId] ?? { weight: "", reps: "", rpe: "" };
     const isBw = isBodyweight(exId);
+    // Done with body weight alone (hanging leg raise, plank …): an empty
+    // weight field means no added weight, not missing data.
+    const weightOptional = isBw || getExercise(exId)?.equipment === "bodyweight";
     const parsedWeight = parseDecimal(input.weight);
     // Warm-up ramp rows pass an explicit weight/reps; everything else reads the inputs.
     const weight = opts?.weightKg != null
       ? opts.weightKg
-      : Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
+      : Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : weightOptional ? 0 : NaN;
     const reps = opts?.reps != null ? opts.reps : parseInt(input.reps, 10);
 
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
@@ -1884,19 +1932,31 @@ export default function Logg() {
     for (let i = 0; i < count; i += 1) await addSetForExercise(exId, base + i);
   }
 
+  /**
+   * Heaviest/e1RM are rebuilt from the sets that remain; the volume record
+   * (written at workout end) is kept. Spreading the old state over the result
+   * would keep a record alive after its last set is gone.
+   */
+  function applyRecomputedPrs(exId: string, recomputed: PrMap[string]) {
+    setPrRecords((prev) => {
+      const volume = prev[exId]?.volume;
+      return { ...prev, [exId]: volume ? { ...recomputed, volume } : { ...recomputed } };
+    });
+  }
+
   async function handleUndo() {
     if (!undoSet) return;
-    const { row, exerciseId, prSetId } = undoSet;
+    const { row, exerciseId } = undoSet;
     try {
       const db = getDb();
       await db.runAsync(`DELETE FROM sets WHERE id = ?`, [row.id]);
-      if (prSetId) await db.runAsync(`DELETE FROM pr_records WHERE set_id = ?`, [prSetId]);
       setWorkoutSets((prev) => prev.filter((s) => s.id !== row.id));
-      // Reload PR records from DB for this exercise instead of wiping state
       const programId = program?.id ?? "";
       if (programId) {
-        const reloaded = loadPrRecords(programId, [exerciseId]);
-        setPrRecords((prev) => ({ ...prev, [exerciseId]: reloaded[exerciseId] ?? {} }));
+        // There is one record row per exercise and type, so the undone set
+        // overwrote the previous best. Deleting that row would lose it —
+        // rebuild the record from the remaining sets instead.
+        applyRecomputedPrs(exerciseId, recomputePRForExercise(exerciseId, programId));
       } else {
         setPrRecords((prev) => { const next = { ...prev }; delete next[exerciseId]; return next; });
       }
@@ -1918,8 +1978,12 @@ export default function Logg() {
   async function saveEditSet() {
     if (!editSet) return;
     const isBw = editSet.exercise_id ? isBodyweight(editSet.exercise_id) : false;
+    const weightOptional = isBw || (editSet.exercise_id ? getExercise(editSet.exercise_id)?.equipment === "bodyweight" : false);
     const parsedWeight = parseDecimal(editWeight);
-    const weight = Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : isBw ? 0 : NaN;
+    const weightUntouched = editSet.weight != null && editWeight === String(wu.toDisplay(editSet.weight));
+    const weight = weightUntouched
+      ? (editSet.weight as number)
+      : Number.isFinite(parsedWeight) ? wu.toKg(parsedWeight) : weightOptional ? 0 : NaN;
     const reps = parseInt(editReps, 10);
     const rpe = parseFloat(editRpe);
     if (!Number.isFinite(weight) || !Number.isFinite(reps)) { Alert.alert(t("log.missingData"), t("log.missingDataMsg")); return; }
@@ -1954,8 +2018,7 @@ export default function Logg() {
           isBw, estTotalLoadKg: estTotalLoadKgForCheck,
         });
         // 2) Full historical recompute — fixes ghost PRs if edited down
-        const recomputed = recomputePRForExercise(exId, pid);
-        setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
+        applyRecomputedPrs(exId, recomputePRForExercise(exId, pid));
 
         // Track genuine heaviest PRs from an in-session edit too.
         if (rawMsgs.some((m) => m.startsWith("heaviest:"))) recordSessionPr(exId);
@@ -1991,8 +2054,7 @@ export default function Logg() {
           const exId = row.exercise_id ?? row.exercise_name;
           const pid = program?.id ?? "";
           if (exId && pid) {
-            const recomputed = recomputePRForExercise(exId, pid);
-            setPrRecords((prev) => ({ ...prev, [exId]: { ...prev[exId], ...recomputed } }));
+            applyRecomputedPrs(exId, recomputePRForExercise(exId, pid));
             // Clear any lingering banner for this exercise
             setPrBanners((prev) => { const next = { ...prev }; delete next[exId]; return next; });
           }
@@ -2007,6 +2069,8 @@ export default function Logg() {
   function completeOnboarding() {
     setSettingAsync("hasSeenOnboarding", "1").catch(() => {});
     setShowOnboarding(false);
+    // Onboarding may have switched the active program; this screen loaded before that.
+    loadSession().catch(() => {});
   }
 
   // ── Shared callbacks for exercise cards ──
@@ -2100,7 +2164,7 @@ export default function Logg() {
     <Screen>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
       >
         <ScrollView
@@ -2574,7 +2638,7 @@ export default function Logg() {
             backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
             borderRadius: theme.radius.xl, padding: 18, gap: 14,
             shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
-            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
+            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset,
           }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.chooseDay")}</Text>
             <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
@@ -2605,12 +2669,13 @@ export default function Logg() {
 
       {/* Edit Set Modal */}
       <Modal visible={editSetOpen} transparent animationType="fade" onRequestClose={() => setEditSetOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setEditSetOpen(false)}>
           <View onStartShouldSetResponder={() => true} style={{
             backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
             borderRadius: theme.radius.xl, padding: 18, gap: 14,
             shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
-            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
+            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset,
           }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.editSet")}</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
@@ -2640,6 +2705,7 @@ export default function Logg() {
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Rest Settings Modal is rendered by RestSettingsHost in _layout.tsx */}
@@ -2655,6 +2721,7 @@ export default function Logg() {
 
       {/* Goal Modal */}
       <Modal visible={goalExId !== null} animationType="fade" transparent onRequestClose={() => { setGoalExId(null); setGoalExGoals([]); }}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable
           onPress={() => { setGoalExId(null); setGoalTarget(""); setGoalExGoals([]); }}
           style={{ flex: 1, backgroundColor: theme.modalOverlay, padding: 14, justifyContent: "center" }}
@@ -2808,10 +2875,12 @@ export default function Logg() {
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Skip exercise: reason prompt */}
       <Modal visible={skipModalExId !== null} transparent animationType="fade" onRequestClose={() => setSkipModalExId(null)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable
           onPress={() => setSkipModalExId(null)}
           style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}
@@ -2852,6 +2921,7 @@ export default function Logg() {
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Undo Toast */}
@@ -2898,12 +2968,13 @@ export default function Logg() {
 
       {/* Save as Template Modal */}
       <Modal visible={saveTemplateOpen} transparent animationType="fade" onRequestClose={() => setSaveTemplateOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }} onPress={() => setSaveTemplateOpen(false)}>
           <View onStartShouldSetResponder={() => true} style={{
             backgroundColor: theme.modalGlass, borderColor: theme.glassBorder, borderWidth: 1,
             borderRadius: theme.radius.xl, padding: 18, gap: 14,
             shadowColor: theme.shadow.lg.color, shadowOpacity: theme.shadow.lg.opacity,
-            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset, elevation: theme.shadow.lg.elevation,
+            shadowRadius: theme.shadow.lg.radius, shadowOffset: theme.shadow.lg.offset,
           }}>
             <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>
               {t("templates.save")}
@@ -2929,6 +3000,7 @@ export default function Logg() {
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Finish Workout Summary Modal */}
@@ -2948,17 +3020,18 @@ export default function Logg() {
               borderRadius: theme.radius.xl,
               padding: 24,
               gap: 16,
+              maxHeight: "85%",
               shadowColor: theme.shadow.lg.color,
               shadowOpacity: theme.shadow.lg.opacity,
               shadowRadius: theme.shadow.lg.radius,
               shadowOffset: theme.shadow.lg.offset,
-              elevation: theme.shadow.lg.elevation,
             }}
           >
             <Text style={{ color: theme.text, fontFamily: theme.fontFamily.bold, fontSize: 20, textAlign: "center" }}>
               {t("log.workoutComplete")}
             </Text>
 
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 16 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
               <View style={{ alignItems: "center", gap: 4 }}>
                 <Text style={{ color: theme.accent, fontFamily: theme.mono, fontSize: 22 }}>{finishSummary?.duration}</Text>
@@ -3066,6 +3139,8 @@ export default function Logg() {
                 ))}
               </View>
             ) : null}
+
+            </ScrollView>
 
             <Btn label={t("common.done")} onPress={() => setFinishSummary(null)} tone="accent" />
           </Pressable>

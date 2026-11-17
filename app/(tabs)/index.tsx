@@ -85,7 +85,9 @@ export default function HomeScreen() {
   const [deloadToast, setDeloadToast] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState<{ id: string; startedAt: string | null; dayLabel: string } | null>(null);
 
-  useEffect(() => {
+  // On focus, not just on mount: Home stays mounted under the Log screen, so
+  // coming back with the back button showed the numbers from before the workout.
+  useFocusEffect(useCallback(() => {
     let alive = true;
     ensureDb().then(async () => {
       if (!alive) return;
@@ -286,7 +288,7 @@ export default function HomeScreen() {
       if (alive) setReady(true);
     });
     return () => { alive = false; };
-  }, []);
+  }, []));
 
   useFocusEffect(
     useCallback(() => {
@@ -744,7 +746,7 @@ export default function HomeScreen() {
                       <BackImpactDot exerciseId={pr.exercise_id} />
                     </View>
                     <Text style={{ color: theme.muted, fontFamily: theme.mono, fontSize: 10 }}>
-                      {prTypeLabel(pr.type)} \u00B7 {pr.date.slice(5).replace("-", ".")}
+                      {prTypeLabel(pr.type)} {"\u00B7"} {pr.date.slice(5).replace("-", ".")}
                     </Text>
                   </View>
                   <View style={{

@@ -2,6 +2,7 @@
 import { ensureDb, getDb } from "./db";
 import { defaultIncrementFor, tagsFor } from "./exerciseLibrary";
 import { uid, isoNow } from "./storage";
+import type { ShareTarget } from "./programImport";
 
 export type ExerciseTarget = {
   programId: string;
@@ -18,6 +19,11 @@ export type ExerciseTarget = {
 export type DayExerciseRef = {
   dayIndex: number;
   exerciseId: string;
+  /**
+   * For an alternative: the exercise it stands in for. A new target then
+   * starts from that exercise's sets and rep range instead of the defaults.
+   */
+  inheritFrom?: string;
 };
 
 // Targets keyed by day index, then by exercise id.
@@ -68,9 +74,28 @@ export async function ensureTargets(
   const now = isoNow();
   const db = getDb();
 
-  for (const { dayIndex, exerciseId } of pairs) {
+  // Primary exercises first, so an alternative can inherit from a row that exists.
+  const ordered = [...pairs.filter((p) => !p.inheritFrom), ...pairs.filter((p) => p.inheritFrom)];
+
+  for (const { dayIndex, exerciseId, inheritFrom } of ordered) {
     if (!exerciseId) continue;
-    const { repMin, repMax, incrementKg, targetSets } = defaultTargetForExercise(exerciseId);
+    const defaults = defaultTargetForExercise(exerciseId);
+    const { incrementKg } = defaults;
+    let { repMin, repMax, targetSets } = defaults;
+    if (inheritFrom && inheritFrom !== exerciseId) {
+      // The alternative replaces this exercise in the plan: same sets x reps
+      // (its own weight increment). Only applies when the row is created —
+      // an existing target is never overwritten (INSERT OR IGNORE below).
+      const base = await db.getFirstAsync<{ rep_min: number; rep_max: number; target_sets: number | null }>(
+        `SELECT rep_min, rep_max, target_sets FROM exercise_targets WHERE program_id = ? AND exercise_id = ? AND day_index = ?`,
+        [programId, inheritFrom, dayIndex]
+      );
+      if (base) {
+        repMin = base.rep_min;
+        repMax = base.rep_max;
+        if (Number.isFinite(base.target_sets ?? NaN)) targetSets = Number(base.target_sets);
+      }
+    }
     await db.runAsync(
       `INSERT OR IGNORE INTO exercise_targets(id, program_id, exercise_id, day_index, rep_min, rep_max, target_sets, increment_kg, updated_at)
        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -165,6 +190,26 @@ export async function upsertTarget(args: {
       ap,
     ]
   );
+}
+
+/**
+ * Write the targets of an imported (shared) program. A target without sets or
+ * increment falls back to the default for that exercise.
+ */
+export async function applySharedTargets(programId: string, targets: ShareTarget[]): Promise<void> {
+  for (const tgt of targets) {
+    const fallback = defaultTargetForExercise(tgt.exerciseId);
+    await upsertTarget({
+      programId,
+      exerciseId: tgt.exerciseId,
+      dayIndex: tgt.dayIndex,
+      repMin: tgt.repMin,
+      repMax: tgt.repMax,
+      targetSets: tgt.targetSets ?? fallback.targetSets,
+      incrementKg: tgt.incrementKg ?? fallback.incrementKg,
+      autoProgress: tgt.autoProgress,
+    });
+  }
 }
 
 // ── Auto-progression ────────────────────────────────────────────────

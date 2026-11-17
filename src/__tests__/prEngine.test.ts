@@ -430,3 +430,57 @@ describe("recomputeVolumePRForExercise", () => {
     expect(mockGetAllSync).not.toHaveBeenCalled();
   });
 });
+
+describe("checkSetPRs in a program without records yet", () => {
+  const params = {
+    exerciseId: "bench_press",
+    weight: 80,
+    reps: 5,
+    setId: "set_1",
+    workoutId: "w_1",
+    programId: "new_program",
+    currentVolumeRecord: undefined,
+    isBw: false,
+    estTotalLoadKg: null as number | null | undefined,
+  };
+
+  it("does not announce a PR that is below the best under another program", async () => {
+    mockGetAllSync
+      .mockReturnValueOnce([]) // no records in this program
+      .mockReturnValueOnce([
+        { exercise_id: "bench_press", type: "heaviest", value: 100 },
+        { exercise_id: "bench_press", type: "e1rm", value: 120 },
+      ]);
+    mockGetFirstSync.mockReturnValue({ c: 12 }); // trained before, so not a baseline
+
+    const result = await checkSetPRs(params);
+
+    expect(result.messages).toHaveLength(0);
+    // The program still gets its own record.
+    expect(result.updatedRecords.heaviest?.value).toBe(80);
+  });
+
+  it("announces it when it beats every other program too", async () => {
+    mockGetAllSync
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([
+        { exercise_id: "bench_press", type: "heaviest", value: 100 },
+        { exercise_id: "bench_press", type: "e1rm", value: 110 },
+      ]);
+    mockGetFirstSync.mockReturnValue({ c: 12 });
+
+    const result = await checkSetPRs({ ...params, weight: 105 });
+
+    expect(result.messages.some((m) => m.startsWith("heaviest:105"))).toBe(true);
+    expect(result.messages.some((m) => m.startsWith("e1rm:"))).toBe(true);
+  });
+
+  it("never announces a set without load", async () => {
+    mockGetAllSync.mockReturnValue([]);
+    mockGetFirstSync.mockReturnValue({ c: 12 });
+
+    const result = await checkSetPRs({ ...params, weight: 0 });
+
+    expect(result.messages).toHaveLength(0);
+  });
+});

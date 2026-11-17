@@ -39,6 +39,14 @@ const notifications: TranslationMap = {
   "notifications.requestPermission": "Gi tillatelse",
   "notifications.enabled": "Aktivert",
   "notifications.restDayMessage": "Du har ikke trent p\u00e5 en stund. Tid for en \u00f8kt?",
+  "notifications.reminderDays": "Dager",
+  "notifications.day.1": "Man",
+  "notifications.day.2": "Tir",
+  "notifications.day.3": "Ons",
+  "notifications.day.4": "Tor",
+  "notifications.day.5": "Fre",
+  "notifications.day.6": "Lør",
+  "notifications.day.7": "Søn",
 };
 
 export default notifications;

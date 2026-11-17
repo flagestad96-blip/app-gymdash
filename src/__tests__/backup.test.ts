@@ -57,6 +57,8 @@ describe("exportFullBackup", () => {
       "workout_templates",
       "day_marks",
       "exercise_notes",
+      "gym_locations",
+      "skipped_exercises",
     ];
 
     for (const table of expectedTables) {

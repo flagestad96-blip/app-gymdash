@@ -9,7 +9,7 @@
 // edited values don't leave stale PR records behind.
 
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, Modal, TextInput, Alert } from "react-native";
+import { View, Text, Pressable, Modal, TextInput, Alert, KeyboardAvoidingView } from "react-native";
 import { getDb, computeBodyweightLoad } from "../../db";
 import { isoDateOnly } from "../../storage";
 import { useTheme } from "../../theme";
@@ -127,6 +127,7 @@ export default function EditSetModal({ visible, set, programId, onClose, onChang
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <Pressable
         style={{ flex: 1, backgroundColor: theme.modalOverlay, justifyContent: "center", padding: 16 }}
         onPress={onClose}
@@ -144,7 +145,6 @@ export default function EditSetModal({ visible, set, programId, onClose, onChang
             shadowOpacity: theme.shadow.lg.opacity,
             shadowRadius: theme.shadow.lg.radius,
             shadowOffset: theme.shadow.lg.offset,
-            elevation: theme.shadow.lg.elevation,
           }}
         >
           <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 18 }}>{t("log.editSet")}</Text>
@@ -212,6 +212,7 @@ export default function EditSetModal({ visible, set, programId, onClose, onChang
           </View>
         </View>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

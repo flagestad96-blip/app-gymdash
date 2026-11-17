@@ -39,6 +39,14 @@ const notifications: TranslationMap = {
   "notifications.requestPermission": "Grant permission",
   "notifications.enabled": "Enabled",
   "notifications.restDayMessage": "You haven't trained in a while. Time for a workout?",
+  "notifications.reminderDays": "Days",
+  "notifications.day.1": "Mon",
+  "notifications.day.2": "Tue",
+  "notifications.day.3": "Wed",
+  "notifications.day.4": "Thu",
+  "notifications.day.5": "Fri",
+  "notifications.day.6": "Sat",
+  "notifications.day.7": "Sun",
 };
 
 export default notifications;
